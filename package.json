@@ -1,0 +1,101 @@
+{
+  "name": "olsync",
+  "version": "1.0.15",
+  "main": "./dist/main.js",
+  "scripts": {
+    "build": "concurrently \"npm run dev:electron\" \"npm run dev:react\"",
+    "dev": "concurrently \"npm run dev:react\" \"npm run electron:serve\" \"npm run dev:electron\"",
+    "dev:electron": "cross-env NODE_ENV=development webpack --config webpack/electron.webpack.ts --mode=development",
+    "dev:electron-preload": "cross-env NODE_ENV=development webpack --config webpack/electron.preload.webpack.ts --mode=development",
+    "dev:react": "cross-env NODE_ENV=development webpack serve --config webpack/react.webpack.ts --mode=development",
+    "electron:serve": "wait-on http-get://localhost:3519/ && npm run dev:electron-preload && npm run start:electron",
+    "start:electron": "electron .",
+    "build:prod": "concurrently \"npm run build:electron\" \"npm run build:react\"",
+    "build:electron": "cross-env NODE_ENV=production webpack --config webpack/electron.webpack.ts --mode=production",
+    "build:electron-preload": "cross-env NODE_ENV=production webpack --config webpack/electron.preload.webpack.ts --mode=production",
+    "build:react": "cross-env NODE_ENV=production webpack --config webpack/react.webpack.ts --mode=production",
+    "generate:manifest": "ts-node scripts/generate-manifest.ts",
+    "pack": "npm run build:prod && npm run build:electron-preload && electron-builder --dir",
+    "dist": "npm run build:prod && npm run build:electron-preload && electron-builder",
+    "predist:win": "npm run build:prod && npm run build:electron-preload",
+    "dist:win": "electron-builder --win && npx ts-node scripts/generate-manifest.ts ./release/win-unpacked %npm_package_version% ./release/win-unpacked"
+  },
+  "author": "WEDeach",
+  "license": "GPL-3.0-or-later",
+  "description": "osu! sync tools",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/WEDeach/olsync.git"
+  },
+  "build": {
+    "appId": "com.wedeach.olsync",
+    "productName": "olSync",
+    "asar": true,
+    "npmRebuild": true,
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "dist/**/*",
+      "package.json"
+    ],
+    "extraFiles": [
+      {
+        "from": "i18n",
+        "to": "i18n",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "dir",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.ico",
+      "artifactName": "${productName}-${version}-${arch}.${ext}"
+    }
+  },
+  "dependencies": {
+    "realm": "^12.14.2"
+  },
+  "devDependencies": {
+    "@base-ui/react": "^1.0.0",
+    "@emotion/react": "^11.14.0",
+    "@emotion/styled": "^11.14.0",
+    "@mui/icons-material": "^7.3.6",
+    "@mui/material": "^7.0.2",
+    "@types/binary-parser": "^1.8.0",
+    "@types/react-dom": "^19.1.2",
+    "@types/react-virtualized": "^9.22.2",
+    "@zenoaihq/tson": "^1.0.2",
+    "binary-parser": "^2.2.1",
+    "concurrently": "^9.1.2",
+    "cross-env": "^7.0.3",
+    "dayjs": "^1.11.19",
+    "electron": "^35.2.0",
+    "electron-builder": "^26.0.12",
+    "html-webpack-plugin": "^5.6.3",
+    "mobx": "^6.13.7",
+    "mobx-react": "^9.2.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "react-virtualized": "^9.22.6",
+    "ts-loader": "^9.5.2",
+    "ts-node": "^10.9.2",
+    "tsconfig-paths-webpack-plugin": "^4.2.0",
+    "typescript": "^5.8.3",
+    "vitest": "^4.0.16",
+    "wait-on": "^8.0.3",
+    "webpack": "^5.99.6",
+    "webpack-cli": "^6.0.1",
+    "webpack-dev-server": "^5.2.1",
+    "webpack-node-externals": "^3.0.0"
+  }
+}

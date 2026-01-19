@@ -1,0 +1,127 @@
+{
+    "__LANG__": "中文(繁體)",
+    "main": {
+        "dl": {
+            "select": "請選擇下載方式, 或者選擇<b>文本下載</b>, 你可以一次獲取下載連結<br><br>默認下載網址為osu官方網站, 在這種情況下你需要登入帳號才能夠下載!<br>你當前使用的下載連結為: <b>:url</b><br><br>你可以修改config中的<b>api:dlink</b>來自訂下載網址以供你直接下載!",
+            "fetching": "正在獲取下載連結...",
+            "nodata": "沒有任何資料...",
+            "to_clipboard": "已複製 :count 個下載鏈接到剪貼簿",
+            "progress": "正在下載中... :current/:total"
+        },
+        "api": {
+            "client": {
+                "init": {
+                    "success": "API初始化成功"
+                }
+            }
+        },
+        "srs": {
+            "player": {
+                "who": "你是...?",
+                "you": "這是你嗎?"
+            },
+            "local": {
+                "reading": "讀取本地紀錄..."
+            },
+            "online": {
+                "success": "讀取線上紀錄成功!"
+            },
+            "reading": {
+                "failed": "無法讀取資料: :reason"
+            }
+        },
+        "bpks": {
+            "dl": {
+                "options": {
+                    "title": "圖譜包下載選項",
+                    "desc": "請選擇要下載的圖譜包類型、日期範圍和下載模式"
+                },
+                "type": {
+                    "label": "圖譜包類型",
+                    "all": "全部類型",
+                    "standard": "標準圖譜包",
+                    "featured": "精選藝術家圖譜包",
+                    "tournament": "錦標賽圖譜包",
+                    "loved": "LOVED圖譜包",
+                    "chart": "聚光燈圖譜包",
+                    "theme": "主題圖譜包",
+                    "artist": "藝術家圖譜包"
+                },
+                "date_range": {
+                    "label": "日期範圍",
+                    "7d": "最近7日",
+                    "30d": "最近30日",
+                    "6m": "最近半年",
+                    "all": "不限時間"
+                },
+                "mode": {
+                    "full": "完整下載",
+                    "diff": "差異下載"
+                },
+                "no_type_selected": "請至少選擇一個圖譜包類型!",
+                "start": "開始處理圖譜包...",
+                "fetching": "正在獲取圖譜包資料 (類型: :type)...",
+                "init_api": "正在初始化 API..."
+            },
+            "date_range": {
+                "confirm": "若日期範圍為不限時間, 這將會獲取所有圖譜包, 此操作可能會花費很多時間, 是否繼續?"
+            }
+        },
+        "update": {
+            "checking": "正在檢查更新...",
+            "available": "有可用更新",
+            "no_update": "已是最新版本",
+            "downloading": "正在下載更新... :current/:total",
+            "verifying": "正在驗證更新...",
+            "success": "更新完成",
+            "failed": "更新失敗",
+            "restart_required": "請重啟應用程式以應用更新",
+            "version": {
+                "current": "當前版本: :version",
+                "latest": "最新版本: :version"
+            },
+            "info": {
+                "files": "需要更新 :count 個檔案",
+                "size": "下載大小: :size MB"
+            }
+        }
+    },
+    "btn": {
+        "srs": {
+            "read": "讀取本地紀錄",
+            "online": {
+                "read": "讀取線上紀錄",
+                "cached": "讀取緩存紀錄"
+            },
+            "player": {
+                "isme": "這是我!",
+                "check": "檢查玩家"
+            },
+            "search": "搜尋",
+            "download": "下載"
+        },
+        "cancel": "取消",
+        "confirm": "確認",
+        "abort": "終止",
+        "name": "名稱",
+        "author": "作者",
+        "date": "日期",
+        "version": "版本",
+        "ruleset": "模式",
+        "dl": {
+            "rows": "文本下載",
+            "fdm": "透過FDM下載",
+            "direct": "osu!direct",
+            "direct_confirm": "使用osu!direct下載連結:\n1. 請先打開osu!客戶端 並確保你已經登入且可以使用osu!direct\n2. 請進入osu!客戶端的設置當中, 在最後面幾個設置中找到自動下載圖譜的選項並打開\n3. 默認每10秒載一張圖, 這是為了確保不造成濫用問題, 除非你知道你在做甚麼否則不要擅自修改這個秒數!"
+        },
+        "bpks": {
+            "read": "讀取圖譜包"
+        },
+        "update": {
+            "check": "檢查更新",
+            "download": "立即更新",
+            "later": "稍後提醒",
+            "restart": "立即重啟"
+        }
+    }
+}
