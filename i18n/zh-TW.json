@@ -58,6 +58,10 @@
                     "full": "完整下載",
                     "diff": "差異下載"
                 },
+                "gmode": {
+                    "all": "所有模式",
+                    "label": "遊戲模式"
+                },
                 "no_type_selected": "請至少選擇一個圖譜包類型!",
                 "start": "開始處理圖譜包...",
                 "fetching": "正在獲取圖譜包資料 (類型: :type)...",
@@ -84,7 +88,12 @@
                 "files": "需要更新 :count 個檔案",
                 "size": "下載大小: :size MB"
             }
-        }
+        },
+        "name": "名稱",
+        "author": "作者",
+        "date": "日期",
+        "version": "版本",
+        "ruleset": "模式"
     },
     "btn": {
         "srs": {
@@ -103,11 +112,6 @@
         "cancel": "取消",
         "confirm": "確認",
         "abort": "終止",
-        "name": "名稱",
-        "author": "作者",
-        "date": "日期",
-        "version": "版本",
-        "ruleset": "模式",
         "dl": {
             "rows": "文本下載",
             "fdm": "透過FDM下載",
