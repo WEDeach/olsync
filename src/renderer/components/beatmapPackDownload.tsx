@@ -380,7 +380,7 @@ export const BeatmapPackDownloadView: React.FC<IBeatmapPackDownloadViewProps>=()
                         return await window.olsCore.getBeatmaps(OsuClients.Stable,offset,limit);
                     };
                     local=await readAllWithOffset(fetch_fn,local);
-                    const mapIds=new Set(local.data.map((v) => v.beatmapId));
+                    const mapIds=new Set(local.data.map((v) => v.beatmapSetId));
                     setExcludedPackMapIds(new Set(allPackInfos.map((v) => v.beatmapsets.map((m) => m.id)).flat().filter((v) => mapIds.has(v))));
                     g.setLoading(false);
                 }

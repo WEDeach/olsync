@@ -169,8 +169,7 @@ Object.assign(g,{
         const autoCheck=g.config?.[ConfigKey.UPDATE_AUTO_CHECK]??true;
         if(autoCheck||isForce) {
             const updateBaseUrl=g.config?.[ConfigKey.UPDATE_BASE_URL]||"https://olsdk1-page-static.deachsword.com";
-            // const backupUrlByGithub="https://api.github.com/repos/WEDeach/olsync/releases/latest";
-
+            
             // Check for updates from manifest
             // 1. fetch by updateBaseUrl
             //   - dev or prod 
