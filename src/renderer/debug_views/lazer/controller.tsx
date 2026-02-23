@@ -1,25 +1,25 @@
-import { makeAutoObservable,observable,runInAction } from "mobx";
-import { IPropertyWithName } from "../../components/table";
+import { makeAutoObservable, observable, runInAction } from "mobx";
 import { DefaultObject } from "realm/dist/public-types/schema/types";
+import { IPropertyWithName } from "../../components/table";
 import g from "../../state";
 
 interface State {
     path?: string;
     s_tables?: string[];
-    s_schema_name?: string
+    s_schema_name?: string;
     s_schema_keys?: IPropertyWithName[];
     s_schema_rows?: DefaultObject[];
     s_schema_rows_loaded?: boolean;
     s_schema_rows_page?: number;
 }
 
-const PAGE_SIZE=100;
+const PAGE_SIZE = 100;
 
 export default class Controller {
     state: State;
 
     constructor() {
-        this.state={}
+        this.state = {};
 
         g.initConfig();
 
@@ -27,21 +27,21 @@ export default class Controller {
     }
 
     get Path() {
-        return g.config?.["path"]??""
+        return g.config?.["path"] ?? "";
     }
 
     get STables() {
-        return this.state.s_tables??[]
+        return this.state.s_tables ?? [];
     }
 
     get SSchemaKeys() {
-        if(this.STables.length===0) return [];
-        return this.state.s_schema_keys??[]
+        if (this.STables.length === 0) return [];
+        return this.state.s_schema_keys ?? [];
     }
 
     get SSchemaRows() {
-        if(this.STables.length===0) return [];
-        return this.state.s_schema_rows??[]
+        if (this.STables.length === 0) return [];
+        return this.state.s_schema_rows ?? [];
     }
 
     get SSchemaName() {
@@ -49,86 +49,88 @@ export default class Controller {
     }
 
     get SSchemaRowsLoaded() {
-        return this.state.s_schema_rows_loaded??true;
+        return this.state.s_schema_rows_loaded ?? true;
     }
 
     get SSchemaRowsPage() {
-        return this.state.s_schema_rows_page??0;
+        return this.state.s_schema_rows_page ?? 0;
     }
 
-    handleSelectFile=async () => {
-        let result=await window.olsCore.openFile();
-        if(result===undefined) return;
-        await g.saveConfig("path",result);
+    handleSelectFile = async () => {
+        const result = await window.olsCore.openFile();
+        if (result === undefined) return;
+        await g.saveConfig("path", result);
     };
 
-    onReadLazerBtnClicked=async () => {
-        const reader=await window.olsCore.initReader(this.Path);
+    onReadLazerBtnClicked = async () => {
+        const reader = await window.olsCore.initReader(this.Path);
 
-        if(reader!==undefined) {
-            const schemas=await window.olsCore.getSchemas();
-            const modelNames=schemas.map((data: any) => {
+        if (reader !== undefined) {
+            const schemas = await window.olsCore.getSchemas();
+            const modelNames = schemas.map((data: any) => {
                 return data.name;
             });
             console.log(schemas);
 
-            this.state.s_tables=modelNames;
+            this.state.s_tables = modelNames;
         }
     };
 
-    onSchemaBtnClicked=async (name: string) => {
-        this.state.s_schema_keys=[];
-        this.state.s_schema_rows=[];
-        const schema=await window.olsCore.getSchema(name);
-        if(schema) {
-            Object.entries(schema.properties).forEach(([propName,propSchema]) => {
+    onSchemaBtnClicked = async (name: string) => {
+        this.state.s_schema_keys = [];
+        this.state.s_schema_rows = [];
+        const schema = await window.olsCore.getSchema(name);
+        if (schema) {
+            Object.entries(schema.properties).forEach(([, propSchema]) => {
                 runInAction(() => {
-                    this.state.s_schema_name=name;
-                    this.state.s_schema_rows=[];
-                    this.state.s_schema_rows_page=0;
-                    this.state.s_schema_rows_loaded=true;
-                    this.state.s_schema_keys=[...this.SSchemaKeys,{
-                        ...propSchema
-                    }];
-                })
+                    this.state.s_schema_name = name;
+                    this.state.s_schema_rows = [];
+                    this.state.s_schema_rows_page = 0;
+                    this.state.s_schema_rows_loaded = true;
+                    this.state.s_schema_keys = [
+                        ...this.SSchemaKeys,
+                        {
+                            ...propSchema,
+                        },
+                    ];
+                });
             });
 
             await this.loadSchemaObjs();
         }
     };
 
-    loadSchemaObjs=async () => {
-        if(!this.SSchemaRowsLoaded) return;
+    loadSchemaObjs = async () => {
+        if (!this.SSchemaRowsLoaded) return;
 
-        const currentSchema=this.SSchemaName;
-        if(!currentSchema) return;
+        const currentSchema = this.SSchemaName;
+        if (!currentSchema) return;
 
         runInAction(() => {
-            this.state.s_schema_rows_loaded=false;
+            this.state.s_schema_rows_loaded = false;
         });
 
-
-        const nextPage=this.SSchemaRowsPage+1;
-        const offset=(nextPage-1)*PAGE_SIZE;
+        const nextPage = this.SSchemaRowsPage + 1;
+        const offset = (nextPage - 1) * PAGE_SIZE;
 
         try {
-            const moreData=await window.olsCore.getSchemaObjs(currentSchema,PAGE_SIZE,offset);
+            const moreData = await window.olsCore.getSchemaObjs(currentSchema, PAGE_SIZE, offset);
 
             runInAction(() => {
-                const rs=observable([...this.SSchemaRows,...moreData],{ deep: false });
-                this.state.s_schema_rows=rs;
-                this.state.s_schema_rows_page=nextPage;
+                const rs = observable([...this.SSchemaRows, ...moreData], { deep: false });
+                this.state.s_schema_rows = rs;
+                this.state.s_schema_rows_page = nextPage;
             });
         } finally {
             runInAction(() => {
-                this.state.s_schema_rows_loaded=true;
+                this.state.s_schema_rows_loaded = true;
             });
         }
     };
 
-    onCloseLazerBtnClicked=async () => {
+    onCloseLazerBtnClicked = async () => {
         await window.olsCore.closeReader();
 
-        this.state.s_tables=[];
+        this.state.s_tables = [];
     };
 }

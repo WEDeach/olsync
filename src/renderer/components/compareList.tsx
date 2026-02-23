@@ -1,56 +1,54 @@
+import { Box, List, ListItem, ListItemText, Typography } from "@mui/material";
 import React from "react";
-import { List,ListItem,ListItemText,Typography,Box } from "@mui/material";
 
 export interface ICompareListProps {
     source: { [key: string]: any };
     target: { [key: string]: any };
 }
 
-function getDiffRows(source: any,target: any) {
+function getDiffRows(source: any, target: any) {
     const rows: Array<{
         key: string;
         sourceValue: any;
         targetValue: any;
-        status: "added"|"removed"|"changed"|"unchanged";
-    }>=[];
+        status: "added" | "removed" | "changed" | "unchanged";
+    }> = [];
 
-    const allKeys=Array.from(
-        new Set([...Object.keys(source||{}),...Object.keys(target||{})])
-    );
+    const allKeys = Array.from(new Set([...Object.keys(source || {}), ...Object.keys(target || {})]));
 
     allKeys.forEach((key) => {
-        const sourceValue=source?.[key];
-        const targetValue=target?.[key];
-        if(sourceValue===undefined&&targetValue!==undefined) {
-            rows.push({ key,sourceValue,targetValue,status: "added" });
-        } else if(sourceValue!==undefined&&targetValue===undefined) {
-            rows.push({ key,sourceValue,targetValue,status: "removed" });
-        } else if(JSON.stringify(sourceValue)!==JSON.stringify(targetValue)) {
-            rows.push({ key,sourceValue,targetValue,status: "changed" });
+        const sourceValue = source?.[key];
+        const targetValue = target?.[key];
+        if (sourceValue === undefined && targetValue !== undefined) {
+            rows.push({ key, sourceValue, targetValue, status: "added" });
+        } else if (sourceValue !== undefined && targetValue === undefined) {
+            rows.push({ key, sourceValue, targetValue, status: "removed" });
+        } else if (JSON.stringify(sourceValue) !== JSON.stringify(targetValue)) {
+            rows.push({ key, sourceValue, targetValue, status: "changed" });
         } else {
-            rows.push({ key,sourceValue,targetValue,status: "unchanged" });
+            rows.push({ key, sourceValue, targetValue, status: "unchanged" });
         }
     });
 
     return rows;
 }
 
-const statusColor={
+const statusColor = {
     added: "#d4f8db",
     removed: "#ffeef0",
     changed: "#fff5b1",
     unchanged: "inherit",
 };
 
-const statusLabel={
+const statusLabel = {
     added: "新增",
     removed: "刪除",
     changed: "修改",
     unchanged: "",
 };
 
-const CompareList: React.FC<ICompareListProps>=({ source,target }) => {
-    const rows=getDiffRows(source,target);
+const CompareList: React.FC<ICompareListProps> = ({ source, target }) => {
+    const rows = getDiffRows(source, target);
 
     return (
         <Box>
@@ -69,48 +67,38 @@ const CompareList: React.FC<ICompareListProps>=({ source,target }) => {
                             alignItems: "flex-start",
                         }}
                     >
-                        <Box sx={{ minWidth: 120,fontWeight: "bold" }}>
-                            {row.key}
-                        </Box>
+                        <Box sx={{ minWidth: 120, fontWeight: "bold" }}>{row.key}</Box>
                         <Box sx={{ flex: 1 }}>
                             <ListItemText
                                 primary={
-                                    <Box sx={{ display: "flex",gap: 2 }}>
+                                    <Box sx={{ display: "flex", gap: 2 }}>
                                         <Box>
-                                            <Typography
-                                                variant="body2"
-                                                color="text.secondary"
-                                            >
+                                            <Typography variant="body2" color="text.secondary">
                                                 原始
                                             </Typography>
                                             <Typography
                                                 variant="body1"
                                                 sx={{
                                                     textDecoration:
-                                                        row.status==="removed"||
-                                                            row.status==="changed"
+                                                        row.status === "removed" || row.status === "changed"
                                                             ? "line-through"
-                                                            :"none",
+                                                            : "none",
                                                 }}
                                             >
                                                 {JSON.stringify(row.sourceValue)}
                                             </Typography>
                                         </Box>
                                         <Box>
-                                            <Typography
-                                                variant="body2"
-                                                color="text.secondary"
-                                            >
+                                            <Typography variant="body2" color="text.secondary">
                                                 目標
                                             </Typography>
                                             <Typography
                                                 variant="body1"
                                                 sx={{
                                                     fontWeight:
-                                                        row.status==="added"||
-                                                            row.status==="changed"
+                                                        row.status === "added" || row.status === "changed"
                                                             ? "bold"
-                                                            :"normal",
+                                                            : "normal",
                                                 }}
                                             >
                                                 {JSON.stringify(row.targetValue)}
@@ -119,11 +107,8 @@ const CompareList: React.FC<ICompareListProps>=({ source,target }) => {
                                     </Box>
                                 }
                                 secondary={
-                                    statusLabel[row.status]&&(
-                                        <Typography
-                                            variant="caption"
-                                            color="text.secondary"
-                                        >
+                                    statusLabel[row.status] && (
+                                        <Typography variant="caption" color="text.secondary">
                                             {statusLabel[row.status]}
                                         </Typography>
                                     )

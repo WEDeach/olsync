@@ -23,11 +23,23 @@
             "local": {
                 "reading": "讀取本地紀錄..."
             },
+            "scores":{
+                "reading": "讀取本地分數資料..."
+            },
             "online": {
-                "success": "讀取線上紀錄成功!"
+                "reading": "讀取線上紀錄...",
+                "success": "讀取線上紀錄成功!",
+                "nodata": "線上紀錄沒有任何資料!",
+                "aborted": "已停止讀取線上紀錄..."
             },
             "reading": {
-                "failed": "無法讀取資料: :reason"
+                "failed": "無法讀取資料: :reason",
+                "checksum": "正在透過checksum獲取圖譜資訊..."
+            },
+            "tip": {
+                "read_local_maps_required": "你需要先讀取本地紀錄才能看到這裡的內容",
+                "read_online_maps_required": "你需要先讀取線上紀錄才能看到這裡的內容",
+                "all_map_already_downloaded": "看起來你已經下載了所有缺失的圖譜了UwU"
             }
         },
         "bpks": {
@@ -106,8 +118,13 @@
                 "isme": "這是我!",
                 "check": "檢查玩家"
             },
+            "group": {
+                "local": "本地",
+                "online": "線上"
+            },
             "search": "搜尋",
-            "download": "下載"
+            "download": "下載",
+            "read_by_checksum": "獲取圖譜資訊 (API需求!)"
         },
         "cancel": "取消",
         "confirm": "確認",

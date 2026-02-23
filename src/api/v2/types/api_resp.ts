@@ -1,6 +1,6 @@
 import APIError from "./api_error";
 
-export type ApiResponse<T>=T|APIError;
+export type ApiResponse<T> = T | APIError;
 
 export interface RespOAuthToken {
     token_type: string;
@@ -8,7 +8,7 @@ export interface RespOAuthToken {
     access_token: string;
 }
 
-export type RespUserMostPlayedBeatmaps=RespUserMostPlayedBeatmap[];
+export type RespUserMostPlayedBeatmaps = RespUserMostPlayedBeatmap[];
 
 export interface RespUserMostPlayedBeatmap {
     beatmap_id: number;
@@ -216,7 +216,6 @@ export interface UserAchievement {
     achievement_id: number;
 }
 
-
 export interface Beatmap {
     beatmapset_id: number;
     difficulty_rating: number;
@@ -229,13 +228,13 @@ export interface Beatmap {
 }
 
 export enum RankedStatus {
-    Graveyard="graveyard", // -2
-    WIP="wip", // -1
-    Pending="pending", // 0
-    Ranked="ranked", // 1
-    Approved="approved", // 2
-    Qualified="qualified", // 3
-    Loved="loved", // 4
+    Graveyard = "graveyard", // -2
+    WIP = "wip", // -1
+    Pending = "pending", // 0
+    Ranked = "ranked", // 1
+    Approved = "approved", // 2
+    Qualified = "qualified", // 3
+    Loved = "loved", // 4
 }
 
 export interface Beatmapset {
@@ -258,7 +257,7 @@ export interface Beatmapset {
     status: RankedStatus;
     title: string;
     title_unicode: string;
-    track_id: number|null;
+    track_id: number | null;
     user_id: number;
     video: boolean;
     bpm: number;
@@ -301,7 +300,7 @@ export interface BeatmapPack {
     date: string;
     name: string;
     no_diff_reduction: boolean;
-    ruleset_id: number|null;
+    ruleset_id: number | null;
     tag: string;
     url: string;
 }
@@ -341,4 +340,41 @@ export interface RequiredMeta {
 export interface UserCompletionData {
     completed: boolean;
     beatmapset_ids: any[];
+}
+
+export interface RespBeatmapLookup extends Beatmap {
+    accuracy: number;
+    ar: number;
+    bpm: number;
+    convert: boolean;
+    count_circles: number;
+    count_sliders: number;
+    count_spinners: number;
+    cs: number;
+    deleted_at: null;
+    drain: number;
+    hit_length: number;
+    is_scoreable: boolean;
+    last_updated: Date;
+    mode_int: number;
+    passcount: number;
+    playcount: number;
+    ranked: number;
+    url: string;
+    checksum: string;
+    beatmapset: Beatmapset;
+    current_user_playcount: number;
+    failtimes: Failtimes;
+    max_combo: number;
+    owners: Owner[];
+}
+
+export interface Failtimes {
+    fail: number[];
+    exit: number[];
+}
+
+export interface Owner {
+    id: number;
+    username: string;
 }

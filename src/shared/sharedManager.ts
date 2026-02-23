@@ -1,13 +1,15 @@
-import StableReader from "./singletons/stable";
+import Api from "./singletons/api";
 import Config from "./singletons/config";
 import LazerReader from "./singletons/lazerReader";
-import Api from "./singletons/api";
 import NativeHost from "./singletons/nativeHost";
+import StableReader from "./singletons/stable";
 
-export default class SharedManager {
-    static lazerReader=LazerReader.getInstance as LazerReader;
-    static stableReader=StableReader.getInstance as StableReader;
-    static config=Config.getInstance as Config;
-    static api=Api.getInstance as Api;
-    static nativeHost=NativeHost.getInstance as NativeHost;
-}
+const SharedManager = {
+    lazerReader: LazerReader.getInstance as LazerReader,
+    stableReader: StableReader.getInstance as StableReader,
+    config: Config.getInstance as Config,
+    api: Api.getInstance as Api,
+    nativeHost: NativeHost.getInstance as NativeHost,
+} as const;
+
+export default SharedManager;

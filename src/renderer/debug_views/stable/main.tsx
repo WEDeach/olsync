@@ -1,8 +1,8 @@
+import { Backdrop, Button, CircularProgress, Container, Stack, TextField, Typography } from "@mui/material";
 import { observer } from "mobx-react";
 import React from "react";
-import Controller from "./controller";
-import { Backdrop,Button,CircularProgress,Container,Stack,TextField,Typography } from "@mui/material";
 import { DataViewer } from "../../components/dataViewer";
+import Controller from "./controller";
 
 @observer
 export default class Main extends React.Component {
@@ -11,7 +11,7 @@ export default class Main extends React.Component {
     constructor(props: any) {
         super(props);
 
-        this.controller=new Controller();
+        this.controller = new Controller();
     }
 
     render() {
@@ -28,7 +28,13 @@ export default class Main extends React.Component {
                         </Button>
                     </Stack>
                     <Stack direction={"row"} spacing={1}>
-                        <TextField label="PathPatch" variant="outlined" value={this.controller.PathPatch} sx={{ flexGrow: 1 }} disabled />
+                        <TextField
+                            label="PathPatch"
+                            variant="outlined"
+                            value={this.controller.PathPatch}
+                            sx={{ flexGrow: 1 }}
+                            disabled
+                        />
                         <Button variant="contained" onClick={this.controller.onBtnPathPatchClicked}>
                             檢查1
                         </Button>
@@ -46,7 +52,11 @@ export default class Main extends React.Component {
                         Read Scores
                     </Button>
 
-                    {this.controller.SSchemaRows.length>0&&<Typography variant="subtitle1" component="div" sx={{ textAlign: "right" }}>results: {this.controller.SSchemaRows.length}</Typography>}
+                    {this.controller.SSchemaRows.length > 0 && (
+                        <Typography variant="subtitle1" component="div" sx={{ textAlign: "right" }}>
+                            results: {this.controller.SSchemaRows.length}
+                        </Typography>
+                    )}
                     <DataViewer
                         heads={this.controller.SSchemaKeys}
                         rows={this.controller.SSchemaRows}
@@ -54,7 +64,7 @@ export default class Main extends React.Component {
                         threshold={100}
                     />
                     <Backdrop
-                        sx={(theme) => ({ color: '#fff',zIndex: theme.zIndex.drawer+1 })}
+                        sx={(theme) => ({ color: "#fff", zIndex: theme.zIndex.drawer + 1 })}
                         open={!this.controller.SSchemaRowsLoaded}
                     >
                         <CircularProgress color="inherit" />

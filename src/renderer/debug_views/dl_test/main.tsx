@@ -1,8 +1,7 @@
+import { Button, Stack, Typography } from "@mui/material";
 import { observer } from "mobx-react";
 import React from "react";
 import Controller from "./controller";
-import { Button,Stack,Typography } from "@mui/material";
-import __ from "../../../utils/i18n";
 
 @observer
 export default class Main extends React.Component {
@@ -11,7 +10,7 @@ export default class Main extends React.Component {
     constructor(props: any) {
         super(props);
 
-        this.controller=new Controller();
+        this.controller = new Controller();
     }
 
     render() {
@@ -20,8 +19,7 @@ export default class Main extends React.Component {
                 <Typography variant="h4" component="h1" sx={{ mb: 2 }}>
                     DEBUG_VIEW: DOWNLOADER TEST!
                 </Typography>
-                <Stack direction={"row"} spacing={1}>
-                </Stack>
+                <Stack direction={"row"} spacing={1}></Stack>
                 <Button variant="contained" onClick={() => this.controller.initFDM()}>
                     TEST FDM
                 </Button>

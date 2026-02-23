@@ -1,40 +1,31 @@
-import React,{ useState } from "react";
-import { Observer } from "mobx-react";
+import { Visibility, VisibilityOff } from "@mui/icons-material";
+import { FormControl, IconButton, InputAdornment, InputLabel, OutlinedInput, Stack, TextField } from "@mui/material";
 import { runInAction } from "mobx";
-import {
-    FormControl,
-    IconButton,
-    InputAdornment,
-    InputLabel,
-    OutlinedInput,
-    Stack,
-    TextField,
-} from "@mui/material";
-import { Visibility,VisibilityOff } from "@mui/icons-material";
+import { Observer } from "mobx-react";
+import React, { useState } from "react";
 import g from "../state";
 
-export interface IApiSettingsProps {
-}
+export interface IApiSettingsProps {}
 
-const OnApiClientConfigChanged=(client_id?: string,client_secret?: string) => {
+const OnApiClientConfigChanged = (client_id?: string, client_secret?: string) => {
     runInAction(() => {
-        if(client_id!==undefined) {
-            g.cacheVal.str_client_id=client_id;
+        if (client_id !== undefined) {
+            g.cacheVal.str_client_id = client_id;
         }
-        if(client_secret!==undefined) {
-            g.cacheVal.str_client_secret=client_secret;
+        if (client_secret !== undefined) {
+            g.cacheVal.str_client_secret = client_secret;
         }
     });
 };
 
-export const ApiSettings: React.FC<IApiSettingsProps>=() => {
-    const [showSecret,setShowSecret]=useState(false);
+export const ApiSettings: React.FC<IApiSettingsProps> = () => {
+    const [showSecret, setShowSecret] = useState(false);
 
     return (
         <Observer>
             {() => {
-                const clientId=g.cacheVal.str_client_id??"";
-                const clientSecret=g.cacheVal.str_client_secret??"";
+                const clientId = g.cacheVal.str_client_id ?? "";
+                const clientSecret = g.cacheVal.str_client_secret ?? "";
 
                 return (
                     <Stack direction={"row"} spacing={1} flexGrow={1}>
@@ -44,7 +35,7 @@ export const ApiSettings: React.FC<IApiSettingsProps>=() => {
                             value={clientId}
                             sx={{ flexGrow: 1 }}
                             onChange={(event: React.ChangeEvent<HTMLInputElement>) => {
-                                OnApiClientConfigChanged(event.target.value,undefined);
+                                OnApiClientConfigChanged(event.target.value, undefined);
                             }}
                         />
                         <FormControl variant="outlined" sx={{ flexGrow: 1 }}>
@@ -52,19 +43,16 @@ export const ApiSettings: React.FC<IApiSettingsProps>=() => {
                             <OutlinedInput
                                 label="Client Secret"
                                 value={clientSecret}
-                                type={showSecret? "text":"password"}
+                                type={showSecret ? "text" : "password"}
                                 endAdornment={
                                     <InputAdornment position="end">
-                                        <IconButton
-                                            onClick={() => setShowSecret(!showSecret)}
-                                            edge="end"
-                                        >
-                                            {showSecret? <VisibilityOff />:<Visibility />}
+                                        <IconButton onClick={() => setShowSecret(!showSecret)} edge="end">
+                                            {showSecret ? <VisibilityOff /> : <Visibility />}
                                         </IconButton>
                                     </InputAdornment>
                                 }
                                 onChange={(event: React.ChangeEvent<HTMLInputElement>) => {
-                                    OnApiClientConfigChanged(undefined,event.target.value);
+                                    OnApiClientConfigChanged(undefined, event.target.value);
                                 }}
                             />
                         </FormControl>

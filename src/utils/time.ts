@@ -1,7 +1,7 @@
-import dayjs from 'dayjs';
-import relativeTime from 'dayjs/plugin/relativeTime';
-import 'dayjs/locale/zh-tw';
-import 'dayjs/locale/en';
+import dayjs from "dayjs";
+import relativeTime from "dayjs/plugin/relativeTime";
+import "dayjs/locale/zh-tw";
+import "dayjs/locale/en";
 
 // plugins
 dayjs.extend(relativeTime);
@@ -12,21 +12,21 @@ export function formatTimeAgo(timestamp: number): string {
 }
 
 export function formatDateTime(timestamp: number): string {
-    return dayjs(timestamp).format('YYYY-MM-DD HH:mm:ss');
+    return dayjs(timestamp).format("YYYY-MM-DD HH:mm:ss");
 }
 
-export async function sleep(ms: number,signal?: AbortSignal): Promise<void> {
-    return new Promise((resolve,_) => {
-        if(signal?.aborted) {
+export async function sleep(ms: number, signal?: AbortSignal): Promise<void> {
+    return new Promise((resolve, _) => {
+        if (signal?.aborted) {
             return;
         }
 
-        const timeout=setTimeout(() => {
+        const timeout = setTimeout(() => {
             resolve();
-        },ms);
+        }, ms);
 
-        if(signal) {
-            signal.addEventListener('abort',() => {
+        if (signal) {
+            signal.addEventListener("abort", () => {
                 clearTimeout(timeout);
                 resolve();
             });
