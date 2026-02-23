@@ -142,3 +142,8 @@ vite.config.ts.timestamp-*
 /data
 /release
 /tests
+
+# VS Code
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
