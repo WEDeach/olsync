@@ -23,7 +23,7 @@
             "local": {
                 "reading": "讀取本地紀錄..."
             },
-            "scores":{
+            "scores": {
                 "reading": "讀取本地分數資料..."
             },
             "online": {
@@ -101,11 +101,162 @@
                 "size": "下載大小: :size MB"
             }
         },
+        "settings": {
+            "title": "設定",
+            "path": "路徑設定",
+            "api": "API 設定",
+            "download": "下載設定",
+            "dlink": "下載連結",
+            "api_delay": "API 延遲 (ms)",
+            "dl_delay": "下載延遲 (ms)",
+            "select_dir": "選擇資料夾",
+            "select_file": "選擇檔案",
+            "others": "其他設定",
+            "use_yinmo_chance": "使用 YinMoChance 來計算機率結果"
+        },
         "name": "名稱",
         "author": "作者",
         "date": "日期",
         "version": "版本",
-        "ruleset": "模式"
+        "ruleset": "模式",
+        "picker": {
+            "filter": {
+                "title": "篩選",
+                "collection": {
+                    "title": "收藏夾篩選",
+                    "none": "不限收藏夾",
+                    "exclude": "排除收藏夾"
+                }
+            },
+            "advanced": {
+                "title": "進階設定"
+            },
+            "weight": {
+                "title": "比重設定",
+                "type": {
+                    "map": "圖譜 ID",
+                    "set": "圖譜集 ID",
+                    "collection": "收藏夾",
+                    "beatmap": "圖譜資料",
+                    "score": "成績紀錄",
+                    "history": "歷史紀錄"
+                },
+                "id": "ID / 名稱",
+                "value": "比重",
+                "add": "新增",
+                "field": "欄位",
+                "operator": "條件",
+                "cond_value": "值",
+                "date": {
+                    "to": "至",
+                    "years": "年",
+                    "months": "月",
+                    "days": "天"
+                },
+                "hist": {
+                    "appeared": "曾出現",
+                    "not_appeared": "從未出現",
+                    "within_last": "最近 N 則內出現",
+                    "not_within_last": "最近 N 則內未出現",
+                    "last_n": "N"
+                },
+                "bm": {
+                    "id": "圖譜 ID",
+                    "set_id": "圖譜集 ID",
+                    "artist": "藝術家",
+                    "title": "標題",
+                    "creator": "作者",
+                    "ranked": "Ranked 狀態",
+                    "drain": "排水時間(秒)",
+                    "tags": "Tag",
+                    "unplayed": "是否遊玩過",
+                    "last_played": "最後遊玩時間",
+                    "ar": "AR",
+                    "cs": "CS",
+                    "hp": "HP",
+                    "od": "OD",
+                    "stack": "Stack Leniency",
+                    "sv": "Slider Velocity"
+                },
+                "sc": {
+                    "user": "使用者名稱",
+                    "300": "300 數量",
+                    "100": "100 數量",
+                    "50": "50 數量",
+                    "geki": "激 數量",
+                    "katu": "喝 數量",
+                    "miss": "Miss 數量",
+                    "combo": "最大 Combo",
+                    "perfect": "PFC",
+                    "date": "日期"
+                },
+                "op": {
+                    "str": {
+                        "eq": "完全一致",
+                        "contains": "包含",
+                        "not_contains": "不包含"
+                    },
+                    "num": {
+                        "eq": "等於",
+                        "gt": "大於",
+                        "lt": "小於",
+                        "gte": "大於等於",
+                        "lte": "小於等於",
+                        "neq": "不等於"
+                    },
+                    "bool": {
+                        "true": "是",
+                        "false": "否"
+                    },
+                    "date": {
+                        "before": "在此之前",
+                        "after": "在此之後",
+                        "between": "兩日期之間",
+                        "within": "距今時間內"
+                    }
+                }
+            },
+            "wishlist": {
+                "title": "願望清單",
+                "label": "規則名稱 (選填)",
+                "add": "新增規則",
+                "add_cond": "新增條件"
+            },
+            "history": {
+                "title": "抽選紀錄",
+                "empty": "尚無紀錄",
+                "clear_confirm": "確定要清除所有抽選紀錄嗎?"
+            },
+            "roll": {
+                "result": "抽到了: :title"
+            },
+            "result": {
+                "title": "抽選結果",
+                "web": "網頁",
+                "direct": "osu!direct",
+                "copy_id": "複製 ID",
+                "copy_id_done": "已複製!",
+                "circles": "Circles",
+                "sliders": "Sliders",
+                "spinners": "Spinners",
+                "sv": "SV",
+                "stack": "Stack",
+                "mode": "模式",
+                "status": "狀態",
+                "source": "來源",
+                "unplayed": "未遊玩",
+                "scores": "成績 (:count 筆)",
+                "collections": "收藏夾"
+            },
+            "profile": {
+                "name": "設定檔名稱",
+                "save": "儲存",
+                "load": "套用",
+                "export": "導出 JSON",
+                "import": "導入 JSON",
+                "import_title": "選擇設定檔 JSON"
+            }
+        }
     },
     "btn": {
         "srs": {
@@ -138,11 +289,24 @@
         "bpks": {
             "read": "讀取圖譜包"
         },
+        "picker": {
+            "read": "讀取圖譜",
+            "roll": "抽!",
+            "filter": "篩選",
+            "filter_collection": "收藏夾篩選",
+            "advanced": "進階設定",
+            "weight": "比重設定",
+            "wishlist": "願望清單",
+            "history": "抽選紀錄",
+            "clear_history": "清除紀錄",
+            "profiles": "設定檔"
+        },
         "update": {
             "check": "檢查更新",
             "download": "立即更新",
             "later": "稍後提醒",
-            "restart": "立即重啟"
+            "restart": "立即重啟",
+            "repo": "前往GitHub頁面"
         }
     }
 }
