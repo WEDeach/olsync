@@ -9,18 +9,15 @@ import {
     RespUserMostPlayedBeatmaps,
 } from "../../api/v2/types/api_resp";
 import { OsuLanguages } from "../../defines/types";
-import { IApiPreDelayMs, InitApi } from "../../utils/api";
+import { IApiDownloadLink, IApiPreDelayMs, InitApi } from "../../utils/api";
 import { GetDLOptionByDirect, GetDLOptionByFDM, GetDLOptionByRows } from "../../utils/download";
 import __ from "../../utils/i18n";
 import { LogError } from "../../utils/log";
 import { sleep } from "../../utils/time";
-import { ConfigKey } from "../../utils/typed/config";
 import { I18nStrings } from "../../utils/typed/i18n";
 import g from "../state";
-import { ApiSettings } from "./apiSettings";
 import { BeatmapFilterView, FilterType, SubFilterType } from "./beatmapFilter";
 import { DataViewer } from "./dataViewer";
-import { OsuPathSettings } from "./osuPathSettings";
 import { IPropertyWithName } from "./table";
 
 interface IBeatmapRestorerViewProps {
@@ -274,11 +271,10 @@ export const BeatmapRestorerView: React.FC<IBeatmapRestorerViewProps> = ({
 
     const handleDownload = () => {
         const map_ids = [...new Set<number>(SelectedBeatmapsetIds()).values()];
-        const dlink = g.config?.[ConfigKey.API_DLINK] ?? "https://osu.ppy.sh/beatmapsets/:id/download";
         const fetcher = async (map_ids: number[]) => {
             let rows = "";
             for (const map_id of map_ids) {
-                const link = dlink.replace(":id", map_id.toString());
+                const link = IApiDownloadLink.replace(":id", map_id.toString());
                 if (!link || typeof link !== "string") continue;
                 rows += `${link}\n`;
             }
@@ -299,7 +295,7 @@ export const BeatmapRestorerView: React.FC<IBeatmapRestorerViewProps> = ({
         ];
         g.setDialog(true, {
             title: __(I18nStrings.BTN_SRS_DOWNLOAD),
-            content: __(I18nStrings.MAIN_DL_SELECT, { url: dlink }),
+            content: __(I18nStrings.MAIN_DL_SELECT, { url: IApiDownloadLink }),
             actions: downloadOptions,
         });
     };
@@ -449,7 +445,6 @@ export const BeatmapRestorerView: React.FC<IBeatmapRestorerViewProps> = ({
             return (
                 <Button
                     variant="contained"
-                    color="success"
                     onClick={() => handleReadByChecksum()}
                     disabled={clientId.length === 0 || clientSecret.length === 0}
                 >
@@ -489,17 +484,12 @@ export const BeatmapRestorerView: React.FC<IBeatmapRestorerViewProps> = ({
                             ]}
                             allowedLanguages={OnlineBeatmapLangs()}
                         />
-                        <Stack direction={"row"} spacing={1}>
-                            <OsuPathSettings showLazer={false} showStable={true} />
-                            <Button variant="contained" color="success" onClick={() => onBtnSRSReadClicked()}>
+                        <Stack direction={"row"} spacing={1} justifyContent={"end"}>
+                            <Button variant="contained" onClick={() => onBtnSRSReadClicked()}>
                                 {__(I18nStrings.BTN_SRS_READ)}
                             </Button>
-                        </Stack>
-                        <Stack direction={"row"} spacing={1}>
-                            <ApiSettings />
                             <Button
                                 variant="contained"
-                                color="success"
                                 onClick={() => {
                                     onBtnSRSReadByOnlineClicked();
                                     setRestoreType("online");

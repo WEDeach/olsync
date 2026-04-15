@@ -1,5 +1,6 @@
 import { exec } from "child_process";
 import { dialog, ipcMain, shell } from "electron";
+import { promises as fsp } from "fs";
 import { promisify } from "util";
 import { fDevMode } from "../../../utils/common";
 import { IPC_FS_NAMES } from "./ns";
@@ -28,6 +29,13 @@ export function register() {
             return filePaths[0];
         },
     );
+    ipcMain.handle(IPC_FS_NAMES.READ_FILE, async (_, filePath: string, encoding: string = "utf8") => {
+        const content = await fsp.readFile(filePath, encoding as BufferEncoding);
+        if (encoding === "base64") {
+            return content.toString();
+        }
+        return content.toString();
+    });
     ipcMain.handle(IPC_FS_NAMES.IS_DEV_MODE, async (_) => {
         return fDevMode;
     });

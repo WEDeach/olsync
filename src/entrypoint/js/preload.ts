@@ -30,6 +30,8 @@ contextBridge.exposeInMainWorld("olsCore", {
     isDevMode: () => ipcInvoke(IPC_FS_NAMES.IS_DEV_MODE),
     exec: (progId: string) => ipcInvoke(IPC_FS_NAMES.EXEC, progId),
     openExternal: (url: string) => ipcInvoke(IPC_FS_NAMES.OPEN_EXTERNAL, url),
+    readFile: (filePath: string, encoding: "utf8" | "base64" = "utf8") =>
+        ipcInvoke(IPC_FS_NAMES.READ_FILE, filePath, encoding),
 
     // reader
     initReader: (path: string) => ipcInvoke(IPC_RD_NAMES.INIT, path),

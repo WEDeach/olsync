@@ -54,13 +54,58 @@ export default class StableReader extends SingletonBase {
     private _collections?: StableCollection;
     private _osu_db?: any;
     private _scores?: any;
+    private _watchers: fs.FSWatcher[] = [];
+    private _watchDebounceTimer?: NodeJS.Timeout;
 
     init(fpath: string) {
+        if (this.base_path === fpath && this._osu_db !== undefined) {
+            return;
+        }
+        this.stopWatch();
         this.base_path = fpath;
         this._collections = undefined;
         this._osu_db = undefined;
         this._scores = undefined;
         console.debug(`StableReader init: ${fpath}`);
+    }
+
+    invalidateCache() {
+        this._osu_db = undefined;
+        this._collections = undefined;
+        this._scores = undefined;
+    }
+
+    watchFiles(onChanged: () => void) {
+        this.stopWatch();
+        if (!this.base_path) return;
+        const dir = this.base_path;
+        const watchedFiles = new Set(["osu!.db", "collection.db", "scores.db"]);
+        const debounced = () => {
+            if (this._watchDebounceTimer) clearTimeout(this._watchDebounceTimer);
+            this._watchDebounceTimer = setTimeout(() => {
+                this.invalidateCache();
+                onChanged();
+            }, 1500);
+        };
+        try {
+            const watcher = fs.watch(dir, { persistent: false }, (_, filename) => {
+                if (filename && watchedFiles.has(filename)) debounced();
+            });
+            this._watchers.push(watcher);
+        } catch {}
+    }
+
+    stopWatch() {
+        if (this._watchDebounceTimer) {
+            clearTimeout(this._watchDebounceTimer);
+            this._watchDebounceTimer = undefined;
+        }
+        for (const w of this._watchers) {
+            try {
+                w.close();
+            } catch {}
+        }
+        this._watchers = [];
     }
 
     get_path(tpath: PathType) {
@@ -82,7 +127,7 @@ export default class StableReader extends SingletonBase {
         throw new Error(`Invalid path type: ${tpath}`);
     }
 
-    beatmaps(offset: number = 0, limit: number = 10) {
+    async beatmaps(offset: number = 0, limit: number = 10) {
         if (this._osu_db !== undefined) {
             return readWithOffset(this._osu_db.beatmaps, offset, limit);
         }
@@ -93,7 +138,7 @@ export default class StableReader extends SingletonBase {
             console.log(`osu file does not exist: ${dp}`);
             return readWithOffset([], offset, limit);
         }
-        const buf = fs.readFileSync(dp);
+        const buf = await fs.promises.readFile(dp);
 
         const versionParser = new Parser().uint32le("version");
         const { version } = versionParser.parse(buf);
@@ -128,9 +173,9 @@ export default class StableReader extends SingletonBase {
             .buffer("md5Hash", nullable_string_collector)
             .buffer("osuFileName", nullable_string_collector)
             .uint8("rankedStatus")
-            .uint16("numCircles")
-            .uint16("numSliders")
-            .uint16("numSpinners")
+            .uint16le("numCircles")
+            .uint16le("numSliders")
+            .uint16le("numSpinners")
             .uint64le("lastModificationTime", date_collector)
             .floatle("ar")
             .floatle("cs")
@@ -204,13 +249,13 @@ export default class StableReader extends SingletonBase {
         return readWithOffset(this._osu_db.beatmaps, offset, limit);
     }
 
-    collections(offset: number = 0, limit: number = 10) {
+    async collections(offset: number = 0, limit: number = 10) {
         if (this._collections !== undefined) {
             return readWithOffset(this._collections.collections, offset, limit);
         }
 
         const dp = this.get_path(PathType.Collection);
-        const buf = fs.readFileSync(dp);
+        const buf = await fs.promises.readFile(dp);
 
         const parser = new Parser()
             .uint32le("version")
@@ -313,13 +358,13 @@ export default class StableReader extends SingletonBase {
         return 1;
     }
 
-    scores(offset: number = 0, limit: number = 10) {
+    async scores(offset: number = 0, limit: number = 10) {
         if (this._scores !== undefined) {
             return readWithOffset(this._scores.beatmaps, offset, limit);
         }
 
         const dp = this.get_path(PathType.Scores);
-        const buf = fs.readFileSync(dp);
+        const buf = await fs.promises.readFile(dp);
 
         const parser_score = new Parser()
             .uint8("ruleset")
@@ -338,7 +383,7 @@ export default class StableReader extends SingletonBase {
             .uint8("perfect", bool_collector)
             .int32le("mods")
             .buffer("hpGraphString", nullable_string_collector)
-            .int64le("date")
+            .uint64le("date", date_collector)
             .int32le("compressedReplay")
             .int64le("legacyOnlineID")
             .buffer("additionalModData", {

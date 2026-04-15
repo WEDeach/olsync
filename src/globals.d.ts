@@ -21,6 +21,7 @@ declare global {
             isDevMode: () => Promise<boolean>;
             exec: (progId: string) => Promise<string | undefined>;
             openExternal: (url: string) => Promise<void>;
+            readFile: (filePath: string, encoding?: "utf8" | "base64") => Promise<string>;
             initReader: (path: string) => Promise<any>;
             getSchemas: () => Promise<Realm.CanonicalObjectSchema[]>;
             getSchema: (name: string) => Promise<Realm.CanonicalObjectSchema | undefined>;

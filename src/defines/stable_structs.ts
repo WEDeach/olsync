@@ -53,10 +53,10 @@ export interface StableLocalBeatmap {
     onlineOffset: number;
     titleFont: string;
     unplayed: boolean;
-    lastPlayedTime: string;
+    lastPlayedTime: Date;
     isOsz2: boolean;
     path: string;
-    lastOnlineCheckTime: string;
+    lastOnlineCheckTime: Date;
     disableCustomSound: boolean;
     disableCustomSkin: boolean;
     disableStoryboard: boolean;
@@ -89,7 +89,7 @@ export interface StableScore {
     perfect: boolean;
     mods: number;
     hpGraphString: null;
-    date: string;
+    date: Date;
     compressedReplay: number;
     legacyOnlineID: string;
     additionalModData: null;

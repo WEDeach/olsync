@@ -39,9 +39,10 @@ import { formatTimeAgo } from "../../utils/time";
 import { I18nStrings } from "../../utils/typed/i18n";
 import { BeatmapList } from "../components/beatmapList";
 import { BeatmapPackDownloadView } from "../components/beatmapPackDownload";
+import { BeatmapPickerView } from "../components/beatmapPicker";
 import { BeatmapRestorerView } from "../components/beatmapRestorer";
 import CompareList from "../components/compareList";
-import { OsuPathSettings } from "../components/osuPathSettings";
+import { SettingsDrawer } from "../components/settingsDrawer";
 import g, { NewSyncState } from "../state";
 import theme from "../theme";
 import Controller, { MainViewState, SubViewType } from "./controller";
@@ -96,14 +97,17 @@ export default class Main extends React.Component {
                                 <ToggleButton value={SubViewType.COLLECTION}>收藏夾</ToggleButton>
                                 <ToggleButton value={SubViewType.SONG_RECOVERY_BY_SCORES}>歌曲缺失檢查</ToggleButton>
                                 <ToggleButton value={SubViewType.MAP_PACKS}>Packs</ToggleButton>
+                                <ToggleButton value={SubViewType.MAP_PICKER}>選圖器</ToggleButton>
                                 <ToggleButton value={SubViewType.NONE}>NONE</ToggleButton>
                             </ToggleButtonGroup>
+                            <SettingsDrawer />
                         </Box>
                         {SubView !== undefined && <SubView />}
                         {SSubView === SubViewType.NONE && this.renderDynSection()}
                         {SSubView === SubViewType.COLLECTION && this.renderCollection()}
                         {SSubView === SubViewType.SONG_RECOVERY_BY_SCORES && this.renderSongRecovery()}
                         {SSubView === SubViewType.MAP_PACKS && this.renderMapPacks()}
+                        {SSubView === SubViewType.MAP_PICKER && this.renderMapPicker()}
                     </Stack>
                     <Dialog
                         sx={(theme) => ({ zIndex: theme.zIndex.drawer + 1 })}
@@ -414,7 +418,6 @@ export default class Main extends React.Component {
     renderCollection() {
         return (
             <>
-                <OsuPathSettings showStable={true} showLazer={true} />
                 {this.controller.SMain === MainViewState.COLLECTION_IDLE && (
                     <Button variant="contained" onClick={this.controller.onBtnCollectionReadClicked}>
                         {__(I18nStrings.BTN_COLLECTION_READ)}
@@ -466,5 +469,9 @@ export default class Main extends React.Component {
 
     renderMapPacks() {
         return <BeatmapPackDownloadView />;
+    }
+
+    renderMapPicker() {
+        return <BeatmapPickerView />;
     }
 }

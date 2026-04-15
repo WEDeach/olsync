@@ -8,6 +8,8 @@ import { I18nStrings } from "./typed/i18n";
 
 type TCallback = () => Promise<any[]>;
 
+export const IDelayMs = Number(g.config?.[ConfigKey.DL_DELAY_MS]) || 10000;
+
 export const GetDLOptionByRows = (data_fetcher: TCallback) => {
     return {
         label: __(I18nStrings.BTN_DL_BY_ROWS),
@@ -89,7 +91,6 @@ export const GetDLOptionByDirect = (mapIds: number[]) => {
         callback: async () => {
             try {
                 if (confirm(__(I18nStrings.BTN_DL_BY_DIRECT_CONFIRM))) {
-                    const delay_ms = Number(g.config?.[ConfigKey.DL_DELAY_MS]) || 10000;
                     const aborter = new AbortController();
                     g.setLoading(true, __(I18nStrings.MAIN_DL_PROGRESS, { current: 0, total: mapIds.length }), aborter);
 
@@ -130,7 +131,7 @@ export const GetDLOptionByDirect = (mapIds: number[]) => {
                         }
 
                         if (i < mapIds.length - 1) {
-                            await sleep(delay_ms, aborter.signal);
+                            await sleep(IDelayMs, aborter.signal);
                         }
                     }
                     g.setLoading(false);

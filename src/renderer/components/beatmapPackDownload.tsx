@@ -15,7 +15,7 @@ import { Observer } from "mobx-react";
 import React, { useState } from "react";
 import { BeatmapPack, RespBeatmapPack } from "../../api/v2/types/api_resp";
 import { OsuClients, OsuModes } from "../../defines/types";
-import { IApiPreDelayMs } from "../../utils/api";
+import { IApiDownloadLink, IApiPreDelayMs } from "../../utils/api";
 import { GetDLOptionByDirect, GetDLOptionByFDM, GetDLOptionByRows } from "../../utils/download";
 import __ from "../../utils/i18n";
 import { readAllWithOffset } from "../../utils/reader";
@@ -23,9 +23,7 @@ import { sleep } from "../../utils/time";
 import { ConfigKey } from "../../utils/typed/config";
 import { I18nStrings } from "../../utils/typed/i18n";
 import g from "../state";
-import { ApiSettings } from "./apiSettings";
 import { DataViewer } from "./dataViewer";
-import { OsuPathSettings } from "./osuPathSettings";
 import { IPropertyWithName } from "./table";
 
 export interface IBeatmapPackDownloadViewProps {}
@@ -449,8 +447,8 @@ export const BeatmapPackDownloadView: React.FC<IBeatmapPackDownloadViewProps> = 
             const maps = fetchedPackInfos.flatMap((pack) => pack.beatmapsets);
             const mapIds = new Set(maps.map((v) => v.id));
             const flitedMapId = [...mapIds].filter((id) => !excludedPackMapIds.has(id));
-            const dlink = g.config?.[ConfigKey.API_DLINK] ?? "https://osu.ppy.sh/beatmapsets/:id/download";
-            const dlFetcher = async () => flitedMapId.map((map_id) => dlink.replace(":id", map_id.toString()));
+            const dlFetcher = async () =>
+                flitedMapId.map((map_id) => IApiDownloadLink.replace(":id", map_id.toString()));
             downloadOptions = [
                 GetDLOptionByRows(dlFetcher),
                 GetDLOptionByFDM(dlFetcher),
@@ -540,17 +538,9 @@ export const BeatmapPackDownloadView: React.FC<IBeatmapPackDownloadViewProps> = 
 
                 return (
                     <Stack spacing={2}>
-                        <Stack direction={"row"} spacing={1}>
-                            <OsuPathSettings showLazer={false} showStable={true} />
-                        </Stack>
-                        <Stack direction={"row"} spacing={1}>
-                            <ApiSettings />
-                        </Stack>
-
                         {fetchedPacks.length === 0 ? (
                             <Button
                                 variant="contained"
-                                color="success"
                                 onClick={handleOpenDialog}
                                 disabled={clientId.length === 0 || clientSecret.length === 0 || g.isLoading()}
                             >

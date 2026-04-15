@@ -1,13 +1,11 @@
-import { ipcMain } from "electron";
+import { BrowserWindow, ipcMain } from "electron";
 import { IOsuCollection, OsuClients } from "../../../defines/types";
 import SharedManager from "../../../shared/sharedManager";
 import { IPC_RD_NAMES } from "./ns";
 
 export function register() {
     ipcMain.handle(IPC_RD_NAMES.INIT, async (_, path: string) => {
-        const reader = SharedManager.lazerReader;
-        reader.init(path);
-        return reader;
+        SharedManager.lazerReader.init(path);
     });
 
     ipcMain.handle(IPC_RD_NAMES.SCHEMAS, async (_) => {
@@ -30,7 +28,9 @@ export function register() {
     ipcMain.handle(IPC_RD_NAMES.INIT_STABLE, async (_, path: string) => {
         const reader = SharedManager.stableReader;
         reader.init(path);
-        return reader;
+        reader.watchFiles(() => {
+            BrowserWindow.getAllWindows()[0]?.webContents.send(IPC_RD_NAMES.STABLE_CHANGED);
+        });
     });
 
     ipcMain.handle(

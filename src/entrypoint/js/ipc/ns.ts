@@ -7,6 +7,7 @@ export enum IPC_FS_NAMES {
     IS_DEV_MODE = "ipc:fs:is_dev_mode",
     EXEC = "ipc:fs:exec",
     OPEN_EXTERNAL = "ipc:fs:open_external",
+    READ_FILE = "ipc:fs:read_file",
 }
 
 // READER
@@ -28,6 +29,7 @@ export enum IPC_RD_NAMES {
     SET_BEATMAPS = "ipc:rd:set_beatmaps",
     GET_SCORES = "ipc:rd:get_scores",
     SET_SCORES = "ipc:rd:set_scores",
+    STABLE_CHANGED = "ipc:rd:stable_changed",
 }
 
 // CONFIG

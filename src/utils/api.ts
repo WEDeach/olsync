@@ -5,6 +5,7 @@ import { ConfigKey } from "./typed/config";
 import { I18nStrings } from "./typed/i18n";
 
 export const IApiPreDelayMs = Number(g.config?.[ConfigKey.API_DELAY_MS]) || 500;
+export const IApiDownloadLink = g.config?.[ConfigKey.API_DLINK] || "https://osu.ppy.sh/beatmapsets/:id/download";
 
 export const InitApi = async (callback?: () => void) => {
     const ccid = g.cacheVal.str_client_id ?? "";
