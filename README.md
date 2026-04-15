@@ -18,6 +18,19 @@
     * 僅獲取特定類型圖譜包 / 指定時間內 / 特定遊戲模式
     * 基於本地成績資料進行差異下載，可快速篩選未載譜面
 
+* 選圖器 (Map Picker)
+  * 可透過篩選及比重設定來隨機選圖 (僅讀取本地地圖集)
+
+## 使用方式
+
+點擊齒輪設定 `osu!` 的路徑後即可使用大部分功能!
+
+部分功能需求 `osu! API` 權限, 你必須至 [osu!web 設定](https://osu.ppy.sh/home/account/edit#oauth) 中生成一個 `OAuth 應用程式` 並將 `Client ID` 與 `Client Secert` 填寫至齒輪設定當中!
+
+> [!CAUTION]
+> `Client ID` 與 `Client Secert` 為敏感資訊, 他們將會明碼儲存於 `config.json` 當中 (通常位於olsync資料夾中的data資料夾裡面)
+> 請切記不要隨意分享它們!
+
 ## 開發
 
 ### 安裝依賴
