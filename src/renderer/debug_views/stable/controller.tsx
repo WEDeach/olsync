@@ -99,7 +99,7 @@ export default class Controller {
 
     onBtnReadOsuDBFileClicked = async () => {
         await window.olsCore.initStableReader(this.Path);
-        const result = await window.olsCore.getBeatmaps(OsuClients.Stable);
+        const result = await window.olsCore.getBeatmaps(OsuClients.Stable, 0, 500);
         console.log(result);
     };
 

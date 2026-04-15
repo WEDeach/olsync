@@ -1,5 +1,5 @@
 import { Visibility, VisibilityOff } from "@mui/icons-material";
-import { FormControl, IconButton, InputAdornment, InputLabel, OutlinedInput, Stack, TextField } from "@mui/material";
+import { FormControl, IconButton, InputAdornment, InputLabel, OutlinedInput, Stack } from "@mui/material";
 import { runInAction } from "mobx";
 import { Observer } from "mobx-react";
 import React, { useState } from "react";
@@ -20,6 +20,7 @@ const OnApiClientConfigChanged = (client_id?: string, client_secret?: string) =>
 
 export const ApiSettings: React.FC<IApiSettingsProps> = () => {
     const [showSecret, setShowSecret] = useState(false);
+    const [showId, setShowId] = useState(false);
 
     return (
         <Observer>
@@ -29,15 +30,24 @@ export const ApiSettings: React.FC<IApiSettingsProps> = () => {
 
                 return (
                     <Stack direction={"row"} spacing={1} flexGrow={1}>
-                        <TextField
-                            label="Client Id"
-                            variant="outlined"
-                            value={clientId}
-                            sx={{ flexGrow: 1 }}
-                            onChange={(event: React.ChangeEvent<HTMLInputElement>) => {
-                                OnApiClientConfigChanged(event.target.value, undefined);
-                            }}
-                        />
+                        <FormControl variant="outlined" sx={{ flexGrow: 1 }}>
+                            <InputLabel>Client Id</InputLabel>
+                            <OutlinedInput
+                                label="Client Id"
+                                value={clientId}
+                                type={showId ? "text" : "password"}
+                                endAdornment={
+                                    <InputAdornment position="end">
+                                        <IconButton onClick={() => setShowId(!showId)} edge="end">
+                                            {showId ? <VisibilityOff /> : <Visibility />}
+                                        </IconButton>
+                                    </InputAdornment>
+                                }
+                                onChange={(event: React.ChangeEvent<HTMLInputElement>) => {
+                                    OnApiClientConfigChanged(event.target.value, undefined);
+                                }}
+                            />
+                        </FormControl>
                         <FormControl variant="outlined" sx={{ flexGrow: 1 }}>
                             <InputLabel>Client Secret</InputLabel>
                             <OutlinedInput
