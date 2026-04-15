@@ -2,9 +2,9 @@ import { Settings } from "@mui/icons-material";
 import { Divider, Drawer, FormControlLabel, IconButton, Stack, Switch, TextField, Typography } from "@mui/material";
 import { Observer } from "mobx-react";
 import React, { useState } from "react";
-import { IApiDownloadLink, IApiPreDelayMs } from "../../utils/api";
-import { IDelayMs } from "../../utils/download";
-import { B__YinMoChance } from "../../utils/experiments";
+import { getApiDownloadLink, getApiPreDelayMs } from "../../utils/api";
+import { getDelayMs } from "../../utils/download";
+import { getYinMoChanceExperiment } from "../../utils/experiments";
 import __ from "../../utils/i18n";
 import { ConfigKey } from "../../utils/typed/config";
 import { I18nStrings } from "../../utils/typed/i18n";
@@ -40,9 +40,9 @@ export const SettingsDrawer: React.FC = () => {
             >
                 <Observer>
                     {() => {
-                        const apiDelay = IApiPreDelayMs;
-                        const dlDelay = IDelayMs;
-                        const dlink = IApiDownloadLink;
+                        const apiDelay = getApiPreDelayMs();
+                        const dlDelay = getDelayMs();
+                        const dlink = getApiDownloadLink();
 
                         return (
                             <Stack spacing={2}>
@@ -66,7 +66,7 @@ export const SettingsDrawer: React.FC = () => {
                                     label={__(I18nStrings.MAIN_SETTINGS_DLINK)}
                                     variant="outlined"
                                     size="small"
-                                    value={dlink}
+                                    defaultValue={dlink}
                                     onChange={(e) => g.saveConfig(ConfigKey.API_DLINK, e.target.value)}
                                 />
                                 <Stack direction="row" spacing={1}>
@@ -75,7 +75,7 @@ export const SettingsDrawer: React.FC = () => {
                                         variant="outlined"
                                         size="small"
                                         type="number"
-                                        value={apiDelay}
+                                        defaultValue={apiDelay}
                                         sx={{ flexGrow: 1 }}
                                         onChange={(e) => g.saveConfig(ConfigKey.API_DELAY_MS, Number(e.target.value))}
                                     />
@@ -84,7 +84,7 @@ export const SettingsDrawer: React.FC = () => {
                                         variant="outlined"
                                         size="small"
                                         type="number"
-                                        value={dlDelay}
+                                        defaultValue={dlDelay}
                                         sx={{ flexGrow: 1 }}
                                         onChange={(e) => g.saveConfig(ConfigKey.DL_DELAY_MS, Number(e.target.value))}
                                     />
@@ -95,7 +95,7 @@ export const SettingsDrawer: React.FC = () => {
                                 </Divider>
                                 <Stack direction="row" spacing={1}>
                                     <FormControlLabel
-                                        control={<Switch defaultChecked={B__YinMoChance} />}
+                                        control={<Switch defaultChecked={getYinMoChanceExperiment()} />}
                                         label={__(I18nStrings.MAIN_SETTINGS_USE_YINMO_CHANCE)}
                                         onChange={(_, checked) =>
                                             g.saveConfig(ConfigKey.EXPERIMENT_YINMO_CHANCE, Boolean(checked))

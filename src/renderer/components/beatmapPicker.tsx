@@ -31,7 +31,7 @@ import { RankedStatus } from "../../api/v2/types/api_resp";
 import { StableLocalBeatmap, StableScoreBeatmapData } from "../../defines/stable_structs";
 import { IOsuCollection, OsuClients } from "../../defines/types";
 import { IPC_RD_NAMES } from "../../entrypoint/js/ipc/ns";
-import { B__YinMoChance } from "../../utils/experiments";
+import { getYinMoChanceExperiment } from "../../utils/experiments";
 import __ from "../../utils/i18n";
 import { readAllWithOffset } from "../../utils/reader";
 import { formatDateTime, formatTimeAgo } from "../../utils/time";
@@ -875,7 +875,7 @@ const checkWishlist = (
 };
 
 const pickRandom = (pool: { map: IBeatmapData; weight: number }[]): IBeatmapData | undefined => {
-    if (B__YinMoChance) {
+    if (getYinMoChanceExperiment()) {
         return yinmoRandom(pool);
     }
 

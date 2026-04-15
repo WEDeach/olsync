@@ -11,7 +11,7 @@ import {
 } from "../../defines/stable_structs";
 import { OsuClients } from "../../defines/types";
 import { UpdateDiff } from "../../entrypoint/js/updater";
-import { IApiPreDelayMs, InitApi } from "../../utils/api";
+import { getApiPreDelayMs, InitApi } from "../../utils/api";
 import __ from "../../utils/i18n";
 import { LogError } from "../../utils/log";
 import { readAllWithOffset } from "../../utils/reader";
@@ -407,7 +407,7 @@ export default class Controller {
                             results.map((v) => v.beatmap_id),
                         );
                     }
-                    await sleep(IApiPreDelayMs, aborter.signal);
+                    await sleep(getApiPreDelayMs(), aborter.signal);
                 }
                 this.SetLoadingState(false);
                 runInAction(() => {

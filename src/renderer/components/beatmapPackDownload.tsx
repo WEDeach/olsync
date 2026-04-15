@@ -15,7 +15,7 @@ import { Observer } from "mobx-react";
 import React, { useState } from "react";
 import { BeatmapPack, RespBeatmapPack } from "../../api/v2/types/api_resp";
 import { OsuClients, OsuModes } from "../../defines/types";
-import { IApiDownloadLink, IApiPreDelayMs } from "../../utils/api";
+import { getApiDownloadLink, getApiPreDelayMs } from "../../utils/api";
 import { GetDLOptionByDirect, GetDLOptionByFDM, GetDLOptionByRows } from "../../utils/download";
 import __ from "../../utils/i18n";
 import { readAllWithOffset } from "../../utils/reader";
@@ -341,7 +341,7 @@ export const BeatmapPackDownloadView: React.FC<IBeatmapPackDownloadViewProps> = 
                                 }
                                 allPackInfos.push(info);
                                 if (info.cached !== true) {
-                                    await sleep(IApiPreDelayMs, aborter.signal);
+                                    await sleep(getApiPreDelayMs(), aborter.signal);
                                 }
                             }
                         }
@@ -353,11 +353,11 @@ export const BeatmapPackDownloadView: React.FC<IBeatmapPackDownloadViewProps> = 
                     } else {
                         hasNext = false;
                     }
-                    await sleep(IApiPreDelayMs, aborter.signal);
+                    await sleep(getApiPreDelayMs(), aborter.signal);
                 }
 
                 _index++;
-                await sleep(IApiPreDelayMs, aborter.signal);
+                await sleep(getApiPreDelayMs(), aborter.signal);
             }
 
             if (!aborter.signal.aborted) {
@@ -448,7 +448,7 @@ export const BeatmapPackDownloadView: React.FC<IBeatmapPackDownloadViewProps> = 
             const mapIds = new Set(maps.map((v) => v.id));
             const flitedMapId = [...mapIds].filter((id) => !excludedPackMapIds.has(id));
             const dlFetcher = async () =>
-                flitedMapId.map((map_id) => IApiDownloadLink.replace(":id", map_id.toString()));
+                flitedMapId.map((map_id) => getApiDownloadLink().replace(":id", map_id.toString()));
             downloadOptions = [
                 GetDLOptionByRows(dlFetcher),
                 GetDLOptionByFDM(dlFetcher),

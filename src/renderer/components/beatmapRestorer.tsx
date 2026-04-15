@@ -9,7 +9,7 @@ import {
     RespUserMostPlayedBeatmaps,
 } from "../../api/v2/types/api_resp";
 import { OsuLanguages } from "../../defines/types";
-import { IApiDownloadLink, IApiPreDelayMs, InitApi } from "../../utils/api";
+import { getApiDownloadLink, getApiPreDelayMs, InitApi } from "../../utils/api";
 import { GetDLOptionByDirect, GetDLOptionByFDM, GetDLOptionByRows } from "../../utils/download";
 import __ from "../../utils/i18n";
 import { LogError } from "../../utils/log";
@@ -257,7 +257,7 @@ export const BeatmapRestorerView: React.FC<IBeatmapRestorerViewProps> = ({
                 }
 
                 if (i < localResults.length - 1) {
-                    await sleep(IApiPreDelayMs);
+                    await sleep(getApiPreDelayMs());
                 }
             }
 
@@ -274,7 +274,7 @@ export const BeatmapRestorerView: React.FC<IBeatmapRestorerViewProps> = ({
         const fetcher = async (map_ids: number[]) => {
             let rows = "";
             for (const map_id of map_ids) {
-                const link = IApiDownloadLink.replace(":id", map_id.toString());
+                const link = getApiDownloadLink().replace(":id", map_id.toString());
                 if (!link || typeof link !== "string") continue;
                 rows += `${link}\n`;
             }
@@ -295,7 +295,7 @@ export const BeatmapRestorerView: React.FC<IBeatmapRestorerViewProps> = ({
         ];
         g.setDialog(true, {
             title: __(I18nStrings.BTN_SRS_DOWNLOAD),
-            content: __(I18nStrings.MAIN_DL_SELECT, { url: IApiDownloadLink }),
+            content: __(I18nStrings.MAIN_DL_SELECT, { url: getApiDownloadLink() }),
             actions: downloadOptions,
         });
     };

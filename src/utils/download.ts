@@ -8,7 +8,7 @@ import { I18nStrings } from "./typed/i18n";
 
 type TCallback = () => Promise<any[]>;
 
-export const IDelayMs = Number(g.config?.[ConfigKey.DL_DELAY_MS]) || 10000;
+export const getDelayMs = () => Number(g.config?.[ConfigKey.DL_DELAY_MS]) || 10000;
 
 export const GetDLOptionByRows = (data_fetcher: TCallback) => {
     return {
@@ -131,7 +131,7 @@ export const GetDLOptionByDirect = (mapIds: number[]) => {
                         }
 
                         if (i < mapIds.length - 1) {
-                            await sleep(IDelayMs, aborter.signal);
+                            await sleep(getDelayMs(), aborter.signal);
                         }
                     }
                     g.setLoading(false);
