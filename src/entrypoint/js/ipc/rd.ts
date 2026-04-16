@@ -1,4 +1,5 @@
 import { BrowserWindow, ipcMain } from "electron";
+import { StableBeatmapFilter } from "../../../defines/stable_structs";
 import { IOsuCollection, OsuClients } from "../../../defines/types";
 import SharedManager from "../../../shared/sharedManager";
 import { IPC_RD_NAMES } from "./ns";
@@ -28,7 +29,10 @@ export function register() {
     ipcMain.handle(IPC_RD_NAMES.INIT_STABLE, async (_, path: string) => {
         const reader = SharedManager.stableReader;
         reader.init(path);
-        reader.watchFiles(() => {
+    });
+
+    ipcMain.handle(IPC_RD_NAMES.START_STABLE_WATCH, async (_) => {
+        SharedManager.stableReader.watchFiles(() => {
             BrowserWindow.getAllWindows()[0]?.webContents.send(IPC_RD_NAMES.STABLE_CHANGED);
         });
     });
@@ -61,4 +65,23 @@ export function register() {
             return SharedManager.stableReader.scores(offset, limit);
         },
     );
+
+    ipcMain.handle(
+        IPC_RD_NAMES.QUERY_BEATMAPS,
+        async (_, filter: StableBeatmapFilter, offset: number = 0, limit: number = 0) => {
+            return SharedManager.stableReader.queryBeatmaps(filter, offset, limit);
+        },
+    );
+
+    ipcMain.handle(IPC_RD_NAMES.COUNT_BEATMAPS, async (_) => {
+        return SharedManager.stableReader.countBeatmaps();
+    });
+
+    ipcMain.handle(IPC_RD_NAMES.GET_BEATMAP_INDEX, async (_, offset: number = 0, limit: number = 0) => {
+        return SharedManager.stableReader.getBeatmapIndex(offset, limit);
+    });
+
+    ipcMain.handle(IPC_RD_NAMES.GET_BEATMAP_DETAIL, async (_, md5Hash: string) => {
+        return SharedManager.stableReader.getStableBeatmapDetail(md5Hash);
+    });
 }

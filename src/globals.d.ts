@@ -2,6 +2,7 @@ import { DefaultObject } from "realm/dist/public-types/schema/types";
 import ApiClient from "./api/v2/client";
 import { PackTypes } from "./api/v2/routes/beatmaps";
 import { RespBeatmapLookup, RespBeatmapPacks, RespUserInfo, RespUserMostPlayedBeatmaps } from "./api/v2/types/api_resp";
+import { StableBeatmapDetail, StableBeatmapFilter } from "./defines/stable_structs";
 import { HostType, IOsuCollection, OsuClients } from "./defines/types";
 import { UpdateDiff } from "./entrypoint/js/updater";
 import { CachedBeatmapPack } from "./shared/singletons/api";
@@ -32,9 +33,18 @@ declare global {
             getConfigAll: () => Promise<any>;
             saveConfig: (k: string, v: any) => Promise<void>;
             initStableReader: (path: string) => Promise<void>;
+            startStableWatch: () => Promise<void>;
             getCollections: (type?: OsuClients, offset?: number, limit?: number) => Promise<DefaultObjectWithOffset>;
             setCollections: (type: OsuClients, collections: IOsuCollection[]) => Promise<void>;
             getBeatmaps: (type?: OsuClients, offset?: number, limit?: number) => Promise<DefaultObjectWithOffset>;
+            queryStableBeatmaps: (
+                filter: StableBeatmapFilter,
+                offset?: number,
+                limit?: number,
+            ) => Promise<DefaultObjectWithOffset>;
+            countStableBeatmaps: () => Promise<number>;
+            getStableBeatmapIndex: (offset?: number, limit?: number) => Promise<DefaultObjectWithOffset>;
+            getStableBeatmapDetail: (md5Hash: string) => Promise<StableBeatmapDetail | null>;
             getScores: (type?: OsuClients, offset?: number, limit?: number) => Promise<IPCR<DefaultObjectWithOffset>>;
             initAC: (client_id: string, client_secret: string) => Promise<any>;
             getAC: () => Promise<ApiClient>;

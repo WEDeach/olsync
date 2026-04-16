@@ -14,11 +14,10 @@ import {
 import { Observer } from "mobx-react";
 import React, { useState } from "react";
 import { BeatmapPack, RespBeatmapPack } from "../../api/v2/types/api_resp";
-import { OsuClients, OsuModes } from "../../defines/types";
+import { OsuModes } from "../../defines/types";
 import { getApiDownloadLink, getApiPreDelayMs } from "../../utils/api";
 import { GetDLOptionByDirect, GetDLOptionByFDM, GetDLOptionByRows } from "../../utils/download";
 import __ from "../../utils/i18n";
-import { readAllWithOffset } from "../../utils/reader";
 import { sleep } from "../../utils/time";
 import { ConfigKey } from "../../utils/typed/config";
 import { I18nStrings } from "../../utils/typed/i18n";
@@ -368,11 +367,7 @@ export const BeatmapPackDownloadView: React.FC<IBeatmapPackDownloadViewProps> = 
                 if (downloadMode === "diff") {
                     g.setLoading(true, __(I18nStrings.MAIN_SRS_READING_LOCAL));
                     await window.olsCore.initStableReader(osuPath);
-                    let local = await window.olsCore.getBeatmaps(OsuClients.Stable, 0);
-                    const fetch_fn = async (offset: number, limit: number) => {
-                        return await window.olsCore.getBeatmaps(OsuClients.Stable, offset, limit);
-                    };
-                    local = await readAllWithOffset(fetch_fn, local);
+                    const local = await window.olsCore.getStableBeatmapIndex();
                     const mapIds = new Set(local.data.map((v) => v.beatmapSetId));
                     setExcludedPackMapIds(
                         new Set(

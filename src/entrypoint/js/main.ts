@@ -1,4 +1,5 @@
 import { app, BrowserWindow, ipcMain, Menu } from "electron";
+import * as fs from "fs";
 import * as url from "url";
 import { getAllFiles, pathJoin, pI18n, readJson } from "../../utils/file";
 import { setI18n } from "../../utils/i18n";
@@ -40,6 +41,24 @@ function createWindow() {
     mainWindow.on("closed", () => {
         mainWindow = null;
     });
+
+    if (process.env.NODE_ENV === "development") {
+        const preloadFile = pathJoin(__dirname, "js/preload.b.js");
+        let reloadTimer: NodeJS.Timeout | null = null;
+        try {
+            fs.watch(preloadFile, { persistent: false }, () => {
+                if (reloadTimer) clearTimeout(reloadTimer);
+                reloadTimer = setTimeout(() => {
+                    if (mainWindow) {
+                        console.debug("[dev] preload rebuilt, reloading window...");
+                        mainWindow.reload();
+                    }
+                }, 300);
+            });
+        } catch (error) {
+            console.warn("[dev] failed to watch preload bundle:", error);
+        }
+    }
 
     createMenu();
 }

@@ -1,5 +1,10 @@
 import * as fs from "fs";
-import { StableCollection, StableCollectionData } from "../../defines/stable_structs";
+import {
+    StableBeatmapDetail,
+    StableBeatmapFilter,
+    StableCollection,
+    StableCollectionData,
+} from "../../defines/stable_structs";
 import { IOsuCollection } from "../../defines/types";
 import { backupFileBySha256, pathJoin, pBackupData, saveFile } from "../../utils/file";
 import { readWithOffset } from "../../utils/reader";
@@ -56,6 +61,7 @@ export default class StableReader extends SingletonBase {
     private _scores?: any;
     private _watchers: fs.FSWatcher[] = [];
     private _watchDebounceTimer?: NodeJS.Timeout;
+    private _lastWatchNotifyTime = 0;
 
     init(fpath: string) {
         if (this.base_path === fpath && this._osu_db !== undefined) {
@@ -76,6 +82,7 @@ export default class StableReader extends SingletonBase {
     }
 
     watchFiles(onChanged: () => void) {
+        this.updateWatch();
         this.stopWatch();
         if (!this.base_path) return;
         const dir = this.base_path;
@@ -83,6 +90,11 @@ export default class StableReader extends SingletonBase {
         const debounced = () => {
             if (this._watchDebounceTimer) clearTimeout(this._watchDebounceTimer);
             this._watchDebounceTimer = setTimeout(() => {
+                const now = Date.now();
+                if (now - this._lastWatchNotifyTime < 5000) {
+                    return;
+                }
+                this._lastWatchNotifyTime = now;
                 this.invalidateCache();
                 onChanged();
             }, 1500);
@@ -106,6 +118,10 @@ export default class StableReader extends SingletonBase {
             } catch {}
         }
         this._watchers = [];
+    }
+
+    private updateWatch() {
+        // TODO: optimize this
     }
 
     get_path(tpath: PathType) {
@@ -138,8 +154,11 @@ export default class StableReader extends SingletonBase {
             console.log(`osu file does not exist: ${dp}`);
             return readWithOffset([], offset, limit);
         }
+        console.time("Read osu!.db2");
         const buf = await fs.promises.readFile(dp);
+        console.timeEnd("Read osu!.db2");
 
+        console.time("Parse osu!.db");
         const versionParser = new Parser().uint32le("version");
         const { version } = versionParser.parse(buf);
 
@@ -172,7 +191,7 @@ export default class StableReader extends SingletonBase {
             .buffer("audioFileName", nullable_string_collector)
             .buffer("md5Hash", nullable_string_collector)
             .buffer("osuFileName", nullable_string_collector)
-            .uint8("rankedStatus")
+            .int8("rankedStatus")
             .uint16le("numCircles")
             .uint16le("numSliders")
             .uint16le("numSpinners")
@@ -244,9 +263,121 @@ export default class StableReader extends SingletonBase {
 
         this._osu_db = parser.parse(buf);
         console.log(`Total beatmaps: ${this._osu_db.beatmaps.length}`);
-
+        console.timeEnd("Parse osu!.db");
         //this._osu_db.beatmaps = this._osu_db.beatmaps.slice(0, 10);
         return readWithOffset(this._osu_db.beatmaps, offset, limit);
+    }
+
+    async queryBeatmaps(filter: StableBeatmapFilter, offset: number = 0, limit: number = 0) {
+        if (this._osu_db === undefined) {
+            await this.beatmaps(0, 1);
+        }
+        if (this._osu_db === undefined) {
+            return readWithOffset([], offset, Math.max(limit, 1));
+        }
+        let filtered: any[] = this._osu_db.beatmaps.filter((m: any) => m.beatmapId !== 0);
+
+        if (filter.title) {
+            const q = filter.title.toLowerCase();
+            filtered = filtered.filter(
+                (m: any) =>
+                    (m.songTitle ?? "").toLowerCase().includes(q) ||
+                    (m.songTitleUnicode ?? "").toLowerCase().includes(q),
+            );
+        }
+
+        if (filter.rankStatuses?.length) {
+            const set = new Set(filter.rankStatuses);
+            filtered = filtered.filter((m: any) => set.has(m.rankedStatus));
+        }
+
+        if (filter.starRatingMin !== undefined || filter.starRatingMax !== undefined) {
+            const min = filter.starRatingMin ?? 0;
+            const max = filter.starRatingMax ?? Number.MAX_VALUE;
+            filtered = filtered.filter((m: any) => {
+                const sr = m.stdStarRatings?.starRatings?.find((s: any) => s.mods === 0)?.starRating ?? 0;
+                return sr >= min && sr <= max;
+            });
+        }
+
+        if (filter.modes?.length) {
+            const set = new Set(filter.modes);
+            filtered = filtered.filter((m: any) => set.has(m.mode));
+        }
+
+        if (filter.includedHashes !== undefined) {
+            const set = new Set(filter.includedHashes);
+            filtered = filtered.filter((m: any) => set.has(m.md5Hash));
+        }
+
+        if (filter.excludedHashes !== undefined) {
+            const set = new Set(filter.excludedHashes);
+            filtered = filtered.filter((m: any) => !set.has(m.md5Hash));
+        }
+
+        const effectiveLimit = limit > 0 ? limit : filtered.length;
+        const slim = filtered.map((m: any) => ({
+            beatmapId: m.beatmapId,
+            beatmapSetId: m.beatmapSetId,
+            md5Hash: m.md5Hash,
+            rankedStatus: m.rankedStatus,
+            mode: m.mode,
+            starRating: m.stdStarRatings?.starRatings?.find((s: any) => s.mods === 0)?.starRating ?? 0,
+            artist: m.artist,
+            artistUnicode: m.artistUnicode,
+            songTitle: m.songTitle,
+            songTitleUnicode: m.songTitleUnicode,
+            difficultyName: m.difficultyName,
+            creatorName: m.creatorName,
+            osuStandardGrade: m.osuStandardGrade,
+            unplayed: m.unplayed,
+            tags: m.tags,
+            drainSeconds: m.drainSeconds,
+            lastPlayedTime: m.lastPlayedTime,
+            ar: m.ar,
+            cs: m.cs,
+            hp: m.hp,
+            od: m.od,
+            numCircles: m.numCircles,
+            numSliders: m.numSliders,
+            numSpinners: m.numSpinners,
+            sliderMultiplier: m.sliderMultiplier,
+            stackLeniency: m.stackLeniency,
+            source: m.source,
+        }));
+        return readWithOffset(slim, offset, effectiveLimit);
+    }
+
+    countBeatmaps(): number {
+        return this._osu_db?.beatmaps?.filter((m: any) => m.beatmapId !== 0).length ?? 0;
+    }
+
+    async getStableBeatmapDetail(md5Hash: string): Promise<StableBeatmapDetail | null> {
+        if (this._osu_db === undefined) {
+            await this.beatmaps(0, 1);
+        }
+        if (!this._osu_db) return null;
+        const m = this._osu_db.beatmaps.find((b: any) => b.md5Hash === md5Hash);
+        if (!m) return null;
+        return { md5Hash: m.md5Hash, path: m.path, audioFileName: m.audioFileName, osuFileName: m.osuFileName };
+    }
+
+    async getBeatmapIndex(offset: number = 0, limit: number = 0) {
+        if (this._osu_db === undefined) {
+            await this.beatmaps(0, 1);
+        }
+        if (this._osu_db === undefined) {
+            return readWithOffset([], offset, Math.max(limit, 1));
+        }
+        const index = this._osu_db.beatmaps
+            .filter((m: any) => m.beatmapId !== 0)
+            .map((m: any) => ({
+                md5Hash: m.md5Hash,
+                beatmapSetId: m.beatmapSetId,
+                beatmapId: m.beatmapId,
+            }));
+        const effectiveLimit = limit > 0 ? limit : index.length;
+        return readWithOffset(index, offset, effectiveLimit);
     }
 
     async collections(offset: number = 0, limit: number = 10) {

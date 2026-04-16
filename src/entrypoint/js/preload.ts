@@ -41,6 +41,7 @@ contextBridge.exposeInMainWorld("olsCore", {
         ipcInvoke(IPC_RD_NAMES.GET_SCHEMA_OBJS, name, limit, offset),
     closeReader: () => ipcInvoke(IPC_RD_NAMES.CLOSE),
     initStableReader: (path: string) => ipcInvoke(IPC_RD_NAMES.INIT_STABLE, path),
+    startStableWatch: () => ipcInvoke(IPC_RD_NAMES.START_STABLE_WATCH),
     getCollections: (type?: OsuClients, offset?: number, limit?: number) =>
         ipcInvoke(IPC_RD_NAMES.GET_COLLECTIONS, type, offset, limit),
     setCollections: (type: OsuClients, collections: IOsuCollection[]) =>
@@ -49,6 +50,11 @@ contextBridge.exposeInMainWorld("olsCore", {
         ipcInvoke(IPC_RD_NAMES.GET_BEATMAPS, type, offset, limit),
     getScores: (type?: OsuClients, offset?: number, limit?: number) =>
         ipcInvoke(IPC_RD_NAMES.GET_SCORES, type, offset, limit),
+    queryStableBeatmaps: (filter: any, offset = 0, limit = 0) =>
+        ipcInvoke(IPC_RD_NAMES.QUERY_BEATMAPS, filter, offset, limit),
+    countStableBeatmaps: () => ipcInvoke(IPC_RD_NAMES.COUNT_BEATMAPS),
+    getStableBeatmapIndex: (offset = 0, limit = 0) => ipcInvoke(IPC_RD_NAMES.GET_BEATMAP_INDEX, offset, limit),
+    getStableBeatmapDetail: (md5Hash: string) => ipcInvoke(IPC_RD_NAMES.GET_BEATMAP_DETAIL, md5Hash),
 
     // config
     initConfig: () => ipcInvoke(IPC_CN_NAMES.INIT),

@@ -1,3 +1,14 @@
+export enum StableRankedStatus {
+    Unknown = 0,
+    Unsubmitted = 1,
+    PendingWIPGraveyard = 2,
+    Unused = 3,
+    Ranked = 4,
+    Approved = 5,
+    Qualified = 6,
+    Loved = 7,
+}
+
 export interface StableCollection {
     version: number;
     collectionCount: number;
@@ -93,4 +104,27 @@ export interface StableScore {
     compressedReplay: number;
     legacyOnlineID: string;
     additionalModData: null;
+}
+
+export interface StableBeatmapDetail {
+    md5Hash: string;
+    path: string;
+    audioFileName: string;
+    osuFileName: string;
+}
+
+export interface StableBeatmapFilter {
+    title?: string;
+    rankStatuses?: number[];
+    starRatingMin?: number;
+    starRatingMax?: number;
+    modes?: number[];
+    includedHashes?: string[];
+    excludedHashes?: string[];
+}
+
+export interface StableBeatmapIndex {
+    md5Hash: string;
+    beatmapSetId: number;
+    beatmapId: number;
 }

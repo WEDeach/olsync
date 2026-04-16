@@ -15,7 +15,7 @@ import {
     TextField,
 } from "@mui/material";
 import { Observer } from "mobx-react";
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import { RankedStatus } from "../../api/v2/types/api_resp";
 import { OsuModes } from "../../defines/types";
 
@@ -83,6 +83,8 @@ export const BeatmapFilterView: React.FC<IBeatmapFilterViewProps> = ({
     const [settings, setSettings] = useState<TFilterSetting>(initialSettings ?? {});
     const [cacheSettings, setCacheSettings] = useState<TFilterSetting>(initialSettings ?? {});
     const [subSettings, setSubSettings] = useState<TSubFilterSetting>({});
+    const [titleInputValue, setTitleInputValue] = useState(initialSettings?.[FilterType.Title] ?? "");
+    const titleDebounceRef = useRef<ReturnType<typeof setTimeout>>(null);
 
     const getSubSetting = (type: FilterType): SubFilterType => {
         return subSettings?.[type] ?? SubFilterType.Greater;
@@ -135,8 +137,15 @@ export const BeatmapFilterView: React.FC<IBeatmapFilterViewProps> = ({
                                 key={v}
                                 label="Title"
                                 variant="outlined"
-                                value={settings?.[FilterType.Title] ?? ""}
-                                onChange={(e) => handleSettingsChanged(FilterType.Title, e.target.value)}
+                                value={titleInputValue}
+                                onChange={(e) => {
+                                    const val = e.target.value;
+                                    setTitleInputValue(val);
+                                    if (titleDebounceRef.current) clearTimeout(titleDebounceRef.current);
+                                    titleDebounceRef.current = setTimeout(() => {
+                                        handleSettingsChanged(FilterType.Title, val);
+                                    }, 300);
+                                }}
                             />
                         );
                     } else if (v === FilterType.RankState) {

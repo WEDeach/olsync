@@ -298,11 +298,7 @@ export default class Controller {
                     runInAction(() => {
                         this.SetLoadingState(true, __(I18nStrings.MAIN_SRS_READING_LOCAL));
                     });
-                    let local = await window.olsCore.getBeatmaps(OsuClients.Stable, 0, PAGE_SIZE);
-                    const fetch_fn = async (offset: number, limit: number) => {
-                        return await window.olsCore.getBeatmaps(OsuClients.Stable, offset, limit);
-                    };
-                    local = await readAllWithOffset(fetch_fn, local);
+                    const local = await window.olsCore.getStableBeatmapIndex();
                     this.SetCacheVal("local_maps", local.data.length);
                     this.SetCacheVal(CachedLegacyKey.LocalMaps, local.data);
                 }
@@ -442,11 +438,7 @@ export default class Controller {
                             runInAction(() => {
                                 this.SetLoadingState(true, __(I18nStrings.MAIN_SRS_READING_LOCAL));
                             });
-                            let local = await window.olsCore.getBeatmaps(OsuClients.Stable, 0, PAGE_SIZE);
-                            const fetch_fn = async (offset: number, limit: number) => {
-                                return await window.olsCore.getBeatmaps(OsuClients.Stable, offset, limit);
-                            };
-                            local = await readAllWithOffset(fetch_fn, local);
+                            const local = await window.olsCore.getStableBeatmapIndex();
                             this.SetCacheVal("local_maps", local.data.length);
                             this.SetCacheVal(CachedLegacyKey.LocalMaps, local.data);
                             await this.onBtnSRSReadClicked(false);
@@ -867,8 +859,6 @@ export default class Controller {
                             beatmapSetId: map.beatmapSetId,
                             beatmapId: map.beatmapId,
                             md5Hash: map.md5Hash,
-                            artist: map.artist,
-                            title: map.songTitle,
                         });
                     }
                 });

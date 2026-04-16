@@ -30,6 +30,11 @@ export enum IPC_RD_NAMES {
     GET_SCORES = "ipc:rd:get_scores",
     SET_SCORES = "ipc:rd:set_scores",
     STABLE_CHANGED = "ipc:rd:stable_changed",
+    START_STABLE_WATCH = "ipc:rd:start_stable_watch",
+    QUERY_BEATMAPS = "ipc:rd:query_beatmaps",
+    COUNT_BEATMAPS = "ipc:rd:count_beatmaps",
+    GET_BEATMAP_INDEX = "ipc:rd:get_beatmap_index",
+    GET_BEATMAP_DETAIL = "ipc:rd:get_beatmap_detail",
 }
 
 // CONFIG

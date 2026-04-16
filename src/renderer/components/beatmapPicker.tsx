@@ -28,7 +28,12 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AutoSizer, List } from "react-virtualized";
 import { RankedStatus } from "../../api/v2/types/api_resp";
-import { StableLocalBeatmap, StableScoreBeatmapData } from "../../defines/stable_structs";
+import {
+    StableBeatmapDetail,
+    StableBeatmapFilter,
+    StableLocalBeatmap,
+    StableScoreBeatmapData,
+} from "../../defines/stable_structs";
 import { IOsuCollection, OsuClients } from "../../defines/types";
 import { IPC_RD_NAMES } from "../../entrypoint/js/ipc/ns";
 import { getYinMoChanceExperiment } from "../../utils/experiments";
@@ -90,20 +95,18 @@ type IBeatmapData = Pick<
     | "stackLeniency"
     | "mode"
     | "source"
-    | "path"
-    | "audioFileName"
-    | "osuFileName"
 > & {
     starRating: number;
 };
 
 const HISTORY_MAX = 200;
-const LOCAL_READ_PAGE_SIZE = 5000;
+const LOCAL_READ_PAGE_SIZE = 500;
 
 const RANKED_STATUS_LABELS: Record<number, string> = {
     0: "Unknown",
     1: "Not Submitted",
-    2: "Pending",
+    2: "Pending / WIP / Graveyard",
+    3: "Unused",
     4: "Ranked",
     5: "Approved",
     6: "Qualified",
@@ -186,21 +189,24 @@ const BeatmapResultDrawer: React.FC<IBeatmapResultDrawerProps> = ({
         }
 
         const loadAssets = async () => {
-            const osuFilePath = `${osuPath}/Songs/${map.path}/${map.osuFileName}`;
+            const detail: StableBeatmapDetail | null = await window.olsCore.getStableBeatmapDetail(map.md5Hash);
+            if (!detail || cancelled) return;
+
+            const osuFilePath = `${osuPath}/Songs/${detail.path}/${detail.osuFileName}`;
             const osuFile = await window.olsCore.readFile(osuFilePath, "utf8");
             if (cancelled || typeof osuFile !== "string") return;
 
             const line = osuFile.split(/\r?\n/).find((l) => /^0,0,"/.test(l.trim()));
             const match = line ? /^0,0,"([^"]+)"/.exec(line.trim()) : null;
             if (match?.[1]) {
-                const bgPath = `${osuPath}/Songs/${map.path}/${match[1]}`;
+                const bgPath = `${osuPath}/Songs/${detail.path}/${match[1]}`;
                 const bgBase64 = await window.olsCore.readFile(bgPath, "base64");
                 if (!cancelled && typeof bgBase64 === "string") {
                     setBgUrl(`data:${guessMimeTypeFromPath(bgPath)};base64,${bgBase64}`);
                 }
             }
 
-            const audioPath = `${osuPath}/Songs/${map.path}/${map.audioFileName}`;
+            const audioPath = `${osuPath}/Songs/${detail.path}/${detail.audioFileName}`;
             const audioBase64 = await window.olsCore.readFile(audioPath, "base64");
             if (!cancelled && typeof audioBase64 === "string") {
                 setAudioUrl(`data:${guessMimeTypeFromPath(audioPath)};base64,${audioBase64}`);
@@ -893,7 +899,6 @@ const yinmoRandom = (pool: { map: IBeatmapData; weight: number }[]): IBeatmapDat
     if (pool.length === 0) return undefined;
 
     const sortPool = pool.filter((t) => t.weight > 0).sort((a, b) => b.weight - a.weight);
-    console.log(sortPool);
 
     const totalWeight = sortPool.reduce((sum, item) => sum + item.weight, 0);
     if (totalWeight <= 0) return undefined;
@@ -913,7 +918,6 @@ const yinmoRandom = (pool: { map: IBeatmapData; weight: number }[]): IBeatmapDat
         }
     }
 
-    console.log(candidates);
     const index = Math.floor(Math.random() * percent);
     return candidates[index];
 };
@@ -964,10 +968,16 @@ export const BeatmapPickerView: React.FC<IBeatmapPickerViewProps> = () => {
         "filter" | "collection" | "weight" | "wishlist" | "history" | "profiles" | null
     >(null);
     const configSaveReady = useRef(false);
+    const [totalBeatmapCount, setTotalBeatmapCount] = useState(0);
+    const filterStateRef = useRef({ generalFilter, includedCollections, excludedCollections });
 
     useEffect(() => {
         historyRef.current = history;
     }, [history]);
+
+    useEffect(() => {
+        filterStateRef.current = { generalFilter, includedCollections, excludedCollections };
+    }, [generalFilter, includedCollections, excludedCollections]);
 
     useEffect(() => {
         const el = rollAreaRef.current;
@@ -1027,22 +1037,35 @@ export const BeatmapPickerView: React.FC<IBeatmapPickerViewProps> = () => {
             const osuPath = g.config?.[ConfigKey.PATH_STABLE_DIR] ?? "";
             if (withInit) {
                 await window.olsCore.initStableReader(osuPath);
+                await window.olsCore.startStableWatch();
                 lastInitTimeRef.current = Date.now();
             }
 
             g.setLoading(true, __(I18nStrings.MAIN_SRS_READING_LOCAL));
-
-            let local = await window.olsCore.getBeatmaps(OsuClients.Stable, 0, LOCAL_READ_PAGE_SIZE);
-            local = await readAllWithOffset(
-                (offset, limit) => window.olsCore.getBeatmaps(OsuClients.Stable, offset, limit),
-                local,
-            );
 
             let cols = await window.olsCore.getCollections(OsuClients.Stable, 0, LOCAL_READ_PAGE_SIZE);
             cols = await readAllWithOffset(
                 (offset, limit) => window.olsCore.getCollections(OsuClients.Stable, offset, limit),
                 cols,
             );
+
+            const { includedCollections: curIncluded, excludedCollections: curExcluded } = filterStateRef.current;
+            const backendFilter: StableBeatmapFilter = {};
+            const includedHashes: string[] = [];
+            const excludedHashes: string[] = [];
+            for (const colName of curIncluded) {
+                const col = (cols.data as IOsuCollection[]).find((c) => c.name === colName);
+                if (col) for (const h of extractHashes(col.maps)) includedHashes.push(h);
+            }
+            for (const colName of curExcluded) {
+                const col = (cols.data as IOsuCollection[]).find((c) => c.name === colName);
+                if (col) for (const h of extractHashes(col.maps)) excludedHashes.push(h);
+            }
+            if (curIncluded.length > 0) backendFilter.includedHashes = includedHashes;
+            if (curExcluded.length > 0) backendFilter.excludedHashes = excludedHashes;
+            const local = await window.olsCore.queryStableBeatmaps(backendFilter, 0, 0);
+            const totalCount = await window.olsCore.countStableBeatmaps();
+            setTotalBeatmapCount(totalCount as number);
 
             g.setLoading(true, __(I18nStrings.MAIN_SRS_READING_SCORES));
 
@@ -1058,41 +1081,7 @@ export const BeatmapPickerView: React.FC<IBeatmapPickerViewProps> = () => {
                 }
             }
 
-            setMaps(
-                local.data.map((m: StableLocalBeatmap) => ({
-                    beatmapId: m.beatmapId,
-                    beatmapSetId: m.beatmapSetId,
-                    rankedStatus: m.rankedStatus,
-                    md5Hash: m.md5Hash,
-                    songTitle: m.songTitle,
-                    songTitleUnicode: m.songTitleUnicode,
-                    artist: m.artist,
-                    artistUnicode: m.artistUnicode,
-                    creatorName: m.creatorName,
-                    difficultyName: m.difficultyName,
-                    osuStandardGrade: m.osuStandardGrade,
-                    unplayed: m.unplayed,
-                    tags: m.tags,
-                    drainSeconds: m.drainSeconds,
-                    lastPlayedTime: m.lastPlayedTime,
-                    ar: m.ar,
-                    cs: m.cs,
-                    hp: m.hp,
-                    od: m.od,
-                    numCircles: m.numCircles,
-                    numSliders: m.numSliders,
-                    numSpinners: m.numSpinners,
-                    sliderMultiplier: m.sliderMultiplier,
-                    stackLeniency: m.stackLeniency,
-                    mode: m.mode,
-                    source: m.source,
-                    path: m.path,
-                    audioFileName: m.audioFileName,
-                    osuFileName: m.osuFileName,
-                    starRating:
-                        (m as any).stdStarRatings?.starRatings?.find((sr: any) => sr.mods === 0)?.starRating ?? 0,
-                })),
-            );
+            setMaps(local.data as IBeatmapData[]);
             setCollections(cols.data as IOsuCollection[]);
             setScoresByHash(scoreMap);
             setState(IBPState.Loaded);
@@ -1119,11 +1108,8 @@ export const BeatmapPickerView: React.FC<IBeatmapPickerViewProps> = () => {
     const [pickedMap, setPickedMap] = useState<IBeatmapData | null>(null);
 
     const filteredMaps = useMemo(
-        () =>
-            state === IBPState.Loaded
-                ? filterMaps(maps, generalFilter, includedCollections, excludedCollections, collections)
-                : [],
-        [state, maps, generalFilter, includedCollections, excludedCollections, collections],
+        () => (state === IBPState.Loaded ? filterMaps(maps, generalFilter, [], [], []) : []),
+        [state, maps, generalFilter],
     );
 
     const filteredPool = useMemo(() => {
@@ -1350,7 +1336,7 @@ export const BeatmapPickerView: React.FC<IBeatmapPickerViewProps> = () => {
                 </Box>
                 <Box sx={{ px: 2, py: 0.5, borderTop: 1, borderColor: "divider", flexShrink: 0 }}>
                     <Typography variant="caption" color="text.secondary">
-                        {__(I18nStrings.BTN_PICKER_ROLL)}: {filteredMaps.length} / {maps.length}
+                        {__(I18nStrings.BTN_PICKER_ROLL)}: {filteredMaps.length} / {totalBeatmapCount}
                     </Typography>
                 </Box>
             </Drawer>
@@ -1460,7 +1446,7 @@ export const BeatmapPickerView: React.FC<IBeatmapPickerViewProps> = () => {
                     </span>
                     {state === IBPState.Loaded && (
                         <Typography variant="caption" sx={{ fontSize: "0.65rem", opacity: 0.8, lineHeight: 1 }}>
-                            {filteredMaps.length} / {maps.length}
+                            {filteredMaps.length} / {totalBeatmapCount}
                         </Typography>
                     )}
                 </Button>
