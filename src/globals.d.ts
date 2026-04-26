@@ -5,6 +5,7 @@ import { RespBeatmapLookup, RespBeatmapPacks, RespUserInfo, RespUserMostPlayedBe
 import { StableBeatmapDetail, StableBeatmapFilter } from "./defines/stable_structs";
 import { HostType, IOsuCollection, OsuClients } from "./defines/types";
 import { UpdateDiff } from "./entrypoint/js/updater";
+import { IPickerHistory, IPickerProfile } from "./renderer/components/beatmapPickerTypes";
 import { CachedBeatmapPack } from "./shared/singletons/api";
 import { DefaultObjectWithOffset } from "./utils/reader";
 import { SyncState } from "./utils/typed/config";
@@ -72,6 +73,12 @@ declare global {
                 last_offset: number,
                 last_updated: number,
             ) => Promise<IPCR<void>>;
+            getPickerProfile: (profileId: string) => Promise<IPickerProfile | null>;
+            savePickerProfile: (profileId: string, data: IPickerProfile) => Promise<void>;
+            deletePickerProfile: (profileId: string) => Promise<void>;
+            listPickerProfiles: () => Promise<string[]>;
+            getPickerLog: (profileId: string) => Promise<IPickerHistory[]>;
+            savePickerLog: (profileId: string, data: IPickerHistory[]) => Promise<void>;
             saveCachedMaps: (user_id: number, beatmap_ids: number[]) => Promise<void>;
             getCachedMaps: (user_id: number) => Promise<RespUserMostPlayedBeatmaps>;
             initDL: (hostType: HostType) => Promise<boolean>;

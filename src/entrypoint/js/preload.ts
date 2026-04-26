@@ -64,6 +64,12 @@ contextBridge.exposeInMainWorld("olsCore", {
     getSyncStateByUserId: (user_id: number) => ipcInvoke(IPC_CN_NAMES.GET_SYNC_STATE_BY_USER_ID, user_id),
     saveSyncStateByUserId: (user_id: number, last_count: number, last_offset: number, last_updated: number) =>
         ipcInvoke(IPC_CN_NAMES.SAVE_SYNC_STATE_BY_USER_ID, user_id, last_count, last_offset, last_updated),
+    getPickerProfile: (profileId: string) => ipcInvoke(IPC_CN_NAMES.GET_PICKER_PROFILE, profileId),
+    savePickerProfile: (profileId: string, data: any) => ipcInvoke(IPC_CN_NAMES.SAVE_PICKER_PROFILE, profileId, data),
+    deletePickerProfile: (profileId: string) => ipcInvoke(IPC_CN_NAMES.DELETE_PICKER_PROFILE, profileId),
+    listPickerProfiles: () => ipcInvoke(IPC_CN_NAMES.LIST_PICKER_PROFILES),
+    getPickerLog: (profileId: string) => ipcInvoke(IPC_CN_NAMES.GET_PICKER_LOG, profileId),
+    savePickerLog: (profileId: string, data: any[]) => ipcInvoke(IPC_CN_NAMES.SAVE_PICKER_LOG, profileId, data),
 
     // API
     initAC: (client_id: string, client_secret: string) => ipcInvoke(IPC_AC_NAMES.INIT, client_id, client_secret),

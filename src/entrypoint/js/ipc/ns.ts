@@ -45,6 +45,12 @@ export enum IPC_CN_NAMES {
     GET_ALL = "ipc:cn:get_all",
     GET_SYNC_STATE_BY_USER_ID = "ipc:cn:get_sync_state_by_user_id",
     SAVE_SYNC_STATE_BY_USER_ID = "ipc:cn:save_sync_state_by_user_id",
+    GET_PICKER_PROFILE = "ipc:cn:get_picker_profile",
+    SAVE_PICKER_PROFILE = "ipc:cn:save_picker_profile",
+    DELETE_PICKER_PROFILE = "ipc:cn:delete_picker_profile",
+    LIST_PICKER_PROFILES = "ipc:cn:list_picker_profiles",
+    GET_PICKER_LOG = "ipc:cn:get_picker_log",
+    SAVE_PICKER_LOG = "ipc:cn:save_picker_log",
 }
 
 // API
@@ -66,6 +72,7 @@ export enum IPC_AC_NAMES {
 export enum IPC_LA_NAMES {
     FETCH_LANGS = "ipc:la:fetch_langs",
     GET_LANG = "ipc:la:get_lang",
+    I18N_CHANGED = "ipc:la:i18n_changed",
 }
 
 // DL

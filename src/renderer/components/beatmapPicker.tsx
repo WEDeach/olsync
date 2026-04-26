@@ -28,17 +28,11 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AutoSizer, List } from "react-virtualized";
 import { RankedStatus } from "../../api/v2/types/api_resp";
-import {
-    StableBeatmapDetail,
-    StableBeatmapFilter,
-    StableLocalBeatmap,
-    StableScoreBeatmapData,
-} from "../../defines/stable_structs";
-import { IOsuCollection, OsuClients } from "../../defines/types";
-import { IPC_RD_NAMES } from "../../entrypoint/js/ipc/ns";
+import { StableBeatmapDetail, StableBeatmapFilter } from "../../defines/stable_structs";
+import { IOsuCollection } from "../../defines/types";
 import { getYinMoChanceExperiment } from "../../utils/experiments";
 import __ from "../../utils/i18n";
-import { readAllWithOffset } from "../../utils/reader";
+import { OsuBeatmap, OsuData, OsuScore } from "../../utils/osu";
 import { formatDateTime, formatTimeAgo } from "../../utils/time";
 import { ConfigKey } from "../../utils/typed/config";
 import { I18nStrings } from "../../utils/typed/i18n";
@@ -65,42 +59,11 @@ import {
     StringCondition,
 } from "./beatmapPickerTypes";
 
+type IBeatmapData = OsuBeatmap;
+
 interface IBeatmapPickerViewProps {}
 
-type IBeatmapData = Pick<
-    StableLocalBeatmap,
-    | "beatmapId"
-    | "beatmapSetId"
-    | "rankedStatus"
-    | "md5Hash"
-    | "songTitle"
-    | "songTitleUnicode"
-    | "artist"
-    | "artistUnicode"
-    | "creatorName"
-    | "difficultyName"
-    | "osuStandardGrade"
-    | "unplayed"
-    | "tags"
-    | "drainSeconds"
-    | "lastPlayedTime"
-    | "ar"
-    | "cs"
-    | "hp"
-    | "od"
-    | "numCircles"
-    | "numSliders"
-    | "numSpinners"
-    | "sliderMultiplier"
-    | "stackLeniency"
-    | "mode"
-    | "source"
-> & {
-    starRating: number;
-};
-
 const HISTORY_MAX = 200;
-const LOCAL_READ_PAGE_SIZE = 500;
 
 const RANKED_STATUS_LABELS: Record<number, string> = {
     0: "Unknown",
@@ -158,7 +121,7 @@ interface IBeatmapResultDrawerProps {
     map: IBeatmapData | null;
     osuPath: string;
     collections: IOsuCollection[];
-    scoresByHash: Map<string, StableScoreBeatmapData>;
+    scoresByHash: Map<string, OsuScore[]>;
     onClose: () => void;
 }
 
@@ -173,7 +136,7 @@ const BeatmapResultDrawer: React.FC<IBeatmapResultDrawerProps> = ({
     const [audioUrl, setAudioUrl] = useState<string | null>(null);
     const [copyDone, setCopyDone] = useState(false);
     const [showScores, setShowScores] = useState(false);
-    const mapScores = map ? (scoresByHash.get(map.md5Hash)?.scores ?? []) : [];
+    const mapScores = map ? (scoresByHash.get(map.md5Hash) ?? []) : [];
     const inCollections = map
         ? collections.filter((c) => extractHashes(c.maps).has(map.md5Hash)).map((c) => c.name)
         : [];
@@ -731,12 +694,12 @@ const matchesBeatmapCond = (m: IBeatmapData, cond: IWeightBeatmapCondition): boo
 
 const matchesScoreCond = (
     m: IBeatmapData,
-    scoresByHash: Map<string, StableScoreBeatmapData>,
+    scoresByHash: Map<string, OsuScore[]>,
     cond: IWeightScoreCondition,
 ): boolean => {
     const sb = scoresByHash.get(m.md5Hash);
-    if (!sb || sb.scores.length === 0) return false;
-    const s = sb.scores.reduce((best, cur) => (cur.totalScore > best.totalScore ? cur : best));
+    if (!sb || sb.length === 0) return false;
+    const s = sb.reduce((best, cur) => (cur.totalScore > best.totalScore ? cur : best));
     const { field, operator, value } = cond;
     switch (field) {
         case ScoreRecordField.UserName:
@@ -780,7 +743,7 @@ const buildWeightedPool = (
     maps: IBeatmapData[],
     advanced: IPickerAdvancedSettings,
     collections: IOsuCollection[],
-    scoresByHash: Map<string, StableScoreBeatmapData>,
+    scoresByHash: Map<string, OsuScore[]>,
     history: IPickerHistory[],
 ): { map: IBeatmapData; weight: number }[] => {
     const collectionMaps = new Map<string, Set<string>>();
@@ -844,7 +807,7 @@ const normalizeAdvancedSettings = (adv: IPickerAdvancedSettings): IPickerAdvance
 const checkWishlist = (
     maps: IBeatmapData[],
     advanced: IPickerAdvancedSettings,
-    scoresByHash: Map<string, StableScoreBeatmapData>,
+    scoresByHash: Map<string, OsuScore[]>,
     collections: IOsuCollection[],
     history: IPickerHistory[],
 ): IBeatmapData[] => {
@@ -903,71 +866,62 @@ const yinmoRandom = (pool: { map: IBeatmapData; weight: number }[]): IBeatmapDat
     const totalWeight = sortPool.reduce((sum, item) => sum + item.weight, 0);
     if (totalWeight <= 0) return undefined;
 
-    const percent = 100;
+    const timestamp = Date.now();
+    const percent = Math.ceil((totalWeight >= timestamp ? totalWeight : timestamp % totalWeight) % 10000);
     const probabilities = sortPool.map((item) => (item.weight / totalWeight) * 100);
-    const candidates: IBeatmapData[] = [];
+    const index = Math.ceil(timestamp % percent);
+    let result: IBeatmapData | undefined;
+    let candidates = 0;
 
-    while (candidates.length < percent) {
-        for (let i = 0; i < sortPool.length && candidates.length < percent; i++) {
+    while (result === undefined) {
+        for (let i = 0; i < sortPool.length && candidates < percent; i++) {
             const threshold = probabilities[i];
             const r = Math.random() * 100;
             if (threshold >= r) {
-                candidates.push(sortPool[i].map);
+                if (index === candidates) {
+                    result = sortPool[i].map;
+                }
+                candidates++;
                 break;
             }
         }
     }
-
-    const index = Math.floor(Math.random() * percent);
-    return candidates[index];
+    return result;
 };
 
 export const BeatmapPickerView: React.FC<IBeatmapPickerViewProps> = () => {
     const [state, setState] = useState<IBPState>(IBPState.None);
     const [maps, setMaps] = useState<IBeatmapData[]>([]);
     const [collections, setCollections] = useState<IOsuCollection[]>([]);
-    const [scoresByHash, setScoresByHash] = useState<Map<string, StableScoreBeatmapData>>(new Map());
+    const [scoresByHash, setScoresByHash] = useState<Map<string, OsuScore[]>>(new Map());
 
-    const fromConfig = <T,>(key: ConfigKey, def: T): T => {
-        const v = g.config?.[key];
-        if (v === undefined || v === null) return def;
-        try {
-            return JSON.parse(JSON.stringify(v)) as T;
-        } catch {
-            return def;
-        }
-    };
-
-    const [generalFilter, setGeneralFilter] = useState<TFilterSetting>(() =>
-        fromConfig<TFilterSetting>(ConfigKey.PICKER_GENERAL_FILTER, {}),
-    );
-    const [includedCollections, setIncludedCollections] = useState<string[]>(() =>
-        fromConfig<string[]>(ConfigKey.PICKER_INCLUDED_COLLECTIONS, []),
-    );
-    const [excludedCollections, setExcludedCollections] = useState<string[]>(() =>
-        fromConfig<string[]>(ConfigKey.PICKER_EXCLUDED_COLLECTIONS, []),
-    );
-    const [advancedSettings, setAdvancedSettings] = useState<IPickerAdvancedSettings>(() =>
-        normalizeAdvancedSettings(
-            fromConfig<IPickerAdvancedSettings>(ConfigKey.PICKER_ADVANCED, { weights: [], wishlist: [] }),
-        ),
-    );
-    const [history, setHistory] = useState<IPickerHistory[]>(() =>
-        fromConfig<IPickerHistory[]>(ConfigKey.PICKER_HISTORY, []),
-    );
+    const [generalFilter, setGeneralFilter] = useState<TFilterSetting>({});
+    const [includedCollections, setIncludedCollections] = useState<string[]>([]);
+    const [excludedCollections, setExcludedCollections] = useState<string[]>([]);
+    const [advancedSettings, setAdvancedSettings] = useState<IPickerAdvancedSettings>({ weights: [], wishlist: [] });
+    const [history, setHistory] = useState<IPickerHistory[]>([]);
     const historyRef = useRef<IPickerHistory[]>([]);
     const isLoadingRef = useRef(false);
-    const lastInitTimeRef = useRef(0);
     const rollAreaRef = useRef<HTMLDivElement>(null);
     const [rollAreaWidth, setRollAreaWidth] = useState(0);
-    const [profiles, setProfiles] = useState<IPickerProfile[]>(() =>
-        fromConfig<IPickerProfile[]>(ConfigKey.PICKER_PROFILES, []),
-    );
+    const [profiles, setProfiles] = useState<string[]>([]);
     const [newProfileName, setNewProfileName] = useState("");
+    const [activeProfileId, setActiveProfileId] = useState<string>(
+        g.config?.[ConfigKey.PICKER_ACTIVE_PROFILE] ?? "default",
+    );
     const [activePanel, setActivePanel] = useState<
         "filter" | "collection" | "weight" | "wishlist" | "history" | "profiles" | null
     >(null);
-    const configSaveReady = useRef(false);
+    const [profileLoaded, setProfileLoaded] = useState(false);
+    const initialSaveGuard = useRef(true);
+    const loadedProfileRef = useRef<{
+        generalFilter: TFilterSetting;
+        includedCollections: string[];
+        excludedCollections: string[];
+        advancedSettings: IPickerAdvancedSettings;
+        profileId: string;
+    } | null>(null);
+    const loadedHistoryRef = useRef<IPickerHistory[] | null>(null);
     const [totalBeatmapCount, setTotalBeatmapCount] = useState(0);
     const filterStateRef = useRef({ generalFilter, includedCollections, excludedCollections });
 
@@ -987,35 +941,40 @@ export const BeatmapPickerView: React.FC<IBeatmapPickerViewProps> = () => {
         return () => obs.disconnect();
     }, []);
 
-    useEffect(() => {
-        if (!configSaveReady.current) return;
-        g.saveConfig(ConfigKey.PICKER_PROFILES, profiles);
-    }, [profiles]);
+    const isSameProfile = () => {
+        if (!loadedProfileRef.current) return false;
+        if (loadedProfileRef.current.profileId !== activeProfileId) return false;
+        return (
+            JSON.stringify(loadedProfileRef.current.generalFilter) === JSON.stringify(generalFilter) &&
+            JSON.stringify(loadedProfileRef.current.includedCollections) === JSON.stringify(includedCollections) &&
+            JSON.stringify(loadedProfileRef.current.excludedCollections) === JSON.stringify(excludedCollections) &&
+            JSON.stringify(loadedProfileRef.current.advancedSettings) === JSON.stringify(advancedSettings)
+        );
+    };
+
+    const isSameHistory = () => {
+        if (!loadedHistoryRef.current) return false;
+        if (loadedProfileRef.current?.profileId !== activeProfileId) return false;
+        return JSON.stringify(loadedHistoryRef.current) === JSON.stringify(history);
+    };
 
     useEffect(() => {
-        if (!configSaveReady.current) return;
-        g.saveConfig(ConfigKey.PICKER_GENERAL_FILTER, generalFilter);
-    }, [generalFilter]);
+        if (!profileLoaded || initialSaveGuard.current) return;
+        if (isSameProfile()) return;
+        window.olsCore.savePickerProfile(activeProfileId, {
+            name: activeProfileId,
+            generalFilter,
+            includedCollections,
+            excludedCollections,
+            advancedSettings,
+        });
+    }, [generalFilter, includedCollections, excludedCollections, advancedSettings, activeProfileId]);
 
     useEffect(() => {
-        if (!configSaveReady.current) return;
-        g.saveConfig(ConfigKey.PICKER_INCLUDED_COLLECTIONS, includedCollections);
-    }, [includedCollections]);
-
-    useEffect(() => {
-        if (!configSaveReady.current) return;
-        g.saveConfig(ConfigKey.PICKER_EXCLUDED_COLLECTIONS, excludedCollections);
-    }, [excludedCollections]);
-
-    useEffect(() => {
-        if (!configSaveReady.current) return;
-        g.saveConfig(ConfigKey.PICKER_ADVANCED, advancedSettings);
-    }, [advancedSettings]);
-
-    useEffect(() => {
-        if (!configSaveReady.current) return;
-        g.saveConfig(ConfigKey.PICKER_HISTORY, history);
-    }, [history]);
+        if (!profileLoaded || initialSaveGuard.current) return;
+        if (isSameHistory()) return;
+        window.olsCore.savePickerLog(activeProfileId, history);
+    }, [history, activeProfileId]);
 
     useEffect(() => {
         if (state !== IBPState.Loading) {
@@ -1023,67 +982,82 @@ export const BeatmapPickerView: React.FC<IBeatmapPickerViewProps> = () => {
         }
     }, [state]);
 
-    // MUST be declared last — React runs effects in declaration order,
-    // so this flag is set after all save effects on first render, preventing initial saves.
     useEffect(() => {
-        configSaveReady.current = true;
+        const load = async () => {
+            const id = g.config?.[ConfigKey.PICKER_ACTIVE_PROFILE] ?? "default";
+            const [profile, log, list] = await Promise.all([
+                window.olsCore.getPickerProfile(id),
+                window.olsCore.getPickerLog(id),
+                window.olsCore.listPickerProfiles(),
+            ]);
+            if (profile) {
+                setGeneralFilter(profile.generalFilter ?? {});
+                setIncludedCollections(profile.includedCollections ?? []);
+                setExcludedCollections(profile.excludedCollections ?? []);
+                setAdvancedSettings(
+                    normalizeAdvancedSettings(profile.advancedSettings ?? { weights: [], wishlist: [] }),
+                );
+                loadedProfileRef.current = {
+                    profileId: id,
+                    generalFilter: profile.generalFilter ?? {},
+                    includedCollections: profile.includedCollections ?? [],
+                    excludedCollections: profile.excludedCollections ?? [],
+                    advancedSettings: normalizeAdvancedSettings(
+                        profile.advancedSettings ?? { weights: [], wishlist: [] },
+                    ),
+                };
+            } else {
+                loadedProfileRef.current = {
+                    profileId: id,
+                    generalFilter: {},
+                    includedCollections: [],
+                    excludedCollections: [],
+                    advancedSettings: { weights: [], wishlist: [] },
+                };
+            }
+            loadedHistoryRef.current = log ?? [];
+            if (log?.length) setHistory(log);
+            setProfiles(list ?? []);
+            initialSaveGuard.current = false;
+            setProfileLoaded(true);
+        };
+        load();
     }, []);
 
-    const loadData = useCallback(async (withInit: boolean) => {
+    const applyFromCache = useCallback(async () => {
+        const cols = await OsuData.getCollections();
+        const { includedCollections: curIncluded, excludedCollections: curExcluded } = filterStateRef.current;
+        const backendFilter: StableBeatmapFilter = {};
+        const includedHashes: string[] = [];
+        const excludedHashes: string[] = [];
+        for (const colName of curIncluded) {
+            const col = cols.find((c) => c.name === colName);
+            if (col) for (const h of col.maps) includedHashes.push(h);
+        }
+        for (const colName of curExcluded) {
+            const col = cols.find((c) => c.name === colName);
+            if (col) for (const h of col.maps) excludedHashes.push(h);
+        }
+        if (curIncluded.length > 0) backendFilter.includedHashes = includedHashes;
+        if (curExcluded.length > 0) backendFilter.excludedHashes = excludedHashes;
+        const allMaps = await OsuData.getBeatmaps();
+        setTotalBeatmapCount(allMaps.length);
+        const local = Object.keys(backendFilter).length > 0 ? await OsuData.getBeatmaps(backendFilter) : allMaps;
+        const scores = await OsuData.getScores();
+        setMaps(local);
+        setCollections(cols);
+        setScoresByHash(scores);
+    }, []);
+
+    const loadData = useCallback(async () => {
         if (isLoadingRef.current) return;
         isLoadingRef.current = true;
         try {
             setState(IBPState.Loading);
-            const osuPath = g.config?.[ConfigKey.PATH_STABLE_DIR] ?? "";
-            if (withInit) {
-                await window.olsCore.initStableReader(osuPath);
-                await window.olsCore.startStableWatch();
-                lastInitTimeRef.current = Date.now();
-            }
-
+            OsuData.invalidate();
             g.setLoading(true, __(I18nStrings.MAIN_SRS_READING_LOCAL));
-
-            let cols = await window.olsCore.getCollections(OsuClients.Stable, 0, LOCAL_READ_PAGE_SIZE);
-            cols = await readAllWithOffset(
-                (offset, limit) => window.olsCore.getCollections(OsuClients.Stable, offset, limit),
-                cols,
-            );
-
-            const { includedCollections: curIncluded, excludedCollections: curExcluded } = filterStateRef.current;
-            const backendFilter: StableBeatmapFilter = {};
-            const includedHashes: string[] = [];
-            const excludedHashes: string[] = [];
-            for (const colName of curIncluded) {
-                const col = (cols.data as IOsuCollection[]).find((c) => c.name === colName);
-                if (col) for (const h of extractHashes(col.maps)) includedHashes.push(h);
-            }
-            for (const colName of curExcluded) {
-                const col = (cols.data as IOsuCollection[]).find((c) => c.name === colName);
-                if (col) for (const h of extractHashes(col.maps)) excludedHashes.push(h);
-            }
-            if (curIncluded.length > 0) backendFilter.includedHashes = includedHashes;
-            if (curExcluded.length > 0) backendFilter.excludedHashes = excludedHashes;
-            const local = await window.olsCore.queryStableBeatmaps(backendFilter, 0, 0);
-            const totalCount = await window.olsCore.countStableBeatmaps();
-            setTotalBeatmapCount(totalCount as number);
-
-            g.setLoading(true, __(I18nStrings.MAIN_SRS_READING_SCORES));
-
-            const rawScores = await window.olsCore.getScores(OsuClients.Stable, 0, LOCAL_READ_PAGE_SIZE);
-            const scoreMap = new Map<string, StableScoreBeatmapData>();
-            if (!("error" in rawScores)) {
-                const allScores = await readAllWithOffset(
-                    async (offset, limit) => (await window.olsCore.getScores(OsuClients.Stable, offset, limit)) as any,
-                    rawScores,
-                );
-                for (const s of allScores.data as StableScoreBeatmapData[]) {
-                    scoreMap.set(s.md5Hash, s);
-                }
-            }
-
-            setMaps(local.data as IBeatmapData[]);
-            setCollections(cols.data as IOsuCollection[]);
-            setScoresByHash(scoreMap);
+            await OsuData.init();
+            await applyFromCache();
             setState(IBPState.Loaded);
         } catch (error) {
             console.error(error);
@@ -1091,18 +1065,21 @@ export const BeatmapPickerView: React.FC<IBeatmapPickerViewProps> = () => {
         } finally {
             isLoadingRef.current = false;
         }
-    }, []);
+    }, [applyFromCache]);
 
-    const onBtnClickedByInit = () => loadData(true);
+    const onBtnClickedByInit = () => loadData();
 
     useEffect(() => {
-        const handler = () => {
-            if (Date.now() - lastInitTimeRef.current < 3000) return;
-            loadData(false);
-        };
-        window.olsCore.on(IPC_RD_NAMES.STABLE_CHANGED, handler);
-        return () => window.olsCore.removeListener(IPC_RD_NAMES.STABLE_CHANGED, handler);
-    }, [loadData]);
+        OsuData.subscribe(applyFromCache);
+        return () => OsuData.unsubscribe(applyFromCache);
+    }, [applyFromCache]);
+
+    useEffect(() => {
+        if (OsuData.hasData) {
+            applyFromCache().then(() => setState(IBPState.Loaded));
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
     const [showFilteredList, setShowFilteredList] = useState(false);
     const [pickedMap, setPickedMap] = useState<IBeatmapData | null>(null);
@@ -1165,7 +1142,7 @@ export const BeatmapPickerView: React.FC<IBeatmapPickerViewProps> = () => {
         setHistory([]);
     };
 
-    const onSaveProfile = () => {
+    const onSaveProfile = async () => {
         const name = newProfileName.trim();
         if (!name) return;
         const profile: IPickerProfile = {
@@ -1175,31 +1152,36 @@ export const BeatmapPickerView: React.FC<IBeatmapPickerViewProps> = () => {
             excludedCollections,
             advancedSettings,
         };
-        setProfiles((prev) => {
-            const idx = prev.findIndex((p) => p.name === name);
-            if (idx >= 0) {
-                const next = [...prev];
-                next[idx] = profile;
-                return next;
-            }
-            return [...prev, profile];
-        });
+        await window.olsCore.savePickerProfile(name, profile);
+        setProfiles(await window.olsCore.listPickerProfiles());
         setNewProfileName("");
     };
 
-    const onLoadProfile = (profile: IPickerProfile) => {
-        setGeneralFilter(profile.generalFilter);
-        setIncludedCollections(profile.includedCollections);
-        setExcludedCollections(profile.excludedCollections);
-        setAdvancedSettings(normalizeAdvancedSettings(profile.advancedSettings));
+    const onLoadProfile = async (profileId: string) => {
+        const profile = await window.olsCore.getPickerProfile(profileId);
+        if (!profile) return;
+        setGeneralFilter(profile.generalFilter ?? {});
+        setIncludedCollections(profile.includedCollections ?? []);
+        setExcludedCollections(profile.excludedCollections ?? []);
+        setAdvancedSettings(normalizeAdvancedSettings(profile.advancedSettings ?? { weights: [], wishlist: [] }));
+        setActiveProfileId(profileId);
+        g.saveConfig(ConfigKey.PICKER_ACTIVE_PROFILE, profileId);
     };
 
-    const onDeleteProfile = (name: string) => {
-        setProfiles((prev) => prev.filter((p) => p.name !== name));
+    const onDeleteProfile = async (profileId: string) => {
+        await window.olsCore.deletePickerProfile(profileId);
+        setProfiles(await window.olsCore.listPickerProfiles());
+        if (activeProfileId === profileId) {
+            setActiveProfileId("default");
+            g.saveConfig(ConfigKey.PICKER_ACTIVE_PROFILE, "default");
+        }
     };
 
-    const onExportProfiles = () => {
-        const json = JSON.stringify(profiles, null, 2);
+    const onExportProfiles = async () => {
+        const loaded = await Promise.all(profiles.map((id) => window.olsCore.getPickerProfile(id)));
+        const valid = loaded.filter(Boolean) as IPickerProfile[];
+        if (valid.length === 0) return;
+        const json = JSON.stringify(valid, null, 2);
         const blob = new Blob([json], { type: "application/json" });
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
@@ -1218,19 +1200,15 @@ export const BeatmapPickerView: React.FC<IBeatmapPickerViewProps> = () => {
             const content = await window.olsCore.readFile(path);
             const imported = JSON.parse(content) as IPickerProfile[];
             if (!Array.isArray(imported)) return;
-            setProfiles((prev) => {
-                const merged = [...prev];
-                for (const p of imported) {
-                    const normalizedProfile: IPickerProfile = {
-                        ...p,
-                        advancedSettings: normalizeAdvancedSettings(p.advancedSettings),
-                    };
-                    const idx = merged.findIndex((x) => x.name === normalizedProfile.name);
-                    if (idx >= 0) merged[idx] = normalizedProfile;
-                    else merged.push(normalizedProfile);
-                }
-                return merged;
-            });
+            for (const p of imported) {
+                if (!p?.name) continue;
+                const normalized: IPickerProfile = {
+                    ...p,
+                    advancedSettings: normalizeAdvancedSettings(p.advancedSettings ?? { weights: [], wishlist: [] }),
+                };
+                await window.olsCore.savePickerProfile(normalized.name, normalized);
+            }
+            setProfiles(await window.olsCore.listPickerProfiles());
         } catch {}
     };
 
@@ -1697,9 +1675,9 @@ export const BeatmapPickerView: React.FC<IBeatmapPickerViewProps> = () => {
                                     -
                                 </Typography>
                             )}
-                            {profiles.map((p) => (
+                            {profiles.map((profileId) => (
                                 <Stack
-                                    key={p.name}
+                                    key={profileId}
                                     direction="row"
                                     spacing={1}
                                     alignItems="center"
@@ -1712,19 +1690,19 @@ export const BeatmapPickerView: React.FC<IBeatmapPickerViewProps> = () => {
                                     }}
                                 >
                                     <Typography variant="body2" sx={{ flexGrow: 1 }} noWrap>
-                                        {p.name}
+                                        {profileId}
                                     </Typography>
                                     <Button
                                         size="small"
                                         variant="contained"
-                                        onClick={() => {
-                                            onLoadProfile(p);
+                                        onClick={async () => {
+                                            await onLoadProfile(profileId);
                                             setActivePanel(null);
                                         }}
                                     >
                                         {__(I18nStrings.MAIN_PICKER_PROFILE_LOAD)}
                                     </Button>
-                                    <IconButton size="small" color="error" onClick={() => onDeleteProfile(p.name)}>
+                                    <IconButton size="small" color="error" onClick={() => onDeleteProfile(profileId)}>
                                         <DeleteSweep fontSize="small" />
                                     </IconButton>
                                 </Stack>

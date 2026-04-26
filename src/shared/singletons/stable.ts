@@ -62,12 +62,13 @@ export default class StableReader extends SingletonBase {
     private _watchers: fs.FSWatcher[] = [];
     private _watchDebounceTimer?: NodeJS.Timeout;
     private _lastWatchNotifyTime = 0;
+    private _watchStats: Map<string, { mtimeMs: number; size: number }> = new Map();
 
     init(fpath: string) {
         if (this.base_path === fpath && this._osu_db !== undefined) {
             return;
         }
-        this.stopWatch();
+        this.stop_watch();
         this.base_path = fpath;
         this._collections = undefined;
         this._osu_db = undefined;
@@ -75,18 +76,23 @@ export default class StableReader extends SingletonBase {
         console.debug(`StableReader init: ${fpath}`);
     }
 
-    invalidateCache() {
+    invalidate_cache() {
         this._osu_db = undefined;
         this._collections = undefined;
         this._scores = undefined;
     }
 
-    watchFiles(onChanged: () => void) {
-        this.updateWatch();
-        this.stopWatch();
+    watch_files(onChanged: () => void) {
+        this.update_watch();
+        this.stop_watch();
         if (!this.base_path) return;
         const dir = this.base_path;
         const watchedFiles = new Set(["osu!.db", "collection.db", "scores.db"]);
+        this._watchStats.clear();
+        for (const filename of watchedFiles) {
+            this._refreshWatchStats(dir, filename);
+        }
+        console.log("[READER] start watchFiles");
         const debounced = () => {
             if (this._watchDebounceTimer) clearTimeout(this._watchDebounceTimer);
             this._watchDebounceTimer = setTimeout(() => {
@@ -95,19 +101,22 @@ export default class StableReader extends SingletonBase {
                     return;
                 }
                 this._lastWatchNotifyTime = now;
-                this.invalidateCache();
+                this.invalidate_cache();
+                console.log("[READER] notify file changed");
                 onChanged();
             }, 1500);
         };
         try {
             const watcher = fs.watch(dir, { persistent: false }, (_, filename) => {
-                if (filename && watchedFiles.has(filename)) debounced();
+                if (!filename || !watchedFiles.has(filename)) return;
+                if (!this._hasWatchFileChanged(dir, filename)) return;
+                debounced();
             });
             this._watchers.push(watcher);
         } catch {}
     }
 
-    stopWatch() {
+    stop_watch() {
         if (this._watchDebounceTimer) {
             clearTimeout(this._watchDebounceTimer);
             this._watchDebounceTimer = undefined;
@@ -120,7 +129,37 @@ export default class StableReader extends SingletonBase {
         this._watchers = [];
     }
 
-    private updateWatch() {
+    private _refreshWatchStats(dir: string, filename: string) {
+        const filePath = pathJoin(dir, filename);
+        try {
+            const stats = fs.statSync(filePath);
+            this._watchStats.set(filename, { mtimeMs: stats.mtimeMs, size: stats.size });
+        } catch {
+            this._watchStats.delete(filename);
+        }
+    }
+
+    private _hasWatchFileChanged(dir: string, filename: string) {
+        const filePath = pathJoin(dir, filename);
+        try {
+            const stats = fs.statSync(filePath);
+            const prev = this._watchStats.get(filename);
+            const next = { mtimeMs: stats.mtimeMs, size: stats.size };
+            const changed = !prev || prev.mtimeMs !== next.mtimeMs || prev.size !== next.size;
+            if (changed) {
+                this._watchStats.set(filename, next);
+            }
+            return changed;
+        } catch {
+            if (this._watchStats.has(filename)) {
+                this._watchStats.delete(filename);
+                return true;
+            }
+            return false;
+        }
+    }
+
+    private update_watch() {
         // TODO: optimize this
     }
 
@@ -151,14 +190,14 @@ export default class StableReader extends SingletonBase {
         const dp = this.get_path(PathType.Osu);
         const exists = fs.existsSync(dp);
         if (!exists) {
-            console.log(`osu file does not exist: ${dp}`);
+            console.log(`[READER] osu file does not exist: ${dp}`);
             return readWithOffset([], offset, limit);
         }
-        console.time("Read osu!.db2");
+        console.time("[READER] Read osu!.db");
         const buf = await fs.promises.readFile(dp);
-        console.timeEnd("Read osu!.db2");
+        console.timeEnd("[READER] Read osu!.db");
 
-        console.time("Parse osu!.db");
+        console.time("[READER] Parse osu!.db");
         const versionParser = new Parser().uint32le("version");
         const { version } = versionParser.parse(buf);
 
@@ -262,13 +301,13 @@ export default class StableReader extends SingletonBase {
             .uint32le("userType");
 
         this._osu_db = parser.parse(buf);
-        console.log(`Total beatmaps: ${this._osu_db.beatmaps.length}`);
-        console.timeEnd("Parse osu!.db");
+        console.log(`[READER] Total beatmaps: ${this._osu_db.beatmaps.length}`);
+        console.timeEnd("[READER] Parse osu!.db");
         //this._osu_db.beatmaps = this._osu_db.beatmaps.slice(0, 10);
         return readWithOffset(this._osu_db.beatmaps, offset, limit);
     }
 
-    async queryBeatmaps(filter: StableBeatmapFilter, offset: number = 0, limit: number = 0) {
+    async query_beatmaps(filter: StableBeatmapFilter, offset: number = 0, limit: number = 0) {
         if (this._osu_db === undefined) {
             await this.beatmaps(0, 1);
         }
@@ -348,11 +387,11 @@ export default class StableReader extends SingletonBase {
         return readWithOffset(slim, offset, effectiveLimit);
     }
 
-    countBeatmaps(): number {
+    count_beatmaps(): number {
         return this._osu_db?.beatmaps?.filter((m: any) => m.beatmapId !== 0).length ?? 0;
     }
 
-    async getStableBeatmapDetail(md5Hash: string): Promise<StableBeatmapDetail | null> {
+    async get_beatmap_detail(md5Hash: string): Promise<StableBeatmapDetail | null> {
         if (this._osu_db === undefined) {
             await this.beatmaps(0, 1);
         }
@@ -362,7 +401,7 @@ export default class StableReader extends SingletonBase {
         return { md5Hash: m.md5Hash, path: m.path, audioFileName: m.audioFileName, osuFileName: m.osuFileName };
     }
 
-    async getBeatmapIndex(offset: number = 0, limit: number = 0) {
+    async get_beatmap_index(offset: number = 0, limit: number = 0) {
         if (this._osu_db === undefined) {
             await this.beatmaps(0, 1);
         }
@@ -541,7 +580,7 @@ export default class StableReader extends SingletonBase {
 
         this._scores = parser.parse(buf);
         console.log(
-            `Score Version: ${this._scores.version}, Beatmap Count: ${this._scores.beatmapCount}, Score Count: ${this._scores.beatmapCount > 0 ? this._scores.beatmaps.map((beatmap: any) => beatmap.scoreCount).reduce((a: number, b: number) => a + b) : 0}`,
+            `[READER] Score Version: ${this._scores.version}, Beatmap Count: ${this._scores.beatmapCount}, Score Count: ${this._scores.beatmapCount > 0 ? this._scores.beatmaps.map((beatmap: any) => beatmap.scoreCount).reduce((a: number, b: number) => a + b) : 0}`,
         );
 
         return readWithOffset(this._scores.beatmaps, offset, limit);

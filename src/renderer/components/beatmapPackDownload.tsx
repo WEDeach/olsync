@@ -18,6 +18,7 @@ import { OsuModes } from "../../defines/types";
 import { getApiDownloadLink, getApiPreDelayMs } from "../../utils/api";
 import { GetDLOptionByDirect, GetDLOptionByFDM, GetDLOptionByRows } from "../../utils/download";
 import __ from "../../utils/i18n";
+import { OsuData } from "../../utils/osu";
 import { sleep } from "../../utils/time";
 import { ConfigKey } from "../../utils/typed/config";
 import { I18nStrings } from "../../utils/typed/i18n";
@@ -366,9 +367,8 @@ export const BeatmapPackDownloadView: React.FC<IBeatmapPackDownloadViewProps> = 
 
                 if (downloadMode === "diff") {
                     g.setLoading(true, __(I18nStrings.MAIN_SRS_READING_LOCAL));
-                    await window.olsCore.initStableReader(osuPath);
-                    const local = await window.olsCore.getStableBeatmapIndex();
-                    const mapIds = new Set(local.data.map((v) => v.beatmapSetId));
+                    const local = await OsuData.getBeatmapIndex();
+                    const mapIds = new Set(local.map((v) => v.beatmapSetId));
                     setExcludedPackMapIds(
                         new Set(
                             allPackInfos.flatMap((v) => v.beatmapsets.map((m) => m.id)).filter((v) => mapIds.has(v)),

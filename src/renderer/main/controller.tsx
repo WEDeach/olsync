@@ -1,19 +1,13 @@
 import { action, makeAutoObservable, observable, runInAction } from "mobx";
 import React from "react";
-import { DefaultObject } from "realm/dist/public-types/schema/types";
 import { RespUserMostPlayedBeatmaps } from "../../api/v2/types/api_resp";
-import { BeatmapCollection } from "../../defines/lazer_structs";
-import {
-    StableCollectionData,
-    StableCollectionMapData,
-    StableLocalBeatmap,
-    StableScoreBeatmapData,
-} from "../../defines/stable_structs";
+import { StableLocalBeatmap, StableScoreBeatmapData } from "../../defines/stable_structs";
 import { OsuClients } from "../../defines/types";
 import { UpdateDiff } from "../../entrypoint/js/updater";
 import { getApiPreDelayMs, InitApi } from "../../utils/api";
 import __ from "../../utils/i18n";
 import { LogError } from "../../utils/log";
+import { OsuData } from "../../utils/osu";
 import { readAllWithOffset } from "../../utils/reader";
 import { sleep } from "../../utils/time";
 import { ConfigKey } from "../../utils/typed/config";
@@ -90,7 +84,7 @@ interface State {
     s_tables?: string[];
     s_schema_name?: string;
     s_schema_keys?: IPropertyWithName[];
-    s_schema_rows?: DefaultObject[];
+    s_schema_rows?: Record<string, unknown>[];
     s_schema_rows_loaded?: boolean;
     s_schema_rows_page?: number;
     s_sub_view?: SubViewType;
@@ -116,9 +110,29 @@ export default class Controller {
     constructor() {
         this.state = {};
 
-        g.initConfig().then(() => {
+        g.initConfig().then(async () => {
             PAGE_SIZE = Number(g.config?.[ConfigKey.PAGE_SIZE]) || 50;
             this.checkUpdate();
+
+            const configLang = g.config?.[ConfigKey.I18N_LANG];
+            if (configLang) {
+                const langs = await window.olsCore.fetchLangs();
+                if (!langs[configLang]) {
+                    g.setDialog(true, {
+                        content: `I18n file missing: ${configLang}`,
+                        actions: [
+                            { label: "Cancel", callback: () => g.setDialog(false) },
+                            {
+                                label: "Reset",
+                                callback: () => {
+                                    g.saveConfig(ConfigKey.I18N_LANG, null);
+                                    g.setDialog(false);
+                                },
+                            },
+                        ],
+                    });
+                }
+            }
         });
 
         makeAutoObservable(this, {
@@ -499,24 +513,13 @@ export default class Controller {
             // lazer
             this.SetLoadingState(true, __(I18nStrings.MAIN_COLLECTION_READING_OL));
             if (this.LazerPath.length > 0) {
-                await window.olsCore.initReader(this.LazerPath);
-                let ol_collections = await window.olsCore.getCollections(OsuClients.Lazer, 0, PAGE_SIZE);
-                const ol_collections_fn = async (offset: number, limit: number) =>
-                    await window.olsCore.getCollections(OsuClients.Lazer, offset, limit);
-                ol_collections = await readAllWithOffset(ol_collections_fn, ol_collections);
+                const ol_collections = await OsuData.getLazerCollections();
                 runInAction(() => {
-                    this.state.v_select_group_a = ol_collections.data.map((data: BeatmapCollection) => {
-                        return {
-                            key: data.Name,
-                            is_selected: false,
-                            subs: data.BeatmapMD5Hashes.map((map: string) => {
-                                return {
-                                    key: map,
-                                    is_selected: false,
-                                };
-                            }),
-                        };
-                    });
+                    this.state.v_select_group_a = ol_collections.map((data) => ({
+                        key: data.name,
+                        is_selected: false,
+                        subs: data.maps.map((map) => ({ key: map, is_selected: false })),
+                    }));
                     this.state.s_main = MainViewState.COLLECTION_SELECT;
                     this.SetLoadingState(false);
                 });
@@ -525,24 +528,13 @@ export default class Controller {
             // stable
             this.SetLoadingState(true, __(I18nStrings.MAIN_COLLECTION_READING_OS));
             if (this.StablePath.length > 0) {
-                await window.olsCore.initStableReader(this.StablePath);
-                let os_collections = await window.olsCore.getCollections(OsuClients.Stable, 0, PAGE_SIZE);
-                const os_collections_fn = async (offset: number, limit: number) =>
-                    await window.olsCore.getCollections(OsuClients.Stable, offset, limit);
-                os_collections = await readAllWithOffset(os_collections_fn, os_collections);
+                const os_collections = await OsuData.getCollections();
                 runInAction(() => {
-                    this.state.v_select_group_b = os_collections.data.map((data: StableCollectionData) => {
-                        return {
-                            key: data.name,
-                            is_selected: false,
-                            subs: data.maps.map((map: StableCollectionMapData) => {
-                                return {
-                                    key: map.checksum,
-                                    is_selected: false,
-                                };
-                            }),
-                        };
-                    });
+                    this.state.v_select_group_b = os_collections.map((data) => ({
+                        key: data.name,
+                        is_selected: false,
+                        subs: data.maps.map((map) => ({ key: map, is_selected: false })),
+                    }));
                     this.state.s_main = MainViewState.COLLECTION_SELECT;
                 });
             }

@@ -24,4 +24,22 @@ export function register() {
             return SharedManager.config.save_sync_state(user_id, last_count, last_offset, last_updated);
         },
     );
+    ipcMain.handle(IPC_CN_NAMES.GET_PICKER_PROFILE, async (_, profileId: string) => {
+        return SharedManager.config.get_picker_profile(profileId);
+    });
+    ipcMain.handle(IPC_CN_NAMES.SAVE_PICKER_PROFILE, async (_, profileId: string, data: any) => {
+        await SharedManager.config.save_picker_profile(profileId, data);
+    });
+    ipcMain.handle(IPC_CN_NAMES.DELETE_PICKER_PROFILE, async (_, profileId: string) => {
+        await SharedManager.config.delete_picker_profile(profileId);
+    });
+    ipcMain.handle(IPC_CN_NAMES.LIST_PICKER_PROFILES, async () => {
+        return SharedManager.config.list_picker_profiles();
+    });
+    ipcMain.handle(IPC_CN_NAMES.GET_PICKER_LOG, async (_, profileId: string) => {
+        return SharedManager.config.get_picker_log(profileId);
+    });
+    ipcMain.handle(IPC_CN_NAMES.SAVE_PICKER_LOG, async (_, profileId: string, data: any[]) => {
+        await SharedManager.config.save_picker_log(profileId, data);
+    });
 }

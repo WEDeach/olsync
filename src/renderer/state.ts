@@ -75,6 +75,7 @@ export interface IDialogState {
 interface IGlobalState {
     config?: { [key: string]: any };
     isDev: boolean;
+    i18nVersion: number;
     error?: IGlobalError & IGlobalShowable;
     cacheVal: IGlobalCacheValue;
     notify?: IGlobalNotify & IGlobalShowable;
@@ -82,6 +83,7 @@ interface IGlobalState {
     dialog?: IDialogState;
     version: string;
 
+    bumpI18nVersion: () => void;
     setError: (error?: IGlobalError) => void;
     hasError: () => boolean;
     clearError: () => void;
@@ -98,9 +100,13 @@ interface IGlobalState {
 
 const g: IGlobalState = observable({
     cacheVal: {},
+    i18nVersion: 0,
 }) as IGlobalState;
 
 Object.assign(g, {
+    bumpI18nVersion: action(() => {
+        g.i18nVersion += 1;
+    }),
     setError: action((error: IGlobalError) => {
         g.error = {
             ...error,

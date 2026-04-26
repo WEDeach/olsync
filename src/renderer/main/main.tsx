@@ -60,6 +60,7 @@ export default class Main extends React.Component {
     render() {
         const SubView = this.controller.SubView;
         const SSubView = this.controller.SSubView;
+        void g.i18nVersion;
         const SyncPlayer =
             this.controller.SCachedVals.find((v) => v.key === "#sync_player")?.val.id.toString() ===
             this.controller.CSyncTargetId

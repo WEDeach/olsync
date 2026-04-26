@@ -4,10 +4,12 @@ export enum ServiceCode {
     Cache = ".cache",
     I18n = "i18n",
     I18nTest = ".i18n",
+    PickerProfile = "picker_profiles",
 }
 
 export enum SpaceId {
     SyncState = "ss",
     Beatmaps = "bm",
     Packs = "bp",
+    PickerLog = "pl",
 }

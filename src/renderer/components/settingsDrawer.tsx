@@ -1,7 +1,20 @@
 import { Settings } from "@mui/icons-material";
-import { Divider, Drawer, FormControlLabel, IconButton, Stack, Switch, TextField, Typography } from "@mui/material";
+import {
+    Divider,
+    Drawer,
+    FormControl,
+    FormControlLabel,
+    IconButton,
+    InputLabel,
+    MenuItem,
+    Select,
+    Stack,
+    Switch,
+    TextField,
+    Typography,
+} from "@mui/material";
 import { Observer } from "mobx-react";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { getApiDownloadLink, getApiPreDelayMs } from "../../utils/api";
 import { getDelayMs } from "../../utils/download";
 import { getYinMoChanceExperiment } from "../../utils/experiments";
@@ -16,6 +29,11 @@ const DRAWER_WIDTH = "90vw";
 
 export const SettingsDrawer: React.FC = () => {
     const [open, setOpen] = useState(false);
+    const [langs, setLangs] = useState<Record<string, string>>({});
+
+    useEffect(() => {
+        window.olsCore.fetchLangs().then(setLangs);
+    }, []);
 
     return (
         <>
@@ -102,6 +120,34 @@ export const SettingsDrawer: React.FC = () => {
                                         }
                                     />
                                 </Stack>
+
+                                <Divider textAlign="left">
+                                    <Typography variant="subtitle2">語系</Typography>
+                                </Divider>
+                                <FormControl size="small">
+                                    <InputLabel>語系</InputLabel>
+                                    <Select
+                                        label="語系"
+                                        value={g.config?.[ConfigKey.I18N_LANG] ?? "zh-TW"}
+                                        onChange={(e) => {
+                                            const val = e.target.value as string;
+                                            g.saveConfig(ConfigKey.I18N_LANG, val);
+                                            window.olsCore.send("set-i18n-lang", val);
+                                        }}
+                                    >
+                                        {Object.keys(langs).length === 0 ? (
+                                            <MenuItem disabled value="">
+                                                {"No any i18n files (′゜ω。‵)"}
+                                            </MenuItem>
+                                        ) : (
+                                            Object.entries(langs).map(([code, name]) => (
+                                                <MenuItem key={code} value={code}>
+                                                    {name}
+                                                </MenuItem>
+                                            ))
+                                        )}
+                                    </Select>
+                                </FormControl>
                             </Stack>
                         );
                     }}

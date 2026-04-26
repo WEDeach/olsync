@@ -34,13 +34,11 @@ export enum ConfigKey {
     UPDATE_CHECK_INTERVAL = "update:check_interval",
     UPDATE_LAST_CHECK = "update:last_check",
 
+    /* i18n */
+    I18N_LANG = "i18n:lang",
+
     /* Beatmap Picker */
-    PICKER_GENERAL_FILTER = "picker:general_filter",
-    PICKER_INCLUDED_COLLECTIONS = "picker:included_collections",
-    PICKER_EXCLUDED_COLLECTIONS = "picker:excluded_collections",
-    PICKER_ADVANCED = "picker:advanced",
-    PICKER_HISTORY = "picker:history",
-    PICKER_PROFILES = "picker:profiles",
+    PICKER_ACTIVE_PROFILE = "picker:active_profile",
 
     /* Experiments */
     EXPERIMENT_YINMO_CHANCE = "experiment:yinmo_chance",

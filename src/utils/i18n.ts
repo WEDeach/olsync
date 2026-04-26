@@ -2,13 +2,7 @@ import { I18nStrings } from "./typed/i18n";
 
 type I18nMap = Partial<Record<I18nStrings, string>>;
 
-const i18n: Record<string, I18nMap> = {
-    "zh-TW": {
-        [I18nStrings.MAIN_DATA_READING]: "讀取資料中...",
-        [I18nStrings.BTN_COLLECTION_READ]: "閱讀收藏",
-    },
-    "en-US": { [I18nStrings.BTN_COLLECTION_READ]: "Read Collection" },
-};
+const i18n: Record<string, I18nMap> = {};
 var defaultLang = "zh-TW";
 
 export function setI18n(lang: string, json: { [key: string]: any }) {

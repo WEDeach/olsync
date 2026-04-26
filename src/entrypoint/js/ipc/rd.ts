@@ -32,7 +32,7 @@ export function register() {
     });
 
     ipcMain.handle(IPC_RD_NAMES.START_STABLE_WATCH, async (_) => {
-        SharedManager.stableReader.watchFiles(() => {
+        SharedManager.stableReader.watch_files(() => {
             BrowserWindow.getAllWindows()[0]?.webContents.send(IPC_RD_NAMES.STABLE_CHANGED);
         });
     });
@@ -69,19 +69,19 @@ export function register() {
     ipcMain.handle(
         IPC_RD_NAMES.QUERY_BEATMAPS,
         async (_, filter: StableBeatmapFilter, offset: number = 0, limit: number = 0) => {
-            return SharedManager.stableReader.queryBeatmaps(filter, offset, limit);
+            return SharedManager.stableReader.query_beatmaps(filter, offset, limit);
         },
     );
 
     ipcMain.handle(IPC_RD_NAMES.COUNT_BEATMAPS, async (_) => {
-        return SharedManager.stableReader.countBeatmaps();
+        return SharedManager.stableReader.count_beatmaps();
     });
 
     ipcMain.handle(IPC_RD_NAMES.GET_BEATMAP_INDEX, async (_, offset: number = 0, limit: number = 0) => {
-        return SharedManager.stableReader.getBeatmapIndex(offset, limit);
+        return SharedManager.stableReader.get_beatmap_index(offset, limit);
     });
 
     ipcMain.handle(IPC_RD_NAMES.GET_BEATMAP_DETAIL, async (_, md5Hash: string) => {
-        return SharedManager.stableReader.getStableBeatmapDetail(md5Hash);
+        return SharedManager.stableReader.get_beatmap_detail(md5Hash);
     });
 }
