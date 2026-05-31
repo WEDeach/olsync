@@ -322,33 +322,12 @@ export const BeatmapPackDownloadView: React.FC<IBeatmapPackDownloadViewProps> = 
                     if (response.beatmap_packs) {
                         let filteredPacks = filterPacksByDate(response.beatmap_packs, dateRange);
                         if (gameModes && !gameModes.includes("all")) {
-                            const useNmCheck = getPackRulesetByNmExperiment();
-                            const dateFilteredPacks = filteredPacks;
                             filteredPacks = filteredPacks.filter(
                                 (pack) =>
-                                    (pack.ruleset_id !== null &&
-                                        (gameModes.includes(pack.ruleset_id) ||
-                                            gameModes.includes(String(pack.ruleset_id)))) ||
-                                    (pack.ruleset_id === null && !useNmCheck),
+                                    pack.ruleset_id === null ||
+                                    gameModes.includes(pack.ruleset_id) ||
+                                    gameModes.includes(String(pack.ruleset_id)),
                             );
-                            if (useNmCheck) {
-                                const selectedModeNames = new Set(
-                                    gameModes.map((m: any) => MODE_NAME_MAP[String(m)]).filter(Boolean),
-                                );
-                                const nullPacks = dateFilteredPacks.filter((p) => p.ruleset_id === null);
-                                for (const pack of nullPacks) {
-                                    if (aborter.signal.aborted) break;
-                                    const info = await window.olsCore.getBeatmapPack(pack.tag);
-                                    if ("error" in info) continue;
-                                    if (info.cached !== true) await sleep(getApiPreDelayMs(), aborter.signal);
-                                    const hasMatch = info.beatmapsets.some((bs: any) =>
-                                        (bs.nominations_summary?.eligible_main_rulesets ?? []).some((r: string) =>
-                                            selectedModeNames.has(r),
-                                        ),
-                                    );
-                                    if (hasMatch) filteredPacks.push(pack);
-                                }
-                            }
                         }
                         if (filteredPacks.length === 0) {
                             hasNext = false;
@@ -386,7 +365,26 @@ export const BeatmapPackDownloadView: React.FC<IBeatmapPackDownloadViewProps> = 
 
             if (!aborter.signal.aborted) {
                 setFetchedPacks(allPacks);
-                setFetchedPackInfos(allPackInfos);
+
+                let processedPackInfos = allPackInfos;
+                if (gameModes && !gameModes.includes("all") && getPackRulesetByNmExperiment()) {
+                    const selectedModeNames = new Set(
+                        gameModes.map((m: any) => MODE_NAME_MAP[String(m)]).filter(Boolean),
+                    );
+                    const nullRulesetTags = new Set(allPacks.filter((p) => p.ruleset_id === null).map((p) => p.tag));
+                    processedPackInfos = allPackInfos.map((info) => {
+                        if (!nullRulesetTags.has(info.tag)) return info;
+                        return {
+                            ...info,
+                            beatmapsets: info.beatmapsets.filter((bs: any) => {
+                                const rulesets = bs.nominations_summary?.eligible_main_rulesets ?? [];
+                                return rulesets.length === 0 || rulesets.some((r: string) => selectedModeNames.has(r));
+                            }),
+                        };
+                    });
+                }
+
+                setFetchedPackInfos(processedPackInfos);
                 setExcludedPackTags(new Set());
 
                 if (downloadMode === "diff") {
@@ -395,7 +393,7 @@ export const BeatmapPackDownloadView: React.FC<IBeatmapPackDownloadViewProps> = 
                     const mapIds = new Set(local.map((v) => v.beatmapSetId));
                     setExcludedPackMapIds(
                         new Set(
-                            allPackInfos.flatMap((v) => v.beatmapsets.map((m) => m.id)).filter((v) => mapIds.has(v)),
+                            processedPackInfos.flatMap((v) => v.beatmapsets.map((m) => m.id)).filter((v) => mapIds.has(v)),
                         ),
                     );
                     g.setLoading(false);
