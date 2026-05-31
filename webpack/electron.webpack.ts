@@ -1,7 +1,11 @@
 import * as path from "path";
 import * as fs from "fs";
-import { Configuration,DefinePlugin } from "webpack";
+import { fileURLToPath } from "url";
+import webpack from "webpack";
+import type { Configuration } from "webpack";
+const { DefinePlugin } = webpack;
 
+const __dirname=path.dirname(fileURLToPath(import.meta.url));
 const rootPath=path.resolve(__dirname,"..");
 
 function resolvePath(...segments: string[]) {
@@ -30,7 +34,10 @@ fs.readdirSync(resolvePath(entrypointsPath),{ withFileTypes: true }).forEach((it
 const config: Configuration={
     mode: process.env.NODE_ENV==='production'? 'production':'development',
     devtool: process.env.NODE_ENV==='production'? false:'source-map',
-    entry: './src/entrypoint/js/main.ts',
+    entry: {
+        main: './src/entrypoint/js/main.ts',
+        stableProcess: './src/entrypoint/js/stable.process.ts',
+    },
     target: "electron-main",
     module: {
         rules: [

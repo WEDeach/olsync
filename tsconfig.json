@@ -7,6 +7,15 @@
             "dom"
         ],
         "moduleResolution": "bundler",
+        "baseUrl": ".",
+        "paths": {
+            "realm/dist/public-types/namespace": [
+                "node_modules/realm/dist/public-types/namespace.d.ts"
+            ],
+            "realm/dist/public-types/schema/types": [
+                "node_modules/realm/dist/public-types/schema/types.d.ts"
+            ]
+        },
         "jsx": "react-jsx",
         "jsxImportSource": "react",
         "sourceMap": true,

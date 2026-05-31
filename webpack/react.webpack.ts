@@ -1,8 +1,12 @@
 import HtmlWebpackPlugin from "html-webpack-plugin";
 import * as path from "path";
-import { Configuration as WebpackConfiguration,EnvironmentPlugin } from "webpack";
-import { Configuration as WebpackDevServerConfiguration } from "webpack-dev-server";
+import { fileURLToPath } from "url";
+import webpack from "webpack";
+import type { Configuration as WebpackConfiguration } from "webpack";
+import type { Configuration as WebpackDevServerConfiguration } from "webpack-dev-server";
+const { EnvironmentPlugin } = webpack;
 
+const __dirname=path.dirname(fileURLToPath(import.meta.url));
 const rootPath=path.resolve(__dirname,"..");
 
 interface Configuration extends WebpackConfiguration {

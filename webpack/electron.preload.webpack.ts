@@ -1,6 +1,10 @@
 import * as path from "path";
-import { Configuration,DefinePlugin } from "webpack";
-const nodeExternals=require('webpack-node-externals');
+import { fileURLToPath } from "url";
+import webpack from "webpack";
+import type { Configuration } from "webpack";
+import nodeExternals from "webpack-node-externals";
+const { DefinePlugin } = webpack;
+const __dirname=path.dirname(fileURLToPath(import.meta.url));
 
 const rootPath=path.resolve(__dirname,"..");
 

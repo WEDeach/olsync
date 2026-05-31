@@ -1,6 +1,6 @@
 {
   "name": "olsync",
-  "version": "1.0.18",
+  "version": "1.0.19",
   "main": "./dist/main.js",
   "scripts": {
     "build": "concurrently \"npm run dev:electron\" \"npm run dev:react\"",
@@ -65,6 +65,8 @@
     }
   },
   "dependencies": {
+    "echarts": "^6.1.0",
+    "echarts-for-react": "^3.0.6",
     "realm": "^12.14.2"
   },
   "devDependencies": {
@@ -74,9 +76,9 @@
     "@emotion/styled": "^11.14.0",
     "@mui/icons-material": "^7.3.6",
     "@mui/material": "^7.0.2",
-    "@types/binary-parser": "^1.8.0",
     "@types/react-dom": "^19.1.2",
     "@types/react-virtualized": "^9.22.2",
+    "@types/webpack-node-externals": "^3.0.4",
     "@zenoaihq/tson": "^1.0.2",
     "binary-parser": "^2.2.1",
     "concurrently": "^9.1.2",
