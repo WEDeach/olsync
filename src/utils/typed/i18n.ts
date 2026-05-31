@@ -23,6 +23,7 @@ export enum I18nStrings {
     //
     MAIN_SRS_READING_SCORES = "main.srs.scores.reading",
     MAIN_SRS_READING_LOCAL = "main.srs.local.reading",
+    MAIN_SRS_READING_COLLECTIONS = "main.srs.collections.reading",
     MAIN_SRS_READING_ONLINE = "main.srs.online.reading",
     MAIN_SRS_READING_ONLINE_STATES = "main.srs.online.states",
     MAIN_SRS_READING_ONLINE_ALERT = "main.srs.online.alert",
@@ -95,6 +96,8 @@ export enum I18nStrings {
     MAIN_PICKER_PROFILE_EXPORT = "main.picker.profile.export",
     MAIN_PICKER_PROFILE_IMPORT = "main.picker.profile.import",
     MAIN_PICKER_PROFILE_IMPORT_TITLE = "main.picker.profile.import_title",
+    MAIN_PICKER_PROFILE_SAVED = "main.picker.profile.saved",
+    MAIN_PICKER_PROFILE_ACTIVE = "main.picker.profile.active",
     MAIN_PICKER_FILTER_TITLE = "main.picker.filter.title",
     MAIN_PICKER_FILTER_COLLECTION_TITLE = "main.picker.filter.collection.title",
     MAIN_PICKER_FILTER_COLLECTION_NONE = "main.picker.filter.collection.none",
@@ -227,4 +230,6 @@ export enum I18nStrings {
     MAIN_SETTINGS_SELECT_FILE = "main.settings.select_file",
     MAIN_SETTINGS_OTHERS = "main.settings.others",
     MAIN_SETTINGS_USE_YINMO_CHANCE = "main.settings.use_yinmo_chance",
+    MAIN_SETTINGS_CHECK_FILE_BY_MD5 = "main.settings.check_file_by_md5",
+    MAIN_SETTINGS_PACK_RULESET_BY_NM = "main.settings.pack_ruleset_by_nm",
 }

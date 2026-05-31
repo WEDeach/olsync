@@ -1,47 +1,12 @@
+import * as crypto from "crypto";
+import type { UtilityProcess } from "electron";
+import { utilityProcess } from "electron";
 import * as fs from "fs";
-import {
-    StableBeatmapDetail,
-    StableBeatmapFilter,
-    StableCollection,
-    StableCollectionData,
-} from "../../defines/stable_structs";
+import * as path from "path";
+import { StableBeatmapDetail, StableBeatmapFilter } from "../../defines/stable_structs";
 import { IOsuCollection } from "../../defines/types";
-import { backupFileBySha256, pathJoin, pBackupData, saveFile } from "../../utils/file";
-import { readWithOffset } from "../../utils/reader";
-import { readNullableString, writeNullableString } from "../../utils/string";
+import { pathJoin, pBackupData } from "../../utils/file";
 import SingletonBase from "./base";
-
-const Parser = require("binary-parser").Parser;
-
-const nullable_string_collector: any = {
-    readUntil: function (_item: any, buffer: Buffer) {
-        if (this._readUntil === undefined) {
-            const result = readNullableString(buffer);
-            this._readUntil = result.newOffset;
-            this._offset = 0;
-        } else {
-            this._offset++;
-        }
-        return this._offset === this._readUntil;
-    },
-    formatter: function (buffer: Buffer) {
-        this._readUntil = undefined;
-        return readNullableString(buffer).value;
-    },
-};
-const date_collector: any = {
-    formatter: (ticks: bigint) => {
-        if (ticks === 0n) return null;
-        const ticksTo1970 = 621355968000000000n; // 1970-01-01
-        const ticksPerMillisecond = 10000n;
-        const jsTimestamp = Number((ticks - ticksTo1970) / ticksPerMillisecond);
-        return new Date(jsTimestamp);
-    },
-};
-
-const bool_collector: any = {
-    formatter: (value: number) => value === 1,
-};
 
 enum PathType {
     Osu,
@@ -56,71 +21,160 @@ enum PathType {
 
 export default class StableReader extends SingletonBase {
     private base_path?: string;
-    private _collections?: StableCollection;
-    private _osu_db?: any;
-    private _scores?: any;
     private _watchers: fs.FSWatcher[] = [];
-    private _watchDebounceTimer?: NodeJS.Timeout;
-    private _lastWatchNotifyTime = 0;
-    private _watchStats: Map<string, { mtimeMs: number; size: number }> = new Map();
+    private _watchTimers: Map<string, NodeJS.Timeout> = new Map();
+    private _watchStats: Map<string, { mtimeMs: number; size: number; md5?: string }> = new Map();
+    private _utilProc: UtilityProcess | null = null;
+    private _pending = new Map<number, { resolve: (r: unknown) => void; reject: (e: Error) => void }>();
+    private _nextMsgId = 0;
+
+    private _ensure_proc() {
+        if (this._utilProc) return;
+        const procPath = path.join(__dirname, "stableProcess.js");
+        this._utilProc = utilityProcess.fork(procPath);
+        this._utilProc.on("message", (msg: any) => {
+            const p = this._pending.get(msg.id);
+            if (!p) return;
+            this._pending.delete(msg.id);
+            msg.error ? p.reject(new Error(msg.error)) : p.resolve(msg.result);
+        });
+        this._utilProc.on("exit", (code) => {
+            for (const [, p] of this._pending) {
+                p.reject(new Error(`Stable process exited: ${code}`));
+            }
+            this._pending.clear();
+            this._utilProc = null;
+        });
+    }
+
+    private _send<T = unknown>(type: string, data?: object): Promise<T> {
+        this._ensure_proc();
+        const id = this._nextMsgId++;
+        return new Promise<T>((resolve, reject) => {
+            this._pending.set(id, { resolve: resolve as (r: unknown) => void, reject });
+            this._utilProc?.postMessage({ id, type, ...data });
+        });
+    }
+
+    private _post(type: string, data?: object) {
+        this._ensure_proc();
+        this._utilProc?.postMessage({ id: -1, type, ...data });
+    }
 
     init(fpath: string) {
-        if (this.base_path === fpath && this._osu_db !== undefined) {
-            return;
-        }
+        if (this.base_path === fpath && this._utilProc) return;
         this.stop_watch();
         this.base_path = fpath;
-        this._collections = undefined;
-        this._osu_db = undefined;
-        this._scores = undefined;
+        this._post("init", { basePath: fpath });
         console.debug(`StableReader init: ${fpath}`);
     }
 
     invalidate_cache() {
-        this._osu_db = undefined;
-        this._collections = undefined;
-        this._scores = undefined;
+        this._post("invalidate_beatmaps");
+        this._post("invalidate_scores");
+        this._post("invalidate_collections");
     }
 
-    watch_files(onChanged: () => void) {
+    watch_files(
+        onBeatmapsChanged: () => void,
+        onScoresChanged: () => void,
+        onCollectionsChanged: () => void,
+        isMd5CheckEnabled: () => boolean,
+    ) {
         this.update_watch();
         this.stop_watch();
         if (!this.base_path) return;
         const dir = this.base_path;
-        const watchedFiles = new Set(["osu!.db", "collection.db", "scores.db"]);
+        const fileHandlers: Record<string, { invalidate: () => void; notify: () => void }> = {
+            "osu!.db": {
+                invalidate: () => {
+                    this._post("invalidate_beatmaps");
+                },
+                notify: onBeatmapsChanged,
+            },
+            "scores.db": {
+                invalidate: () => {
+                    this._post("invalidate_scores");
+                },
+                notify: onScoresChanged,
+            },
+            "collection.db": {
+                invalidate: () => {
+                    this._post("invalidate_collections");
+                },
+                notify: onCollectionsChanged,
+            },
+        };
+        const watchedFiles = new Set(Object.keys(fileHandlers));
         this._watchStats.clear();
         for (const filename of watchedFiles) {
             this._refreshWatchStats(dir, filename);
         }
         console.log("[READER] start watchFiles");
-        const debounced = () => {
-            if (this._watchDebounceTimer) clearTimeout(this._watchDebounceTimer);
-            this._watchDebounceTimer = setTimeout(() => {
-                const now = Date.now();
-                if (now - this._lastWatchNotifyTime < 5000) {
-                    return;
+        if (isMd5CheckEnabled()) {
+            void (async () => {
+                for (const filename of watchedFiles) {
+                    try {
+                        const newMd5 = await this._calculate_md5(pathJoin(dir, filename));
+                        const prev = this._watchStats.get(filename);
+                        if (prev && prev.md5 === undefined) prev.md5 = newMd5;
+                    } catch {}
                 }
-                this._lastWatchNotifyTime = now;
-                this.invalidate_cache();
-                console.log("[READER] notify file changed");
-                onChanged();
+            })();
+        }
+        const prevStatsForLog = new Map<string, { mtimeMs: number; size: number; md5?: string }>();
+        const debounce = (
+            filename: string,
+            prevSnapshot: { mtimeMs: number; size: number; md5?: string } | undefined,
+        ) => {
+            const existing = this._watchTimers.get(filename);
+            if (!existing) {
+                prevStatsForLog.set(filename, prevSnapshot ?? { mtimeMs: 0, size: 0 });
+            }
+            if (existing) clearTimeout(existing);
+            const timer = setTimeout(async () => {
+                this._watchTimers.delete(filename);
+                const handler = fileHandlers[filename];
+                if (handler) {
+                    const prevForLog = prevStatsForLog.get(filename);
+                    prevStatsForLog.delete(filename);
+                    const newStats = this._watchStats.get(filename);
+                    let logSuffix = "";
+                    if (isMd5CheckEnabled()) {
+                        const md5Result = await this._has_watch_file_md5_changed(dir, filename);
+                        if (!md5Result.changed) return;
+                        logSuffix = `, md5: ${md5Result.oldMd5 ?? "?"} > ${md5Result.newMd5}`;
+                    }
+                    const deltaMtime = prevForLog && newStats ? newStats.mtimeMs - prevForLog.mtimeMs : null;
+                    const deltaSize = prevForLog && newStats ? newStats.size - prevForLog.size : null;
+                    let logMsg = `[READER] notify ${filename} changed`;
+                    if (deltaMtime !== null && deltaSize !== null) {
+                        logMsg += `. mtime: ${deltaMtime >= 0 ? "+" : ""}${Math.round(deltaMtime)}, size: ${deltaSize >= 0 ? "+" : ""}${deltaSize}`;
+                    }
+                    logMsg += logSuffix;
+                    handler.invalidate();
+                    console.log(logMsg);
+                    handler.notify();
+                }
             }, 1500);
+            this._watchTimers.set(filename, timer);
         };
         try {
             const watcher = fs.watch(dir, { persistent: false }, (_, filename) => {
                 if (!filename || !watchedFiles.has(filename)) return;
+                const prevSnapshot = this._watchStats.get(filename);
                 if (!this._hasWatchFileChanged(dir, filename)) return;
-                debounced();
+                debounce(filename, prevSnapshot ? { ...prevSnapshot } : undefined);
             });
             this._watchers.push(watcher);
         } catch {}
     }
 
     stop_watch() {
-        if (this._watchDebounceTimer) {
-            clearTimeout(this._watchDebounceTimer);
-            this._watchDebounceTimer = undefined;
+        for (const [, timer] of this._watchTimers) {
+            clearTimeout(timer);
         }
+        this._watchTimers.clear();
         for (const w of this._watchers) {
             try {
                 w.close();
@@ -144,7 +198,7 @@ export default class StableReader extends SingletonBase {
         try {
             const stats = fs.statSync(filePath);
             const prev = this._watchStats.get(filename);
-            const next = { mtimeMs: stats.mtimeMs, size: stats.size };
+            const next = { mtimeMs: stats.mtimeMs, size: stats.size, md5: prev?.md5 };
             const changed = !prev || prev.mtimeMs !== next.mtimeMs || prev.size !== next.size;
             if (changed) {
                 this._watchStats.set(filename, next);
@@ -161,6 +215,38 @@ export default class StableReader extends SingletonBase {
 
     private update_watch() {
         // TODO: optimize this
+    }
+
+    private async _has_watch_file_md5_changed(
+        dir: string,
+        filename: string,
+    ): Promise<{ changed: boolean; oldMd5?: string; newMd5: string }> {
+        const filePath = pathJoin(dir, filename);
+        const errorResult = { changed: true, oldMd5: undefined, newMd5: "?" };
+        try {
+            const newMd5 = await this._calculate_md5(filePath);
+            const prev = this._watchStats.get(filename);
+            const oldMd5 = prev?.md5;
+            if (oldMd5 === newMd5) return { changed: false, oldMd5, newMd5 };
+            if (prev) {
+                prev.md5 = newMd5;
+            } else {
+                this._watchStats.set(filename, { mtimeMs: 0, size: 0, md5: newMd5 });
+            }
+            return { changed: true, oldMd5, newMd5 };
+        } catch {
+            return errorResult;
+        }
+    }
+
+    private _calculate_md5(filePath: string): Promise<string> {
+        return new Promise((resolve, reject) => {
+            const hash = crypto.createHash("md5");
+            const stream = fs.createReadStream(filePath);
+            stream.on("data", (data) => hash.update(data));
+            stream.on("end", () => resolve(hash.digest("hex")));
+            stream.on("error", reject);
+        });
     }
 
     get_path(tpath: PathType) {
@@ -183,406 +269,36 @@ export default class StableReader extends SingletonBase {
     }
 
     async beatmaps(offset: number = 0, limit: number = 10) {
-        if (this._osu_db !== undefined) {
-            return readWithOffset(this._osu_db.beatmaps, offset, limit);
-        }
-
-        const dp = this.get_path(PathType.Osu);
-        const exists = fs.existsSync(dp);
-        if (!exists) {
-            console.log(`[READER] osu file does not exist: ${dp}`);
-            return readWithOffset([], offset, limit);
-        }
-        console.time("[READER] Read osu!.db");
-        const buf = await fs.promises.readFile(dp);
-        console.timeEnd("[READER] Read osu!.db");
-
-        console.time("[READER] Parse osu!.db");
-        const versionParser = new Parser().uint32le("version");
-        const { version } = versionParser.parse(buf);
-
-        const parser_tp = new Parser().doublele("bpm").doublele("offset").uint8("inherited", bool_collector);
-
-        const parser_sr = new Parser().int32le("numStarRatings").array("starRatings", {
-            length: "numStarRatings",
-            type: new Parser()
-                .uint8("objType1")
-                .uint32le("mods")
-                .uint8("objType2")
-                .buffer("starRating", {
-                    length: () => (version >= 20250108 ? 4 : 8),
-                    formatter: (buffer: Buffer) => {
-                        if (version >= 20250108) {
-                            return buffer.readFloatLE(0);
-                        } else {
-                            return buffer.readDoubleLE(0);
-                        }
-                    },
-                }),
-        });
-        const parser_beatmap_info = new Parser()
-            .buffer("artist", nullable_string_collector)
-            .buffer("artistUnicode", nullable_string_collector)
-            .buffer("songTitle", nullable_string_collector)
-            .buffer("songTitleUnicode", nullable_string_collector)
-            .buffer("creatorName", nullable_string_collector)
-            .buffer("difficultyName", nullable_string_collector)
-            .buffer("audioFileName", nullable_string_collector)
-            .buffer("md5Hash", nullable_string_collector)
-            .buffer("osuFileName", nullable_string_collector)
-            .int8("rankedStatus")
-            .uint16le("numCircles")
-            .uint16le("numSliders")
-            .uint16le("numSpinners")
-            .uint64le("lastModificationTime", date_collector)
-            .floatle("ar")
-            .floatle("cs")
-            .floatle("hp")
-            .floatle("od")
-            .doublele("sliderMultiplier")
-            .nest("stdStarRatings", {
-                type: parser_sr,
-            })
-            .nest("taikoStarRatings", {
-                type: parser_sr,
-            })
-            .nest("ctbStarRatings", {
-                type: parser_sr,
-            })
-            .nest("maniaStarRatings", {
-                type: parser_sr,
-            })
-            .uint32le("drainSeconds")
-            .uint32le("totalMilliseconds")
-            .uint32le("previewMilliseconds")
-            .uint32le("numTimingPoints")
-            .array("timingPoints", {
-                length: "numTimingPoints",
-                type: parser_tp,
-            })
-            .uint32le("beatmapId")
-            .uint32le("beatmapSetId")
-            .uint32le("threadId")
-            .uint8("osuStandardGrade")
-            .uint8("taikoGrade")
-            .uint8("ctbGrade")
-            .uint8("maniaGrade")
-            .uint16("localOffset")
-            .floatle("stackLeniency")
-            .uint8("mode")
-            .buffer("source", nullable_string_collector)
-            .buffer("tags", nullable_string_collector)
-            .uint16("onlineOffset")
-            .buffer("titleFont", nullable_string_collector)
-            .uint8("unplayed", bool_collector)
-            .uint64le("lastPlayedTime", date_collector)
-            .uint8("isOsz2", bool_collector)
-            .buffer("path", nullable_string_collector)
-            .uint64le("lastOnlineCheckTime", date_collector)
-            .uint8("disableCustomSound", bool_collector)
-            .uint8("disableCustomSkin", bool_collector)
-            .uint8("disableStoryboard", bool_collector)
-            .uint8("disableVideo", bool_collector)
-            .uint8("visualOverride", bool_collector)
-            .uint32le("lastEditTime")
-            .uint8("scrollSpeed");
-
-        const parser = new Parser()
-            .uint32le("version")
-            .uint32le("folderCount")
-            .uint8("accountUnlocked", bool_collector)
-            .uint64le("unlockTime", date_collector)
-            .buffer("userName", nullable_string_collector)
-            .uint32le("beatmapCount")
-            .array("beatmaps", {
-                length: "beatmapCount",
-                type: parser_beatmap_info,
-            })
-            .uint32le("userType");
-
-        this._osu_db = parser.parse(buf);
-        console.log(`[READER] Total beatmaps: ${this._osu_db.beatmaps.length}`);
-        console.timeEnd("[READER] Parse osu!.db");
-        //this._osu_db.beatmaps = this._osu_db.beatmaps.slice(0, 10);
-        return readWithOffset(this._osu_db.beatmaps, offset, limit);
+        return this._send("beatmaps", { offset, limit });
     }
 
     async query_beatmaps(filter: StableBeatmapFilter, offset: number = 0, limit: number = 0) {
-        if (this._osu_db === undefined) {
-            await this.beatmaps(0, 1);
-        }
-        if (this._osu_db === undefined) {
-            return readWithOffset([], offset, Math.max(limit, 1));
-        }
-        let filtered: any[] = this._osu_db.beatmaps.filter((m: any) => m.beatmapId !== 0);
-
-        if (filter.title) {
-            const q = filter.title.toLowerCase();
-            filtered = filtered.filter(
-                (m: any) =>
-                    (m.songTitle ?? "").toLowerCase().includes(q) ||
-                    (m.songTitleUnicode ?? "").toLowerCase().includes(q),
-            );
-        }
-
-        if (filter.rankStatuses?.length) {
-            const set = new Set(filter.rankStatuses);
-            filtered = filtered.filter((m: any) => set.has(m.rankedStatus));
-        }
-
-        if (filter.starRatingMin !== undefined || filter.starRatingMax !== undefined) {
-            const min = filter.starRatingMin ?? 0;
-            const max = filter.starRatingMax ?? Number.MAX_VALUE;
-            filtered = filtered.filter((m: any) => {
-                const sr = m.stdStarRatings?.starRatings?.find((s: any) => s.mods === 0)?.starRating ?? 0;
-                return sr >= min && sr <= max;
-            });
-        }
-
-        if (filter.modes?.length) {
-            const set = new Set(filter.modes);
-            filtered = filtered.filter((m: any) => set.has(m.mode));
-        }
-
-        if (filter.includedHashes !== undefined) {
-            const set = new Set(filter.includedHashes);
-            filtered = filtered.filter((m: any) => set.has(m.md5Hash));
-        }
-
-        if (filter.excludedHashes !== undefined) {
-            const set = new Set(filter.excludedHashes);
-            filtered = filtered.filter((m: any) => !set.has(m.md5Hash));
-        }
-
-        const effectiveLimit = limit > 0 ? limit : filtered.length;
-        const slim = filtered.map((m: any) => ({
-            beatmapId: m.beatmapId,
-            beatmapSetId: m.beatmapSetId,
-            md5Hash: m.md5Hash,
-            rankedStatus: m.rankedStatus,
-            mode: m.mode,
-            starRating: m.stdStarRatings?.starRatings?.find((s: any) => s.mods === 0)?.starRating ?? 0,
-            artist: m.artist,
-            artistUnicode: m.artistUnicode,
-            songTitle: m.songTitle,
-            songTitleUnicode: m.songTitleUnicode,
-            difficultyName: m.difficultyName,
-            creatorName: m.creatorName,
-            osuStandardGrade: m.osuStandardGrade,
-            unplayed: m.unplayed,
-            tags: m.tags,
-            drainSeconds: m.drainSeconds,
-            lastPlayedTime: m.lastPlayedTime,
-            ar: m.ar,
-            cs: m.cs,
-            hp: m.hp,
-            od: m.od,
-            numCircles: m.numCircles,
-            numSliders: m.numSliders,
-            numSpinners: m.numSpinners,
-            sliderMultiplier: m.sliderMultiplier,
-            stackLeniency: m.stackLeniency,
-            source: m.source,
-        }));
-        return readWithOffset(slim, offset, effectiveLimit);
+        return this._send("query_beatmaps", { filter, offset, limit });
     }
 
-    count_beatmaps(): number {
-        return this._osu_db?.beatmaps?.filter((m: any) => m.beatmapId !== 0).length ?? 0;
+    count_beatmaps(): Promise<number> {
+        return this._send<number>("count_beatmaps");
     }
 
     async get_beatmap_detail(md5Hash: string): Promise<StableBeatmapDetail | null> {
-        if (this._osu_db === undefined) {
-            await this.beatmaps(0, 1);
-        }
-        if (!this._osu_db) return null;
-        const m = this._osu_db.beatmaps.find((b: any) => b.md5Hash === md5Hash);
-        if (!m) return null;
-        return { md5Hash: m.md5Hash, path: m.path, audioFileName: m.audioFileName, osuFileName: m.osuFileName };
+        return this._send<StableBeatmapDetail | null>("get_beatmap_detail", { md5Hash });
     }
 
     async get_beatmap_index(offset: number = 0, limit: number = 0) {
-        if (this._osu_db === undefined) {
-            await this.beatmaps(0, 1);
-        }
-        if (this._osu_db === undefined) {
-            return readWithOffset([], offset, Math.max(limit, 1));
-        }
-        const index = this._osu_db.beatmaps
-            .filter((m: any) => m.beatmapId !== 0)
-            .map((m: any) => ({
-                md5Hash: m.md5Hash,
-                beatmapSetId: m.beatmapSetId,
-                beatmapId: m.beatmapId,
-            }));
-        const effectiveLimit = limit > 0 ? limit : index.length;
-        return readWithOffset(index, offset, effectiveLimit);
+        return this._send("get_beatmap_index", { offset, limit });
     }
 
     async collections(offset: number = 0, limit: number = 10) {
-        if (this._collections !== undefined) {
-            return readWithOffset(this._collections.collections, offset, limit);
-        }
-
-        const dp = this.get_path(PathType.Collection);
-        const buf = await fs.promises.readFile(dp);
-
-        const parser = new Parser()
-            .uint32le("version")
-            .uint32le("collectionCount")
-            .array("collections", {
-                length: "collectionCount",
-                type: new Parser()
-                    .saveOffset("offset")
-                    .buffer("name", {
-                        readUntil: function (_item: any, buffer: Buffer) {
-                            if (this._readUntil === undefined) {
-                                const result = readNullableString(buffer);
-                                this._readUntil = result.newOffset;
-                                this._offset = 0;
-                            } else {
-                                this._offset++;
-                            }
-                            return this._offset === this._readUntil;
-                        },
-                        formatter: function (buffer: Buffer) {
-                            this._readUntil = undefined;
-                            return readNullableString(buffer).value;
-                        },
-                    })
-                    .uint32le("mapCount")
-                    .array("maps", {
-                        length: "mapCount",
-                        type: new Parser().buffer("checksum", {
-                            readUntil: function (_item: any, buffer: Buffer) {
-                                if (this._readUntil === undefined) {
-                                    const result = readNullableString(buffer);
-                                    this._readUntil = result.newOffset;
-                                    this._offset = 0;
-                                } else {
-                                    this._offset++;
-                                }
-                                return this._offset === this._readUntil;
-                            },
-                            formatter: (buffer: Buffer) => readNullableString(buffer).value,
-                        }),
-                    }),
-            });
-
-        this._collections = parser.parse(buf);
-        return readWithOffset(this._collections?.collections ?? [], offset, limit);
+        return this._send("collections", { offset, limit });
     }
 
-    set_collections(collections: IOsuCollection[]) {
-        if (this.base_path === undefined) {
-            throw new Error("StableReader has not been initialized.");
-        }
-        if (this._collections === undefined) {
-            throw new Error("StableReader's collections has not been initialized.");
-        }
-        const _collections: StableCollectionData[] = collections.map((collection: IOsuCollection) => {
-            return {
-                name: collection.name,
-                mapCount: collection.maps.length,
-                maps: collection.maps.map((map: string) => {
-                    return {
-                        checksum: map,
-                    };
-                }),
-            };
-        });
-        this._collections = {
-            version: this._collections.version,
-            collectionCount: _collections.length,
-            collections: _collections,
-        };
-        const buffers: Buffer[] = [];
-        const header = Buffer.alloc(8);
-        header.writeInt32LE(this._collections.version, 0);
-        header.writeInt32LE(this._collections.collectionCount, 4);
-        buffers.push(header);
-
-        for (const col of this._collections.collections) {
-            // name
-            buffers.push(writeNullableString(col.name));
-
-            // mapCount
-            const mapCountBuf = Buffer.alloc(4);
-            mapCountBuf.writeInt32LE(col.maps.length, 0);
-            buffers.push(mapCountBuf);
-
-            // maps
-            console.log(col.maps);
-
-            for (const map of col.maps) {
-                buffers.push(writeNullableString(map.checksum));
-            }
-        }
-        const buf = Buffer.concat(buffers);
-
-        // backup
-        backupFileBySha256(this.get_path(PathType.Collection), this.get_path(PathType.CollectionBackup));
-
-        // write
-        saveFile(buf, this.get_path(PathType.Collection));
-        return 1;
+    set_collections(collections: IOsuCollection[]): Promise<number> {
+        const collectionPath = this.get_path(PathType.Collection);
+        const backupPath = this.get_path(PathType.CollectionBackup);
+        return this._send<number>("set_collections", { collections, collectionPath, backupPath });
     }
 
     async scores(offset: number = 0, limit: number = 10) {
-        if (this._scores !== undefined) {
-            return readWithOffset(this._scores.beatmaps, offset, limit);
-        }
-
-        const dp = this.get_path(PathType.Scores);
-        const buf = await fs.promises.readFile(dp);
-
-        const parser_score = new Parser()
-            .uint8("ruleset")
-            .int32le("version")
-            .buffer("md5Hash", nullable_string_collector)
-            .buffer("userName", nullable_string_collector)
-            .buffer("replyHash", nullable_string_collector)
-            .uint16le("count300")
-            .uint16le("count100")
-            .uint16le("count50")
-            .uint16le("countGeki")
-            .uint16le("countKatu")
-            .uint16le("countMiss")
-            .int32le("totalScore")
-            .uint16le("maxCombo")
-            .uint8("perfect", bool_collector)
-            .int32le("mods")
-            .buffer("hpGraphString", nullable_string_collector)
-            .uint64le("date", date_collector)
-            .int32le("compressedReplay")
-            .int64le("legacyOnlineID")
-            .buffer("additionalModData", {
-                length: function () {
-                    const TARGET_MOD = 0x800000;
-                    return (this.mods & TARGET_MOD) !== 0 ? 8 : 0;
-                },
-                formatter: (buffer: Buffer) => {
-                    if (buffer.length === 0) return null;
-                    return buffer.readDoubleLE(0);
-                },
-            });
-        const parser_beatmap = new Parser()
-            .buffer("md5Hash", nullable_string_collector)
-            .uint32le("scoreCount")
-            .array("scores", {
-                length: "scoreCount",
-                type: parser_score,
-            });
-        const parser = new Parser().uint32le("version").uint32le("beatmapCount").array("beatmaps", {
-            length: "beatmapCount",
-            type: parser_beatmap,
-        });
-
-        this._scores = parser.parse(buf);
-        console.log(
-            `[READER] Score Version: ${this._scores.version}, Beatmap Count: ${this._scores.beatmapCount}, Score Count: ${this._scores.beatmapCount > 0 ? this._scores.beatmaps.map((beatmap: any) => beatmap.scoreCount).reduce((a: number, b: number) => a + b) : 0}`,
-        );
-
-        return readWithOffset(this._scores.beatmaps, offset, limit);
+        return this._send("scores", { offset, limit });
     }
 }

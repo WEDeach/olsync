@@ -8,8 +8,10 @@ import {
 import { IOsuCollection, OsuClients } from "../defines/types";
 import { IPC_RD_NAMES } from "../entrypoint/js/ipc/ns";
 import g from "../renderer/state";
-import { readAllWithOffset } from "./reader";
+import __ from "./i18n";
+import { readAllWithOffset, yieldToMain } from "./reader";
 import { ConfigKey } from "./typed/config";
+import { I18nStrings } from "./typed/i18n";
 
 const PAGE_SIZE = 500;
 
@@ -40,7 +42,10 @@ export type OsuBeatmap = {
     lastPlayedTime: Date;
     tags: string;
     source: string;
-    starRating: number;
+    srStd: number;
+    srTaiko: number;
+    srCtb: number;
+    srMania: number;
 };
 
 export type OsuScore = StableScore;
@@ -54,6 +59,9 @@ class OsuDataManager {
     private _lazerReady = false;
     private _watching = false;
     private _backgroundRefreshing = false;
+    private _dirtyBeatmaps = false;
+    private _dirtyScores = false;
+    private _dirtyCollections = false;
     private _subscribers = new Set<DataUpdateCallback>();
 
     private _beatmaps: OsuBeatmap[] | null = null;
@@ -64,7 +72,9 @@ class OsuDataManager {
 
     private _resetStable() {
         if (this._watching) {
-            window.olsCore.removeListener(IPC_RD_NAMES.STABLE_CHANGED, this._onStableChanged);
+            window.olsCore.removeListener(IPC_RD_NAMES.STABLE_BEATMAPS_CHANGED, this._onBeatmapsChanged);
+            window.olsCore.removeListener(IPC_RD_NAMES.STABLE_SCORES_CHANGED, this._onScoresChanged);
+            window.olsCore.removeListener(IPC_RD_NAMES.STABLE_COLLECTIONS_CHANGED, this._onCollectionsChanged);
             this._watching = false;
         }
         this._stableReady = false;
@@ -121,25 +131,63 @@ class OsuDataManager {
         });
     }
 
-    private _onStableChanged = async () => {
+    private _onBeatmapsChanged = () => {
+        this._dirtyBeatmaps = true;
+        this._runRefreshLoop();
+    };
+
+    private _onScoresChanged = () => {
+        this._dirtyScores = true;
+        this._runRefreshLoop();
+    };
+
+    private _onCollectionsChanged = () => {
+        this._dirtyCollections = true;
+        this._runRefreshLoop();
+    };
+
+    private async _runRefreshLoop() {
         if (this._backgroundRefreshing) return;
         this._backgroundRefreshing = true;
         try {
-            this.invalidateData();
-            await this.getBeatmaps();
-            await this.getScores();
-            await this.getCollections();
+            while (this._dirtyBeatmaps || this._dirtyScores || this._dirtyCollections) {
+                if (this._dirtyBeatmaps) {
+                    this._dirtyBeatmaps = false;
+                    this._beatmaps = null;
+                    this._beatmapIndex = null;
+                    g.setLoading(true, __(I18nStrings.MAIN_SRS_READING_LOCAL));
+                    await yieldToMain();
+                    await this.getBeatmaps();
+                }
+                if (this._dirtyScores) {
+                    this._dirtyScores = false;
+                    this._scores = null;
+                    g.setLoading(true, __(I18nStrings.MAIN_SRS_READING_SCORES));
+                    await yieldToMain();
+                    await this.getScores();
+                }
+                if (this._dirtyCollections) {
+                    this._dirtyCollections = false;
+                    this._stableCollections = null;
+                    g.setLoading(true, __(I18nStrings.MAIN_SRS_READING_COLLECTIONS));
+                    await yieldToMain();
+                    await this.getCollections();
+                }
+            }
             this._notify();
         } finally {
             this._backgroundRefreshing = false;
+            g.setLoading(false);
         }
-    };
+    }
 
     async init(): Promise<void> {
         await this._ensureStable();
         if (!this._watching) {
             await window.olsCore.startStableWatch();
-            window.olsCore.on(IPC_RD_NAMES.STABLE_CHANGED, this._onStableChanged);
+            window.olsCore.on(IPC_RD_NAMES.STABLE_BEATMAPS_CHANGED, this._onBeatmapsChanged);
+            window.olsCore.on(IPC_RD_NAMES.STABLE_SCORES_CHANGED, this._onScoresChanged);
+            window.olsCore.on(IPC_RD_NAMES.STABLE_COLLECTIONS_CHANGED, this._onCollectionsChanged);
             this._watching = true;
         }
         await this.getBeatmaps();
@@ -150,8 +198,12 @@ class OsuDataManager {
     async getBeatmaps(filter?: StableBeatmapFilter): Promise<OsuBeatmap[]> {
         await this._ensureStable();
         if (!this._beatmaps) {
-            const result = await window.olsCore.queryStableBeatmaps({}, 0, 0);
-            this._beatmaps = result.data as OsuBeatmap[];
+            const first = await window.olsCore.queryStableBeatmaps({}, 0, PAGE_SIZE);
+            const all = await readAllWithOffset(
+                (offset, limit) => window.olsCore.queryStableBeatmaps({}, offset, limit),
+                first,
+            );
+            this._beatmaps = all.data as OsuBeatmap[];
         }
         if (!filter || Object.keys(filter).length === 0) {
             return this._beatmaps;
@@ -169,8 +221,10 @@ class OsuDataManager {
                     async (offset, limit) => (await window.olsCore.getScores(OsuClients.Stable, offset, limit)) as any,
                     raw,
                 );
+                let count = 0;
                 for (const s of all.data as StableScoreBeatmapData[]) {
                     map.set(s.md5Hash, s.scores);
+                    if (++count % 500 === 0) await yieldToMain();
                 }
             }
             this._scores = map;
@@ -255,11 +309,15 @@ function applyBeatmapFilter(maps: OsuBeatmap[], filter: StableBeatmapFilter): Os
     }
     if (filter.starRatingMin != null) {
         const min = filter.starRatingMin;
-        result = result.filter((m) => m.starRating >= min);
+        result = result.filter(
+            (m) => (m.mode === 1 ? m.srTaiko : m.mode === 2 ? m.srCtb : m.mode === 3 ? m.srMania : m.srStd) >= min,
+        );
     }
     if (filter.starRatingMax != null) {
         const max = filter.starRatingMax;
-        result = result.filter((m) => m.starRating <= max);
+        result = result.filter(
+            (m) => (m.mode === 1 ? m.srTaiko : m.mode === 2 ? m.srCtb : m.mode === 3 ? m.srMania : m.srStd) <= max,
+        );
     }
     if (filter.modes?.length) {
         const set = new Set(filter.modes);

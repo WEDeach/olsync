@@ -2,6 +2,7 @@ import { BrowserWindow, ipcMain } from "electron";
 import { StableBeatmapFilter } from "../../../defines/stable_structs";
 import { IOsuCollection, OsuClients } from "../../../defines/types";
 import SharedManager from "../../../shared/sharedManager";
+import { ConfigKey } from "../../../utils/typed/config";
 import { IPC_RD_NAMES } from "./ns";
 
 export function register() {
@@ -32,9 +33,13 @@ export function register() {
     });
 
     ipcMain.handle(IPC_RD_NAMES.START_STABLE_WATCH, async (_) => {
-        SharedManager.stableReader.watch_files(() => {
-            BrowserWindow.getAllWindows()[0]?.webContents.send(IPC_RD_NAMES.STABLE_CHANGED);
-        });
+        const win = () => BrowserWindow.getAllWindows()[0]?.webContents;
+        SharedManager.stableReader.watch_files(
+            () => win()?.send(IPC_RD_NAMES.STABLE_BEATMAPS_CHANGED),
+            () => win()?.send(IPC_RD_NAMES.STABLE_SCORES_CHANGED),
+            () => win()?.send(IPC_RD_NAMES.STABLE_COLLECTIONS_CHANGED),
+            () => Boolean(SharedManager.config.get(ConfigKey.EXPERIMENT_DB_MD5_CHECK)),
+        );
     });
 
     ipcMain.handle(

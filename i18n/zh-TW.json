@@ -26,6 +26,9 @@
             "scores": {
                 "reading": "讀取本地分數資料..."
             },
+            "collections": {
+                "reading": "讀取本地收藏資料..."
+            },
             "online": {
                 "reading": "讀取線上紀錄...",
                 "success": "讀取線上紀錄成功!",
@@ -112,7 +115,9 @@
             "select_dir": "選擇資料夾",
             "select_file": "選擇檔案",
             "others": "其他設定",
-            "use_yinmo_chance": "使用 YinMoChance 來計算機率結果"
+            "use_yinmo_chance": "使用 YinMoChance 來計算機率結果",
+            "check_file_by_md5": "使用MD5校驗檢查檔案變更",
+            "pack_ruleset_by_nm": "使用NM摘要檢查圖包Mod"
         },
         "name": "名稱",
         "author": "作者",
@@ -254,7 +259,9 @@
                 "load": "套用",
                 "export": "導出 JSON",
                 "import": "導入 JSON",
-                "import_title": "選擇設定檔 JSON"
+                "import_title": "選擇設定檔 JSON",
+                "saved": "設定檔已儲存",
+                "active": "使用中"
             }
         }
     },

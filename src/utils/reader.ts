@@ -1,5 +1,7 @@
 import { DefaultObject, RealmObject, Results } from "realm/dist/public-types/namespace";
 
+export const yieldToMain = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
+
 export type DefaultObjectWithOffset = {
     offset: number;
     next_offset: number;
@@ -49,6 +51,7 @@ export async function readAllWithOffset(
             d[i++] = item;
         }
         next_offset = result.next_offset;
+        await yieldToMain();
     }
     offset.data = d;
     offset.next_offset = next_offset;

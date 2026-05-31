@@ -30,6 +30,9 @@ export enum IPC_RD_NAMES {
     GET_SCORES = "ipc:rd:get_scores",
     SET_SCORES = "ipc:rd:set_scores",
     STABLE_CHANGED = "ipc:rd:stable_changed",
+    STABLE_BEATMAPS_CHANGED = "ipc:rd:stable_beatmaps_changed",
+    STABLE_SCORES_CHANGED = "ipc:rd:stable_scores_changed",
+    STABLE_COLLECTIONS_CHANGED = "ipc:rd:stable_collections_changed",
     START_STABLE_WATCH = "ipc:rd:start_stable_watch",
     QUERY_BEATMAPS = "ipc:rd:query_beatmaps",
     COUNT_BEATMAPS = "ipc:rd:count_beatmaps",
@@ -73,6 +76,12 @@ export enum IPC_LA_NAMES {
     FETCH_LANGS = "ipc:la:fetch_langs",
     GET_LANG = "ipc:la:get_lang",
     I18N_CHANGED = "ipc:la:i18n_changed",
+}
+
+// TRACKER
+export enum IPC_TR_NAMES {
+    GET_USER_SUMMARY = "ipc:tr:get_user_summary",
+    SAVE_USER_SUMMARY = "ipc:tr:save_user_summary",
 }
 
 // DL
