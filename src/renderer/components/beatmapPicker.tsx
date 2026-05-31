@@ -25,7 +25,7 @@ import {
     Tooltip,
     Typography,
 } from "@mui/material";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { AutoSizer, List } from "react-virtualized";
 import { RankedStatus } from "../../api/v2/types/api_resp";
 import { StableBeatmapDetail, StableBeatmapFilter } from "../../defines/stable_structs";
@@ -33,6 +33,7 @@ import { IOsuCollection } from "../../defines/types";
 import { getYinMoChanceExperiment } from "../../utils/experiments";
 import __ from "../../utils/i18n";
 import { OsuBeatmap, OsuData, OsuScore } from "../../utils/osu";
+import { yieldToMain } from "../../utils/reader";
 import { formatDateTime, formatTimeAgo } from "../../utils/time";
 import { ConfigKey } from "../../utils/typed/config";
 import { I18nStrings } from "../../utils/typed/i18n";
@@ -117,16 +118,18 @@ const formatDrain = (secs: number) => {
 const extractHashes = (maps: any[]): Set<string> =>
     new Set(maps.map((m: any) => (typeof m === "string" ? m : m.checksum)));
 
-interface IBeatmapResultDrawerProps {
+export interface IBeatmapResultDrawerProps {
     map: IBeatmapData | null;
+    displaySR: number;
     osuPath: string;
     collections: IOsuCollection[];
     scoresByHash: Map<string, OsuScore[]>;
     onClose: () => void;
 }
 
-const BeatmapResultDrawer: React.FC<IBeatmapResultDrawerProps> = ({
+export const BeatmapResultDrawer: React.FC<IBeatmapResultDrawerProps> = ({
     map,
+    displaySR,
     osuPath,
     collections,
     scoresByHash,
@@ -300,7 +303,7 @@ const BeatmapResultDrawer: React.FC<IBeatmapResultDrawerProps> = ({
                                 sx={{ color: "rgba(255,255,255,0.85)", textShadow: "0 1px 3px rgba(0,0,0,0.8)" }}
                             >
                                 [{map.difficultyName}] &nbsp;&nbsp; {map.creatorName} &nbsp;&nbsp; ★{" "}
-                                {map.starRating.toFixed(2)}
+                                {displaySR.toFixed(2)}
                             </Typography>
                         </Box>
                     </Box>
@@ -595,6 +598,17 @@ const evalDateCond = (date: Date, op: string, value: string): boolean => {
     return false;
 };
 
+const get_effective_sr = (m: IBeatmapData, modes: Set<number> | null): number => {
+    const native = m.mode === 1 ? m.srTaiko : m.mode === 2 ? m.srCtb : m.mode === 3 ? m.srMania : m.srStd;
+    if (!modes || modes.size === 0 || modes.has(m.mode)) return native;
+    if (m.mode === 0) {
+        if (modes.has(1)) return m.srTaiko;
+        if (modes.has(2)) return m.srCtb;
+        if (modes.has(3)) return m.srMania;
+    }
+    return native;
+};
+
 const filterMaps = (
     maps: IBeatmapData[],
     generalFilter: TFilterSetting,
@@ -640,13 +654,20 @@ const filterMaps = (
         const sr = generalFilter[FilterType.StarRating];
         const [min = 0, max = 15] = Array.isArray(sr) && sr.length === 2 ? sr : [0, 15];
         if (min !== 0 || max !== 15) {
-            result = result.filter((m) => m.starRating >= min && m.starRating <= max);
+            const selectedModes: Set<number> | null =
+                generalFilter[FilterType.Mode] && !(generalFilter[FilterType.Mode] as any[]).includes("all")
+                    ? new Set((generalFilter[FilterType.Mode] as number[]).map(Number))
+                    : null;
+            result = result.filter((m) => {
+                const eSR = get_effective_sr(m, selectedModes);
+                return eSR >= min && eSR <= max;
+            });
         }
     }
 
     if (generalFilter[FilterType.Mode] && !(generalFilter[FilterType.Mode] as any[]).includes("all")) {
         const modes = new Set((generalFilter[FilterType.Mode] as number[]).map(Number));
-        result = result.filter((m) => modes.has(m.mode));
+        result = result.filter((m) => modes.has(m.mode) || m.mode === 0);
     }
 
     return result;
@@ -923,15 +944,28 @@ export const BeatmapPickerView: React.FC<IBeatmapPickerViewProps> = () => {
     } | null>(null);
     const loadedHistoryRef = useRef<IPickerHistory[] | null>(null);
     const [totalBeatmapCount, setTotalBeatmapCount] = useState(0);
-    const filterStateRef = useRef({ generalFilter, includedCollections, excludedCollections });
+    const filterStateRef = useRef({
+        generalFilter,
+        includedCollections,
+        excludedCollections,
+        advancedSettings,
+        activeProfileId,
+    });
+    const dirtyRef = useRef(false);
 
     useEffect(() => {
         historyRef.current = history;
     }, [history]);
 
     useEffect(() => {
-        filterStateRef.current = { generalFilter, includedCollections, excludedCollections };
-    }, [generalFilter, includedCollections, excludedCollections]);
+        filterStateRef.current = {
+            generalFilter,
+            includedCollections,
+            excludedCollections,
+            advancedSettings,
+            activeProfileId,
+        };
+    }, [generalFilter, includedCollections, excludedCollections, advancedSettings, activeProfileId]);
 
     useEffect(() => {
         const el = rollAreaRef.current;
@@ -961,6 +995,11 @@ export const BeatmapPickerView: React.FC<IBeatmapPickerViewProps> = () => {
     useEffect(() => {
         if (!profileLoaded || initialSaveGuard.current) return;
         if (isSameProfile()) return;
+        if (activePanel !== null) {
+            dirtyRef.current = true;
+            return;
+        }
+        dirtyRef.current = false;
         window.olsCore.savePickerProfile(activeProfileId, {
             name: activeProfileId,
             generalFilter,
@@ -968,7 +1007,29 @@ export const BeatmapPickerView: React.FC<IBeatmapPickerViewProps> = () => {
             excludedCollections,
             advancedSettings,
         });
+        g.setNotify({ message: __(I18nStrings.MAIN_PICKER_PROFILE_SAVED), severity: "success" });
     }, [generalFilter, includedCollections, excludedCollections, advancedSettings, activeProfileId]);
+
+    useEffect(() => {
+        if (activePanel !== null) return;
+        if (!profileLoaded || !dirtyRef.current) return;
+        dirtyRef.current = false;
+        const {
+            generalFilter: gf,
+            includedCollections: inc,
+            excludedCollections: exc,
+            advancedSettings: adv,
+            activeProfileId: pid,
+        } = filterStateRef.current;
+        window.olsCore.savePickerProfile(pid, {
+            name: pid,
+            generalFilter: gf,
+            includedCollections: inc,
+            excludedCollections: exc,
+            advancedSettings: adv,
+        });
+        g.setNotify({ message: __(I18nStrings.MAIN_PICKER_PROFILE_SAVED), severity: "success" });
+    }, [activePanel]);
 
     useEffect(() => {
         if (!profileLoaded || initialSaveGuard.current) return;
@@ -1056,6 +1117,7 @@ export const BeatmapPickerView: React.FC<IBeatmapPickerViewProps> = () => {
             setState(IBPState.Loading);
             OsuData.invalidate();
             g.setLoading(true, __(I18nStrings.MAIN_SRS_READING_LOCAL));
+            await yieldToMain();
             await OsuData.init();
             await applyFromCache();
             setState(IBPState.Loaded);
@@ -1084,9 +1146,16 @@ export const BeatmapPickerView: React.FC<IBeatmapPickerViewProps> = () => {
     const [showFilteredList, setShowFilteredList] = useState(false);
     const [pickedMap, setPickedMap] = useState<IBeatmapData | null>(null);
 
+    const selectedModesSet = useMemo((): Set<number> | null => {
+        const mf = generalFilter[FilterType.Mode];
+        if (!mf || (mf as any[]).includes("all")) return null;
+        return new Set((mf as number[]).map(Number));
+    }, [generalFilter]);
+
+    const deferredMaps = useDeferredValue(maps);
     const filteredMaps = useMemo(
-        () => (state === IBPState.Loaded ? filterMaps(maps, generalFilter, [], [], []) : []),
-        [state, maps, generalFilter],
+        () => (state === IBPState.Loaded ? filterMaps(deferredMaps, generalFilter, [], [], []) : []),
+        [state, deferredMaps, generalFilter],
     );
 
     const filteredPool = useMemo(() => {
@@ -1155,6 +1224,7 @@ export const BeatmapPickerView: React.FC<IBeatmapPickerViewProps> = () => {
         await window.olsCore.savePickerProfile(name, profile);
         setProfiles(await window.olsCore.listPickerProfiles());
         setNewProfileName("");
+        g.setNotify({ message: __(I18nStrings.MAIN_PICKER_PROFILE_SAVED), severity: "success" });
     };
 
     const onLoadProfile = async (profileId: string) => {
@@ -1218,6 +1288,7 @@ export const BeatmapPickerView: React.FC<IBeatmapPickerViewProps> = () => {
         <>
             <BeatmapResultDrawer
                 map={pickedMap}
+                displaySR={pickedMap ? get_effective_sr(pickedMap, selectedModesSet) : 0}
                 osuPath={g.config?.[ConfigKey.PATH_STABLE_DIR] ?? ""}
                 collections={collections}
                 scoresByHash={scoresByHash}
@@ -1300,7 +1371,7 @@ export const BeatmapPickerView: React.FC<IBeatmapPickerViewProps> = () => {
                                                 {row.map.difficultyName}
                                             </Box>
                                             <Box sx={{ flex: "0 0 12%", textAlign: "right", pr: 1 }}>
-                                                {row.map.starRating.toFixed(2)}
+                                                {get_effective_sr(row.map, selectedModesSet).toFixed(2)}
                                             </Box>
                                             <Box sx={{ flex: "0 0 18%", textAlign: "right" }}>
                                                 {row.probability.toFixed(3)}%
@@ -1592,6 +1663,7 @@ export const BeatmapPickerView: React.FC<IBeatmapPickerViewProps> = () => {
             >
                 <Box sx={{ display: activePanel === "filter" || activePanel === "collection" ? "block" : "none" }}>
                     <BeatmapPickerFilterPanel
+                        key={`${activeProfileId}-${String(profileLoaded)}`}
                         collections={collections}
                         activeSection={activePanel === "collection" ? "collection" : "filter"}
                         generalFilter={generalFilter}
@@ -1685,13 +1757,21 @@ export const BeatmapPickerView: React.FC<IBeatmapPickerViewProps> = () => {
                                         px: 1,
                                         py: 0.5,
                                         border: "1px solid",
-                                        borderColor: "divider",
+                                        borderColor: profileId === activeProfileId ? "primary.main" : "divider",
                                         borderRadius: 1,
                                     }}
                                 >
                                     <Typography variant="body2" sx={{ flexGrow: 1 }} noWrap>
                                         {profileId}
                                     </Typography>
+                                    {profileId === activeProfileId && (
+                                        <Chip
+                                            label={__(I18nStrings.MAIN_PICKER_PROFILE_ACTIVE)}
+                                            size="small"
+                                            color="primary"
+                                            variant="outlined"
+                                        />
+                                    )}
                                     <Button
                                         size="small"
                                         variant="contained"

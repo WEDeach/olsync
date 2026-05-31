@@ -17,7 +17,11 @@ import { Observer } from "mobx-react";
 import React, { useEffect, useState } from "react";
 import { getApiDownloadLink, getApiPreDelayMs } from "../../utils/api";
 import { getDelayMs } from "../../utils/download";
-import { getYinMoChanceExperiment } from "../../utils/experiments";
+import {
+    getDbMd5CheckExperiment,
+    getPackRulesetByNmExperiment,
+    getYinMoChanceExperiment,
+} from "../../utils/experiments";
 import __ from "../../utils/i18n";
 import { ConfigKey } from "../../utils/typed/config";
 import { I18nStrings } from "../../utils/typed/i18n";
@@ -87,7 +91,7 @@ export const SettingsDrawer: React.FC = () => {
                                     defaultValue={dlink}
                                     onChange={(e) => g.saveConfig(ConfigKey.API_DLINK, e.target.value)}
                                 />
-                                <Stack direction="row" spacing={1}>
+                                <Stack direction="row" spacing={2}>
                                     <TextField
                                         label={__(I18nStrings.MAIN_SETTINGS_API_DELAY)}
                                         variant="outlined"
@@ -111,12 +115,26 @@ export const SettingsDrawer: React.FC = () => {
                                 <Divider textAlign="left">
                                     <Typography variant="subtitle2">{__(I18nStrings.MAIN_SETTINGS_OTHERS)}</Typography>
                                 </Divider>
-                                <Stack direction="row" spacing={1}>
+                                <Stack direction="column" spacing={1}>
                                     <FormControlLabel
                                         control={<Switch defaultChecked={getYinMoChanceExperiment()} />}
                                         label={__(I18nStrings.MAIN_SETTINGS_USE_YINMO_CHANCE)}
                                         onChange={(_, checked) =>
                                             g.saveConfig(ConfigKey.EXPERIMENT_YINMO_CHANCE, Boolean(checked))
+                                        }
+                                    />
+                                    <FormControlLabel
+                                        control={<Switch defaultChecked={getDbMd5CheckExperiment()} />}
+                                        label={__(I18nStrings.MAIN_SETTINGS_CHECK_FILE_BY_MD5)}
+                                        onChange={(_, checked) =>
+                                            g.saveConfig(ConfigKey.EXPERIMENT_DB_MD5_CHECK, Boolean(checked))
+                                        }
+                                    />
+                                    <FormControlLabel
+                                        control={<Switch defaultChecked={getPackRulesetByNmExperiment()} />}
+                                        label={__(I18nStrings.MAIN_SETTINGS_PACK_RULESET_BY_NM)}
+                                        onChange={(_, checked) =>
+                                            g.saveConfig(ConfigKey.EXPERIMENT_PACK_RULESET_BY_NM, Boolean(checked))
                                         }
                                     />
                                 </Stack>

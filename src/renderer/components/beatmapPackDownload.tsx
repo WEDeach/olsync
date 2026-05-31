@@ -17,6 +17,7 @@ import { BeatmapPack, RespBeatmapPack } from "../../api/v2/types/api_resp";
 import { OsuModes } from "../../defines/types";
 import { getApiDownloadLink, getApiPreDelayMs } from "../../utils/api";
 import { GetDLOptionByDirect, GetDLOptionByFDM, GetDLOptionByRows } from "../../utils/download";
+import { getPackRulesetByNmExperiment } from "../../utils/experiments";
 import __ from "../../utils/i18n";
 import { OsuData } from "../../utils/osu";
 import { sleep } from "../../utils/time";
@@ -27,6 +28,8 @@ import { DataViewer } from "./dataViewer";
 import { IPropertyWithName } from "./table";
 
 export interface IBeatmapPackDownloadViewProps {}
+
+const MODE_NAME_MAP: Record<string, string> = { "0": "osu", "1": "taiko", "2": "fruits", "3": "mania" };
 
 export type DateRangeType = "7d" | "30d" | "6m" | "all";
 
@@ -319,12 +322,33 @@ export const BeatmapPackDownloadView: React.FC<IBeatmapPackDownloadViewProps> = 
                     if (response.beatmap_packs) {
                         let filteredPacks = filterPacksByDate(response.beatmap_packs, dateRange);
                         if (gameModes && !gameModes.includes("all")) {
-                            const incStd = gameModes.includes(0);
+                            const useNmCheck = getPackRulesetByNmExperiment();
+                            const dateFilteredPacks = filteredPacks;
                             filteredPacks = filteredPacks.filter(
                                 (pack) =>
-                                    ((pack.ruleset_id === null || pack.ruleset_id === undefined) && incStd) ||
-                                    (pack.ruleset_id && gameModes.includes(pack.ruleset_id)),
+                                    (pack.ruleset_id !== null &&
+                                        (gameModes.includes(pack.ruleset_id) ||
+                                            gameModes.includes(String(pack.ruleset_id)))) ||
+                                    (pack.ruleset_id === null && !useNmCheck),
                             );
+                            if (useNmCheck) {
+                                const selectedModeNames = new Set(
+                                    gameModes.map((m: any) => MODE_NAME_MAP[String(m)]).filter(Boolean),
+                                );
+                                const nullPacks = dateFilteredPacks.filter((p) => p.ruleset_id === null);
+                                for (const pack of nullPacks) {
+                                    if (aborter.signal.aborted) break;
+                                    const info = await window.olsCore.getBeatmapPack(pack.tag);
+                                    if ("error" in info) continue;
+                                    if (info.cached !== true) await sleep(getApiPreDelayMs(), aborter.signal);
+                                    const hasMatch = info.beatmapsets.some((bs: any) =>
+                                        (bs.nominations_summary?.eligible_main_rulesets ?? []).some((r: string) =>
+                                            selectedModeNames.has(r),
+                                        ),
+                                    );
+                                    if (hasMatch) filteredPacks.push(pack);
+                                }
+                            }
                         }
                         if (filteredPacks.length === 0) {
                             hasNext = false;

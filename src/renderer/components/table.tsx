@@ -59,6 +59,34 @@ export const Table = observer(
         };
 
         const [scrollTop, setScrollTop] = useState(0);
+        const [sortState, setSortState] = useState<{ key: string; order: "asc" | "desc" } | null>(null);
+
+        const handleColumnSort = (key: string) => {
+            setSortState((prev) => {
+                if (prev?.key !== key) return { key, order: "asc" };
+                if (prev.order === "asc") return { key, order: "desc" };
+                return null;
+            });
+        };
+
+        const sortedRows = useMemo(() => {
+            if (!sortState) return rows;
+            return [...rows].sort((a, b) => {
+                const aRaw = a[sortState.key] as any;
+                const bRaw = b[sortState.key] as any;
+                const aVal = aRaw && typeof aRaw === "object" && "value" in aRaw ? aRaw.value : aRaw;
+                const bVal = bRaw && typeof bRaw === "object" && "value" in bRaw ? bRaw.value : bRaw;
+                let comp: number;
+                if (typeof aVal === "boolean" && typeof bVal === "boolean") {
+                    comp = (bVal ? 1 : 0) - (aVal ? 1 : 0);
+                } else {
+                    const aStr = aVal == null ? "" : String(aVal);
+                    const bStr = bVal == null ? "" : String(bVal);
+                    comp = aStr.localeCompare(bStr);
+                }
+                return sortState.order === "asc" ? comp : -comp;
+            });
+        }, [rows, sortState]);
 
         const visibleRange = useMemo(() => {
             const headerHeight = 56;
@@ -66,34 +94,81 @@ export const Table = observer(
 
             const startIndex = Math.floor(scrollTop / rowHeight);
             const visibleCount = Math.ceil(availableHeight / rowHeight) + 2;
-            const endIndex = Math.min(startIndex + visibleCount, rows.length);
+            const endIndex = Math.min(startIndex + visibleCount, sortedRows.length);
 
             return { startIndex, endIndex, visibleCount };
-        }, [scrollTop, height, rowHeight, rows.length]);
+        }, [scrollTop, height, rowHeight, sortedRows.length]);
 
-        const visibleRows = rows.slice(visibleRange.startIndex, visibleRange.endIndex);
+        const visibleRows = sortedRows.slice(visibleRange.startIndex, visibleRange.endIndex);
 
         return (
             <TableContainer sx={{ height: height, width: width }} component={Paper} onScroll={onScroll}>
                 <MTable stickyHeader>
                     <TableHead>
                         <TableRow>
-                            {heads.map((property) => (
-                                <TableCell key={property.name}>
-                                    {property.checkbox_toggler && (
-                                        <FormControlLabel
-                                            value="end"
-                                            control={<Checkbox />}
-                                            label={property.name}
-                                            checked={property.checkbox_toggler?.checked}
-                                            onChange={() =>
-                                                property.checkbox_toggler?.callback(!property.checkbox_toggler?.checked)
-                                            }
-                                        />
-                                    )}
-                                    {property.name}
-                                </TableCell>
-                            ))}
+                            {heads.map((property) => {
+                                const colKey = property.key ?? (typeof property.name === "string" ? property.name : "");
+                                const isSortable = colKey !== "";
+                                const isActivelySorted = isSortable && sortState?.key === colKey;
+                                const sortButton = isSortable && (
+                                    <button
+                                        type="button"
+                                        style={{
+                                            cursor: "pointer",
+                                            userSelect: "none",
+                                            background: "none",
+                                            border: "none",
+                                            padding: 0,
+                                            font: "inherit",
+                                            color: "inherit",
+                                        }}
+                                        onClick={() => handleColumnSort(colKey)}
+                                    >
+                                        {property.name}
+                                        {isActivelySorted ? (
+                                            <span style={{ marginLeft: 4 }}>
+                                                {sortState?.order === "asc" ? "↑" : "↓"}
+                                            </span>
+                                        ) : (
+                                            <span className="sort-icon" style={{ marginLeft: 4 }}>
+                                                ⇅
+                                            </span>
+                                        )}
+                                    </button>
+                                );
+                                return (
+                                    <TableCell
+                                        key={property.name}
+                                        sx={
+                                            isSortable
+                                                ? {
+                                                      "& .sort-icon": { visibility: "hidden" },
+                                                      "&:hover .sort-icon": { visibility: "visible" },
+                                                  }
+                                                : undefined
+                                        }
+                                    >
+                                        {property.checkbox_toggler ? (
+                                            <div style={{ display: "flex", alignItems: "center" }}>
+                                                <FormControlLabel
+                                                    value="end"
+                                                    control={<Checkbox />}
+                                                    label={property.name}
+                                                    checked={property.checkbox_toggler?.checked}
+                                                    onChange={() =>
+                                                        property.checkbox_toggler?.callback(
+                                                            !property.checkbox_toggler?.checked,
+                                                        )
+                                                    }
+                                                />
+                                                {sortButton}
+                                            </div>
+                                        ) : (
+                                            sortButton
+                                        )}
+                                    </TableCell>
+                                );
+                            })}
                         </TableRow>
                     </TableHead>
                     <TableBody>
@@ -120,10 +195,10 @@ export const Table = observer(
                                 </TableRow>
                             );
                         })}
-                        {visibleRange.endIndex < rows.length && (
+                        {visibleRange.endIndex < sortedRows.length && (
                             <TableRow
                                 style={{
-                                    height: (rows.length - visibleRange.endIndex) * rowHeight,
+                                    height: (sortedRows.length - visibleRange.endIndex) * rowHeight,
                                 }}
                             >
                                 <TableCell colSpan={heads.length} sx={{ border: 0, padding: 0 }} />
