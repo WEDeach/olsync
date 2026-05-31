@@ -8,6 +8,7 @@ import {
     IPC_FS_NAMES,
     IPC_LA_NAMES,
     IPC_RD_NAMES,
+    IPC_TR_NAMES,
     IPC_UP_NAMES,
 } from "./ipc/ns";
 
@@ -111,4 +112,8 @@ contextBridge.exposeInMainWorld("olsCore", {
     executeUpdate: (tempDir: string) => ipcInvoke(IPC_UP_NAMES.EXECUTE_UPDATE, tempDir),
     verifyUpdate: () => ipcInvoke(IPC_UP_NAMES.VERIFY_UPDATE),
     getCurrentVersion: () => ipcInvoke(IPC_UP_NAMES.GET_CURRENT_VERSION),
+
+    // tracker
+    getTrackerUserSummary: (userName: string) => ipcInvoke(IPC_TR_NAMES.GET_USER_SUMMARY, userName),
+    saveTrackerUserSummary: (data: any) => ipcInvoke(IPC_TR_NAMES.SAVE_USER_SUMMARY, data),
 });

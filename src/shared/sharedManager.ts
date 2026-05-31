@@ -3,6 +3,7 @@ import Config from "./singletons/config";
 import LazerReader from "./singletons/lazerReader";
 import NativeHost from "./singletons/nativeHost";
 import StableReader from "./singletons/stable";
+import Tracker from "./singletons/tracker";
 
 const SharedManager = {
     lazerReader: LazerReader.getInstance as LazerReader,
@@ -10,6 +11,7 @@ const SharedManager = {
     config: Config.getInstance as Config,
     api: Api.getInstance as Api,
     nativeHost: NativeHost.getInstance as NativeHost,
+    tracker: Tracker.getInstance as Tracker,
 } as const;
 
 export default SharedManager;

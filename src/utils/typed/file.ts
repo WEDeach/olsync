@@ -5,6 +5,7 @@ export enum ServiceCode {
     I18n = "i18n",
     I18nTest = ".i18n",
     PickerProfile = "picker_profiles",
+    Tracker = "tracker",
 }
 
 export enum SpaceId {
@@ -12,4 +13,6 @@ export enum SpaceId {
     Beatmaps = "bm",
     Packs = "bp",
     PickerLog = "pl",
+    TrackerUserData = "ud",
+    TrackerUserLog = "ul",
 }

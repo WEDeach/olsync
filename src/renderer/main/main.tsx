@@ -43,6 +43,7 @@ import { BeatmapPickerView } from "../components/beatmapPicker";
 import { BeatmapRestorerView } from "../components/beatmapRestorer";
 import CompareList from "../components/compareList";
 import { SettingsDrawer } from "../components/settingsDrawer";
+import { TrackerView } from "../components/tracker";
 import g, { NewSyncState } from "../state";
 import theme from "../theme";
 import Controller, { MainViewState, SubViewType } from "./controller";
@@ -99,6 +100,7 @@ export default class Main extends React.Component {
                                 <ToggleButton value={SubViewType.SONG_RECOVERY_BY_SCORES}>歌曲缺失檢查</ToggleButton>
                                 <ToggleButton value={SubViewType.MAP_PACKS}>Packs</ToggleButton>
                                 <ToggleButton value={SubViewType.MAP_PICKER}>選圖器</ToggleButton>
+                                <ToggleButton value={SubViewType.TRACKER}>統計</ToggleButton>
                                 <ToggleButton value={SubViewType.NONE}>NONE</ToggleButton>
                             </ToggleButtonGroup>
                             <SettingsDrawer />
@@ -109,6 +111,7 @@ export default class Main extends React.Component {
                         {SSubView === SubViewType.SONG_RECOVERY_BY_SCORES && this.renderSongRecovery()}
                         {SSubView === SubViewType.MAP_PACKS && this.renderMapPacks()}
                         {SSubView === SubViewType.MAP_PICKER && this.renderMapPicker()}
+                        {SSubView === SubViewType.TRACKER && this.renderTracker()}
                     </Stack>
                     <Dialog
                         sx={(theme) => ({ zIndex: theme.zIndex.drawer + 1 })}
@@ -474,5 +477,9 @@ export default class Main extends React.Component {
 
     renderMapPicker() {
         return <BeatmapPickerView />;
+    }
+
+    renderTracker() {
+        return <TrackerView />;
     }
 }

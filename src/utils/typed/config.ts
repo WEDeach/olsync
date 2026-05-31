@@ -40,8 +40,13 @@ export enum ConfigKey {
     /* Beatmap Picker */
     PICKER_ACTIVE_PROFILE = "picker:active_profile",
 
+    /* Tracker */
+    TRACKER_LAST_USER = "tracker:last_user",
+
     /* Experiments */
     EXPERIMENT_YINMO_CHANCE = "experiment:yinmo_chance",
+    EXPERIMENT_DB_MD5_CHECK = "experiment:db_md5_check",
+    EXPERIMENT_PACK_RULESET_BY_NM = "experiment:pack_ruleset_by_nm",
 }
 
 export interface SyncState {

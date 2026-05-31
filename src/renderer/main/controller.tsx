@@ -24,6 +24,7 @@ export enum SubViewType {
     SONG_RECOVERY_BY_API,
     MAP_PACKS = 31,
     MAP_PICKER = 41,
+    TRACKER = 51,
     //
     D_STABLE = 1001,
     D_LAZER,

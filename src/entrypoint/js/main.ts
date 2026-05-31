@@ -11,6 +11,7 @@ import { register as ipcFsCmdRegister } from "./ipc/fs";
 import { register as ipcLaCmdRegister } from "./ipc/la";
 import { IPC_LA_NAMES } from "./ipc/ns";
 import { register as ipcRdCmdRegister } from "./ipc/rd";
+import { register as ipcTrCmdRegister } from "./ipc/tr";
 import { register as ipcUpCmdRegister } from "./ipc/up";
 
 let mainWindow: Electron.BrowserWindow | null;
@@ -83,6 +84,7 @@ app.whenReady().then(() => {
     ipcLaCmdRegister();
     ipcDlCmdRegister();
     ipcUpCmdRegister();
+    ipcTrCmdRegister();
 
     // render
     createWindow();

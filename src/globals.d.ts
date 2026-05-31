@@ -3,6 +3,7 @@ import ApiClient from "./api/v2/client";
 import { PackTypes } from "./api/v2/routes/beatmaps";
 import { RespBeatmapLookup, RespBeatmapPacks, RespUserInfo, RespUserMostPlayedBeatmaps } from "./api/v2/types/api_resp";
 import { StableBeatmapDetail, StableBeatmapFilter } from "./defines/stable_structs";
+import { TrackerUserSummary } from "./defines/tracker_types";
 import { HostType, IOsuCollection, OsuClients } from "./defines/types";
 import { UpdateDiff } from "./entrypoint/js/updater";
 import { IPickerHistory, IPickerProfile } from "./renderer/components/beatmapPickerTypes";
@@ -93,6 +94,8 @@ declare global {
             verifyUpdate: () => Promise<boolean>;
             getCurrentVersion: () => Promise<string>;
             fetchBeatmapByChecksum: (checksum: string) => Promise<IPCR<RespBeatmapLookup>>;
+            getTrackerUserSummary: (userName: string) => Promise<TrackerUserSummary | null>;
+            saveTrackerUserSummary: (data: TrackerUserSummary) => Promise<void>;
         };
     }
 }
