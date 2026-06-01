@@ -20,6 +20,7 @@
 
 * 選圖器 (Map Picker)
   * 可透過篩選及比重設定來隨機選圖 (僅讀取本地地圖集)
+  * 成績列表顯示 PP 及各分項數值（aim / speed / accuracy），基於 `rosu-pp-js` 本地計算
 
 * 統計 (Statistics)
   * 基於本地成績資料分析遊玩歷史
