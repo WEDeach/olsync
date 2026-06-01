@@ -56,6 +56,7 @@ contextBridge.exposeInMainWorld("olsCore", {
     countStableBeatmaps: () => ipcInvoke(IPC_RD_NAMES.COUNT_BEATMAPS),
     getStableBeatmapIndex: (offset = 0, limit = 0) => ipcInvoke(IPC_RD_NAMES.GET_BEATMAP_INDEX, offset, limit),
     getStableBeatmapDetail: (md5Hash: string) => ipcInvoke(IPC_RD_NAMES.GET_BEATMAP_DETAIL, md5Hash),
+    calcPP: (args: any) => ipcInvoke(IPC_RD_NAMES.CALC_PP, args),
 
     // config
     initConfig: () => ipcInvoke(IPC_CN_NAMES.INIT),

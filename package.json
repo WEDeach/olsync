@@ -1,6 +1,6 @@
 {
   "name": "olsync",
-  "version": "1.0.19",
+  "version": "1.0.20",
   "main": "./dist/main.js",
   "scripts": {
     "build": "concurrently \"npm run dev:electron\" \"npm run dev:react\"",
@@ -67,7 +67,8 @@
   "dependencies": {
     "echarts": "^6.1.0",
     "echarts-for-react": "^3.0.6",
-    "realm": "^12.14.2"
+    "realm": "^12.14.2",
+    "rosu-pp-js": "^4.0.1"
   },
   "devDependencies": {
     "@base-ui/react": "^1.0.0",

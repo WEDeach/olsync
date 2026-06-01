@@ -2,7 +2,7 @@ import { DefaultObject } from "realm/dist/public-types/schema/types";
 import ApiClient from "./api/v2/client";
 import { PackTypes } from "./api/v2/routes/beatmaps";
 import { RespBeatmapLookup, RespBeatmapPacks, RespUserInfo, RespUserMostPlayedBeatmaps } from "./api/v2/types/api_resp";
-import { StableBeatmapDetail, StableBeatmapFilter } from "./defines/stable_structs";
+import { PPCalcArgs, PPCalcResult, StableBeatmapDetail, StableBeatmapFilter } from "./defines/stable_structs";
 import { TrackerUserSummary } from "./defines/tracker_types";
 import { HostType, IOsuCollection, OsuClients } from "./defines/types";
 import { UpdateDiff } from "./entrypoint/js/updater";
@@ -47,6 +47,7 @@ declare global {
             countStableBeatmaps: () => Promise<number>;
             getStableBeatmapIndex: (offset?: number, limit?: number) => Promise<DefaultObjectWithOffset>;
             getStableBeatmapDetail: (md5Hash: string) => Promise<StableBeatmapDetail | null>;
+            calcPP: (args: PPCalcArgs) => Promise<PPCalcResult | null>;
             getScores: (type?: OsuClients, offset?: number, limit?: number) => Promise<IPCR<DefaultObjectWithOffset>>;
             initAC: (client_id: string, client_secret: string) => Promise<any>;
             getAC: () => Promise<ApiClient>;

@@ -128,3 +128,32 @@ export interface StableBeatmapIndex {
     beatmapSetId: number;
     beatmapId: number;
 }
+
+export interface PPCalcArgs {
+    md5Hash: string;
+    mods: number;
+    combo?: number;
+    n300?: number;
+    n100?: number;
+    n50?: number;
+    misses?: number;
+    totalScore?: number;
+    beatmapId?: number;
+    ar?: number;
+    od?: number;
+    nCircles?: number;
+    nSliders?: number;
+    ruleset?: number;
+}
+
+export interface PPCalcResult {
+    pp: number;
+    maxPP: number;
+    stars: number;
+    aim?: number;
+    speed?: number;
+    acc?: number;
+    maxAim?: number;
+    maxSpeed?: number;
+    maxAcc?: number;
+}

@@ -284,6 +284,10 @@ export default class StableReader extends SingletonBase {
         return this._send<StableBeatmapDetail | null>("get_beatmap_detail", { md5Hash });
     }
 
+    get_base_path(): string | undefined {
+        return this.base_path;
+    }
+
     async get_beatmap_index(offset: number = 0, limit: number = 0) {
         return this._send("get_beatmap_index", { offset, limit });
     }

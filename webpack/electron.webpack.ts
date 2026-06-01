@@ -60,7 +60,8 @@ const config: Configuration={
         'path',
         'electron',
         'original-fs',
-        'realm'
+        'realm',
+        'rosu-pp-js',
     ],
     node: {
         __dirname: false,
