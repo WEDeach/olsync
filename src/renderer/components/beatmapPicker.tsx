@@ -20,12 +20,20 @@ import {
     Divider,
     Drawer,
     IconButton,
+    Paper,
     Stack,
+    Table,
+    TableBody,
+    TableCell,
+    TableContainer,
+    TableHead,
+    TableRow,
     TextField,
     Tooltip,
     Typography,
 } from "@mui/material";
-import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
+import ReactECharts from "echarts-for-react";
+import React, { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { AutoSizer, List } from "react-virtualized";
 import { RankedStatus } from "../../api/v2/types/api_resp";
 import { StableBeatmapDetail, StableBeatmapFilter } from "../../defines/stable_structs";
@@ -118,6 +126,483 @@ const formatDrain = (secs: number) => {
 const extractHashes = (maps: any[]): Set<string> =>
     new Set(maps.map((m: any) => (typeof m === "string" ? m : m.checksum)));
 
+const MOD_BITS: [number, string][] = [
+    [1, "NF"],
+    [2, "EZ"],
+    [8, "HD"],
+    [16, "HR"],
+    [32, "SD"],
+    [64, "DT"],
+    [128, "RX"],
+    [256, "HT"],
+    [512, "NC"],
+    [1024, "FL"],
+    [4096, "SO"],
+    [16384, "AP"],
+];
+export interface ScoreRecordRow {
+    md5Hash: string;
+    date: Date;
+    count300: number;
+    count100: number;
+    count50: number;
+    countMiss: number;
+    totalScore: number;
+    maxCombo: number;
+    mods: number;
+    ruleset: number;
+    beatmapLabel?: string;
+}
+
+export function makeScorePPKey(s: { md5Hash: string; totalScore: number; date: Date; maxCombo: number }): string {
+    return `${s.md5Hash}-${s.totalScore}-${s.date.getTime()}-${s.maxCombo}`;
+}
+
+interface ScoreRecordTableProps {
+    scores: ScoreRecordRow[];
+    ppMap: Map<string, { pp: number; aim?: number; speed?: number; acc?: number }>;
+    sortBy?: "score" | "date";
+    showBeatmapLabel?: boolean;
+    onRowClick?: (s: ScoreRecordRow) => void;
+    onRowHover?: (key: string | null) => void;
+    onVisibleKeysChange?: (keys: string[]) => void;
+    highlightKey?: string | null;
+}
+
+export const ScoreRecordTable: React.FC<ScoreRecordTableProps> = ({
+    scores,
+    ppMap,
+    sortBy = "score",
+    showBeatmapLabel = false,
+    onRowClick,
+    onRowHover,
+    onVisibleKeysChange,
+    highlightKey,
+}) => {
+    const sorted = React.useMemo(
+        () =>
+            [...scores].sort((a, b) =>
+                sortBy === "date" ? b.date.getTime() - a.date.getTime() : b.totalScore - a.totalScore,
+            ),
+        [scores, sortBy],
+    );
+
+    const rowRefs = React.useRef<Map<string, Element>>(new Map());
+    const onVisibleKeysChangeRef = React.useRef(onVisibleKeysChange);
+    React.useEffect(() => {
+        onVisibleKeysChangeRef.current = onVisibleKeysChange;
+    }, [onVisibleKeysChange]);
+
+    React.useEffect(() => {
+        if (!onVisibleKeysChangeRef.current) return;
+        const visibleKeys = new Set<string>();
+        const obs = new IntersectionObserver(
+            (entries) => {
+                for (const entry of entries) {
+                    const key = (entry.target as HTMLElement).dataset.ppkey!;
+                    if (entry.isIntersecting) visibleKeys.add(key);
+                    else visibleKeys.delete(key);
+                }
+                onVisibleKeysChangeRef.current?.([...visibleKeys]);
+            },
+            { threshold: 0.01 },
+        );
+        for (const [, el] of rowRefs.current) obs.observe(el);
+        return () => obs.disconnect();
+    }, [sorted]);
+
+    const setRowRef = React.useCallback((key: string, el: HTMLTableRowElement | null) => {
+        if (el) rowRefs.current.set(key, el);
+        else rowRefs.current.delete(key);
+    }, []);
+
+    const scrollToKey = React.useCallback((key: string) => {
+        const el = rowRefs.current.get(key);
+        el?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    }, []);
+
+    return (
+        <TableContainer component={Paper} variant="outlined" sx={{ maxHeight: 500 }}>
+            <Table size="small" stickyHeader>
+                <TableHead>
+                    <TableRow>
+                        <TableCell sx={{ bgcolor: "background.paper" }}>評價</TableCell>
+                        {showBeatmapLabel && <TableCell sx={{ bgcolor: "background.paper" }}>曲目</TableCell>}
+                        <TableCell sx={{ bgcolor: "background.paper" }}>分數</TableCell>
+                        <TableCell sx={{ bgcolor: "background.paper" }}>300</TableCell>
+                        <TableCell sx={{ bgcolor: "background.paper" }}>100</TableCell>
+                        <TableCell sx={{ bgcolor: "background.paper" }}>50</TableCell>
+                        <TableCell sx={{ bgcolor: "background.paper" }}>Miss</TableCell>
+                        <TableCell sx={{ bgcolor: "background.paper" }}>最大連擊</TableCell>
+                        <TableCell sx={{ bgcolor: "background.paper" }}>準確率</TableCell>
+                        <TableCell sx={{ bgcolor: "background.paper" }}>模式</TableCell>
+                        <TableCell sx={{ bgcolor: "background.paper" }}>Mods</TableCell>
+                        <TableCell sx={{ bgcolor: "background.paper" }}>PP</TableCell>
+                        <TableCell sx={{ bgcolor: "background.paper" }}>時間</TableCell>
+                    </TableRow>
+                </TableHead>
+                <TableBody>
+                    {sorted.map((s) => {
+                        const total = s.count300 + s.count100 + s.count50 + s.countMiss;
+                        const acc =
+                            total > 0
+                                ? ((s.count300 * 300 + s.count100 * 100 + s.count50 * 50) / (total * 300)) * 100
+                                : 0;
+                        const grade = calcGrade(s);
+                        const modsLabel = calcModsLabel(s.mods);
+                        const ppKey = makeScorePPKey(s);
+                        const ppResult = ppMap.get(ppKey);
+                        return (
+                            <TableRow
+                                key={ppKey}
+                                ref={(el) => setRowRef(ppKey, el)}
+                                data-ppkey={ppKey}
+                                hover
+                                sx={{
+                                    cursor: onRowClick ? "pointer" : "default",
+                                    ...(highlightKey === ppKey && {
+                                        outline: "2px solid",
+                                        outlineColor: "primary.light",
+                                        outlineOffset: "-2px",
+                                        bgcolor: "rgba(25, 118, 210, 0.15)",
+                                    }),
+                                }}
+                                onMouseEnter={() => onRowHover?.(ppKey)}
+                                onMouseLeave={() => onRowHover?.(null)}
+                                onClick={() => {
+                                    onRowClick?.(s);
+                                    scrollToKey(ppKey);
+                                }}
+                            >
+                                <TableCell sx={{ color: GRADE_COLORS[grade] ?? "inherit", fontWeight: "bold" }}>
+                                    {grade}
+                                </TableCell>
+                                {showBeatmapLabel && (
+                                    <TableCell
+                                        sx={{
+                                            maxWidth: 280,
+                                            overflow: "hidden",
+                                            textOverflow: "ellipsis",
+                                            whiteSpace: "nowrap",
+                                        }}
+                                    >
+                                        {s.beatmapLabel ?? s.md5Hash}
+                                    </TableCell>
+                                )}
+                                <TableCell>{s.totalScore.toLocaleString()}</TableCell>
+                                <TableCell sx={{ color: "#3498db" }}>{s.count300}</TableCell>
+                                <TableCell sx={{ color: "#2ecc71" }}>{s.count100}</TableCell>
+                                <TableCell sx={{ color: "#f39c12" }}>{s.count50}</TableCell>
+                                <TableCell sx={{ color: "#e74c3c" }}>{s.countMiss}</TableCell>
+                                <TableCell>{s.maxCombo}x</TableCell>
+                                <TableCell>{acc.toFixed(2)}%</TableCell>
+                                <TableCell>{RULESET_LABELS[s.ruleset] ?? `M${s.ruleset}`}</TableCell>
+                                <TableCell>{modsLabel}</TableCell>
+                                <TableCell>
+                                    {ppResult === undefined ? (
+                                        "..."
+                                    ) : ppResult.aim !== undefined ? (
+                                        <Tooltip
+                                            title={`Aim: ${ppResult.aim.toFixed(0)}  Speed: ${ppResult.speed?.toFixed(0)}  Acc: ${ppResult.acc?.toFixed(0)}`}
+                                        >
+                                            <span>{ppResult.pp.toFixed(0)}pp</span>
+                                        </Tooltip>
+                                    ) : (
+                                        `${ppResult.pp.toFixed(0)}pp`
+                                    )}
+                                </TableCell>
+                                <TableCell sx={{ whiteSpace: "nowrap", color: "text.secondary" }}>
+                                    <Tooltip title={s.date ? formatDateTime(s.date.getTime()) : null}>
+                                        <span>{s.date ? formatTimeAgo(s.date.getTime()) : "-"}</span>
+                                    </Tooltip>
+                                </TableCell>
+                            </TableRow>
+                        );
+                    })}
+                </TableBody>
+            </Table>
+        </TableContainer>
+    );
+};
+
+const GRADE_COLORS: Record<string, string> = {
+    SS: "#cd1b9c",
+    S: "#16b5c2",
+    A: "#83d430",
+    B: "#e2b03e",
+    C: "#e9784e",
+    D: "#dd474d",
+};
+
+interface ScoreOverviewChartProps {
+    scores: ScoreRecordRow[];
+    onHoverIndex?: (index: number | null) => void;
+    highlightIndex?: number | null;
+}
+
+const ScoreOverviewChart: React.FC<ScoreOverviewChartProps> = ({ scores, onHoverIndex, highlightIndex }) => {
+    const sorted = React.useMemo(() => [...scores].sort((a, b) => a.date.getTime() - b.date.getTime()), [scores]);
+
+    const option = React.useMemo(() => {
+        const labels = sorted.map((s) => formatTimeAgo(s.date.getTime()));
+        const data300 = sorted.map((s) => s.count300);
+        const data100 = sorted.map((s) => s.count100);
+        const data50 = sorted.map((s) => s.count50);
+        const dataMiss = sorted.map((s) => s.countMiss);
+        const accData = sorted.map((s) => {
+            const total = s.count300 + s.count100 + s.count50 + s.countMiss;
+            return total > 0
+                ? +(((s.count300 * 300 + s.count100 * 100 + s.count50 * 50) / (total * 300)) * 100).toFixed(2)
+                : 0;
+        });
+        const comboData = sorted.map((s) => s.maxCombo);
+        const maxComboVal = Math.max(...comboData, 1);
+
+        const accMin = Math.min(...accData);
+        const accMax = Math.max(...accData);
+        const accPad = Math.max((accMax - accMin) * 0.3, 0.5);
+        const accYMin = Math.max(0, Math.floor((accMin - accPad) * 10) / 10);
+        const accYMax = Math.min(100, Math.ceil((accMax + accPad) * 10) / 10);
+
+        const ACC_COLOR = "#ff6b6b";
+
+        return {
+            tooltip: {
+                trigger: "axis",
+                axisPointer: { type: "shadow" },
+                formatter: (params: any[]) => {
+                    const idx = params[0]?.dataIndex ?? 0;
+                    const s = sorted[idx];
+                    const total = s.count300 + s.count100 + s.count50 + s.countMiss;
+                    const acc =
+                        total > 0
+                            ? (((s.count300 * 300 + s.count100 * 100 + s.count50 * 50) / (total * 300)) * 100).toFixed(
+                                  2,
+                              )
+                            : "0.00";
+                    const lines = [
+                        `<b>${labels[idx]}</b>`,
+                        `<span style="color:#3498db">▪ 300: ${s.count300}</span>`,
+                        `<span style="color:#2ecc71">▪ 100: ${s.count100}</span>`,
+                        `<span style="color:#f39c12">▪ 50:  ${s.count50}</span>`,
+                        `<span style="color:#e74c3c">▪ Miss: ${s.countMiss}</span>`,
+                        `<span style="color:#9b59b6">▪ 最大連擊: ${s.maxCombo}x</span>`,
+                        `<span style="color:${ACC_COLOR}">▪ 準確率: ${acc}%</span>`,
+                    ];
+                    return lines.join("<br/>");
+                },
+            },
+            legend: {
+                data: ["300", "100", "50", "Miss", "最大連擊", "準確率"],
+                bottom: 0,
+                textStyle: { fontSize: 11 },
+            },
+            grid: { top: 16, left: 52, right: 52, bottom: 40 },
+            xAxis: {
+                type: "category",
+                data: labels,
+                axisLabel: { fontSize: 10, rotate: sorted.length > 6 ? 30 : 0 },
+            },
+            yAxis: [
+                {
+                    type: "value",
+                    name: "命中數",
+                    nameTextStyle: { fontSize: 10 },
+                    axisLabel: { fontSize: 10 },
+                    splitLine: { lineStyle: { opacity: 0.3 } },
+                },
+                {
+                    type: "value",
+                    name: "%",
+                    nameTextStyle: { fontSize: 10, color: ACC_COLOR },
+                    axisLabel: { fontSize: 10, color: ACC_COLOR, formatter: (v: number) => `${v}%` },
+                    min: accYMin,
+                    max: accYMax,
+                    splitLine: { show: false },
+                },
+                {
+                    type: "value",
+                    show: false,
+                    min: 0,
+                    max: maxComboVal * 1.1,
+                },
+            ],
+            series: [
+                {
+                    name: "300",
+                    type: "bar",
+                    stack: "hits",
+                    yAxisIndex: 0,
+                    data: data300,
+                    itemStyle: { color: "#3498db" },
+                },
+                {
+                    name: "100",
+                    type: "bar",
+                    stack: "hits",
+                    yAxisIndex: 0,
+                    data: data100,
+                    itemStyle: { color: "#2ecc71" },
+                },
+                {
+                    name: "50",
+                    type: "bar",
+                    stack: "hits",
+                    yAxisIndex: 0,
+                    data: data50,
+                    itemStyle: { color: "#f39c12" },
+                },
+                {
+                    name: "Miss",
+                    type: "bar",
+                    stack: "hits",
+                    yAxisIndex: 0,
+                    data: dataMiss,
+                    itemStyle: { color: "#e74c3c" },
+                },
+                {
+                    name: "最大連擊",
+                    type: "line",
+                    yAxisIndex: 2,
+                    data: comboData,
+                    symbol: "circle",
+                    symbolSize: 5,
+                    lineStyle: { color: "#9b59b6", type: "dashed" },
+                    itemStyle: { color: "#9b59b6" },
+                },
+                {
+                    name: "準確率",
+                    type: "line",
+                    yAxisIndex: 1,
+                    data: accData,
+                    symbol: "circle",
+                    symbolSize: 5,
+                    lineStyle: { color: ACC_COLOR },
+                    itemStyle: { color: ACC_COLOR },
+                },
+            ],
+        };
+    }, [sorted]);
+
+    const onHoverIndexRef = React.useRef(onHoverIndex);
+    React.useEffect(() => {
+        onHoverIndexRef.current = onHoverIndex;
+    }, [onHoverIndex]);
+
+    const sortedRef = React.useRef(sorted);
+    React.useEffect(() => {
+        sortedRef.current = sorted;
+    }, [sorted]);
+
+    const chartRef = React.useRef<ReactECharts | null>(null);
+    const echartsInstRef = React.useRef<any>(null);
+    const isExternalHighlight = React.useRef(false);
+
+    const lastEmittedIndex = React.useRef<number | null>(null);
+
+    const onChartReady = React.useCallback((inst: any) => {
+        echartsInstRef.current = inst;
+        const zr = inst.getZr();
+        const onMove = (e: any) => {
+            if (isExternalHighlight.current) return;
+            const pt = [e.offsetX, e.offsetY];
+            const raw = inst.convertFromPixel({ seriesIndex: 0 }, pt);
+            const dataIndex = Array.isArray(raw) ? Math.round(raw[0] as number) : Math.round(raw as number);
+            if (Number.isFinite(dataIndex) && dataIndex >= 0 && dataIndex < sortedRef.current.length) {
+                if (lastEmittedIndex.current === dataIndex) return;
+                lastEmittedIndex.current = dataIndex;
+                onHoverIndexRef.current?.(dataIndex);
+            } else {
+                if (lastEmittedIndex.current === null) return;
+                lastEmittedIndex.current = null;
+                onHoverIndexRef.current?.(null);
+            }
+        };
+        const onOut = () => {
+            if (isExternalHighlight.current) return;
+            if (lastEmittedIndex.current === null) return;
+            lastEmittedIndex.current = null;
+            onHoverIndexRef.current?.(null);
+        };
+        zr.on("mousemove", onMove);
+        zr.on("mouseout", onOut);
+    }, []);
+
+    React.useEffect(() => {
+        const inst = echartsInstRef.current;
+        if (!inst) return;
+        if (highlightIndex !== null && highlightIndex !== undefined) {
+            isExternalHighlight.current = true;
+            inst.dispatchAction({ type: "showTip", seriesIndex: 0, dataIndex: highlightIndex });
+            setTimeout(() => {
+                isExternalHighlight.current = false;
+            }, 50);
+        } else {
+            isExternalHighlight.current = false;
+            inst.dispatchAction({ type: "hideTip" });
+        }
+    }, [highlightIndex]);
+
+    return <ReactECharts ref={chartRef} option={option} style={{ height: 220 }} onChartReady={onChartReady} />;
+};
+interface ScoreSectionProps {
+    scores: ScoreRecordRow[];
+    ppMap: Map<string, { pp: number; aim?: number; speed?: number; acc?: number }>;
+}
+const ScoreSection: React.FC<ScoreSectionProps> = ({ scores, ppMap }) => {
+    const [hoveredKey, setHoveredKey] = useState<string | null>(null);
+    const byDate = React.useMemo(() => [...scores].sort((a, b) => a.date.getTime() - b.date.getTime()), [scores]);
+    const chartHighlightIndex = React.useMemo(() => {
+        if (hoveredKey === null) return null;
+        const idx = byDate.findIndex((s) => makeScorePPKey(s) === hoveredKey);
+        return idx === -1 ? null : idx;
+    }, [hoveredKey, byDate]);
+    return (
+        <>
+            <ScoreOverviewChart
+                scores={scores}
+                highlightIndex={chartHighlightIndex}
+                onHoverIndex={(idx) => {
+                    if (idx === null) {
+                        setHoveredKey(null);
+                        return;
+                    }
+                    const s = byDate[idx];
+                    if (s) setHoveredKey(makeScorePPKey(s));
+                }}
+            />
+            <ScoreRecordTable
+                scores={scores}
+                ppMap={ppMap}
+                sortBy="score"
+                highlightKey={hoveredKey}
+                onRowHover={setHoveredKey}
+            />
+        </>
+    );
+};
+
+const RULESET_LABELS: Record<number, string> = { 0: "osu!", 1: "Taiko", 2: "Catch", 3: "Mania" };
+const calcModsLabel = (mods: number) =>
+    mods === 0
+        ? "-"
+        : MOD_BITS.filter(([bit]) => (mods & bit) !== 0)
+              .map(([, name]) => name)
+              .join(",");
+const calcGrade = (s: { count300: number; count100: number; count50: number; countMiss: number }) => {
+    const total = s.count300 + s.count100 + s.count50 + s.countMiss;
+    if (total === 0) return "D";
+    const acc = ((s.count300 * 300 + s.count100 * 100 + s.count50 * 50) / (total * 300)) * 100;
+    const ratio300 = s.count300 / total;
+    const ratio50 = s.count300 + s.count100 + s.count50 > 0 ? s.count50 / (s.count300 + s.count100 + s.count50) : 0;
+    if (acc >= 100) return "SS";
+    if (acc >= 90 && s.countMiss === 0 && ratio50 <= 0.01) return "S";
+    if (acc >= 80 || (ratio300 >= 0.9 && s.countMiss === 0)) return "A";
+    if (acc >= 70 || (ratio300 >= 0.8 && s.countMiss === 0)) return "B";
+    if (acc >= 60) return "C";
+    return "D";
+};
+
 export interface IBeatmapResultDrawerProps {
     map: IBeatmapData | null;
     displaySR: number;
@@ -139,7 +624,22 @@ export const BeatmapResultDrawer: React.FC<IBeatmapResultDrawerProps> = ({
     const [audioUrl, setAudioUrl] = useState<string | null>(null);
     const [copyDone, setCopyDone] = useState(false);
     const [showScores, setShowScores] = useState(false);
-    const mapScores = map ? (scoresByHash.get(map.md5Hash) ?? []) : [];
+    const [ppInfo, setPpInfo] = useState<
+        { maxPP: number; stars: number; maxAim?: number; maxSpeed?: number; maxAcc?: number } | null | undefined
+    >(undefined);
+    const [scorePPs, setScorePPs] = useState<Map<string, { pp: number; aim?: number; speed?: number; acc?: number }>>(
+        new Map(),
+    );
+    const mapScores: OsuScore[] = map ? (scoresByHash.get(map.md5Hash) ?? []) : [];
+    const scoreRows: ScoreRecordRow[] = mapScores.map((s) => ({ ...s, md5Hash: map?.md5Hash ?? s.md5Hash }));
+    const latestScoreDate =
+        mapScores.length > 0 ? mapScores.reduce((best, s) => (s.date > best ? s.date : best), mapScores[0].date) : null;
+    const effectiveUnplayed = map ? (mapScores.length > 0 ? false : map.unplayed) : false;
+    const effectiveLastPlayedTime = map
+        ? latestScoreDate && (!map.lastPlayedTime || latestScoreDate > map.lastPlayedTime)
+            ? latestScoreDate
+            : map.lastPlayedTime
+        : null;
     const inCollections = map
         ? collections.filter((c) => extractHashes(c.maps).has(map.md5Hash)).map((c) => c.name)
         : [];
@@ -149,6 +649,8 @@ export const BeatmapResultDrawer: React.FC<IBeatmapResultDrawerProps> = ({
         setBgUrl(null);
         setAudioUrl(null);
         setShowScores(false);
+        setPpInfo(undefined);
+        setScorePPs(new Map());
 
         if (!map || !osuPath) {
             return;
@@ -157,6 +659,30 @@ export const BeatmapResultDrawer: React.FC<IBeatmapResultDrawerProps> = ({
         const loadAssets = async () => {
             const detail: StableBeatmapDetail | null = await window.olsCore.getStableBeatmapDetail(map.md5Hash);
             if (!detail || cancelled) return;
+
+            const ppResult = await window.olsCore.calcPP({
+                md5Hash: map.md5Hash,
+                mods: 0,
+                beatmapId: map.beatmapId,
+                ar: map.ar,
+                od: map.od,
+                nCircles: map.numCircles,
+                nSliders: map.numSliders,
+                ruleset: map.mode,
+            });
+            if (!cancelled) {
+                setPpInfo(
+                    ppResult && !("error" in ppResult)
+                        ? {
+                              maxPP: ppResult.maxPP,
+                              stars: ppResult.stars,
+                              maxAim: ppResult.maxAim,
+                              maxSpeed: ppResult.maxSpeed,
+                              maxAcc: ppResult.maxAcc,
+                          }
+                        : null,
+                );
+            }
 
             const osuFilePath = `${osuPath}/Songs/${detail.path}/${detail.osuFileName}`;
             const osuFile = await window.olsCore.readFile(osuFilePath, "utf8");
@@ -190,6 +716,46 @@ export const BeatmapResultDrawer: React.FC<IBeatmapResultDrawerProps> = ({
             cancelled = true;
         };
     }, [map, osuPath]);
+
+    useEffect(() => {
+        if (!showScores || !map || mapScores.length === 0) return;
+        let cancelled = false;
+        (async () => {
+            const results = new Map<string, { pp: number; aim?: number; speed?: number; acc?: number }>();
+            for (const s of mapScores) {
+                if (cancelled) break;
+                const key = makeScorePPKey({
+                    md5Hash: map!.md5Hash,
+                    totalScore: s.totalScore,
+                    date: s.date,
+                    maxCombo: s.maxCombo,
+                });
+                const result = await window.olsCore.calcPP({
+                    md5Hash: map.md5Hash,
+                    mods: s.mods,
+                    combo: s.maxCombo,
+                    n300: s.count300,
+                    n100: s.count100,
+                    n50: s.count50,
+                    misses: s.countMiss,
+                    totalScore: s.totalScore,
+                    beatmapId: map.beatmapId,
+                    ar: map.ar,
+                    od: map.od,
+                    nCircles: map.numCircles,
+                    nSliders: map.numSliders,
+                    ruleset: map.mode,
+                });
+                if (result && !("error" in result)) {
+                    results.set(key, { pp: result.pp, aim: result.aim, speed: result.speed, acc: result.acc });
+                }
+            }
+            if (!cancelled) setScorePPs(new Map(results));
+        })();
+        return () => {
+            cancelled = true;
+        };
+    }, [showScores, map, mapScores]);
 
     const handleCopyId = () => {
         if (!map) return;
@@ -267,6 +833,28 @@ export const BeatmapResultDrawer: React.FC<IBeatmapResultDrawerProps> = ({
                             {audioUrl && (
                                 <Box
                                     component="audio"
+                                    ref={(el: HTMLAudioElement | null) => {
+                                        if (el) {
+                                            const rawVol = Number(g.config?.[ConfigKey.UI_AUDIO_VOLUME] ?? 1);
+                                            const rawMuted = Boolean(g.config?.[ConfigKey.UI_AUDIO_MUTED] ?? false);
+                                            let settling = true;
+                                            el.volume = Number.isFinite(rawVol) ? Math.max(0, Math.min(1, rawVol)) : 1;
+                                            el.muted = rawMuted;
+                                            settling = false;
+                                            let lastVolume = el.volume;
+                                            let lastMuted = el.muted;
+                                            el.onvolumechange = () => {
+                                                if (settling) return;
+                                                const volChanged = el.volume !== lastVolume;
+                                                const mutedChanged = el.muted !== lastMuted;
+                                                if (!volChanged && !mutedChanged) return;
+                                                lastVolume = el.volume;
+                                                lastMuted = el.muted;
+                                                if (volChanged) g.saveConfig(ConfigKey.UI_AUDIO_VOLUME, el.volume);
+                                                if (mutedChanged) g.saveConfig(ConfigKey.UI_AUDIO_MUTED, el.muted);
+                                            };
+                                        }
+                                    }}
                                     controls
                                     src={audioUrl}
                                     sx={{ width: "100%", height: 28, mb: 0.5, opacity: 0.9 }}
@@ -333,6 +921,24 @@ export const BeatmapResultDrawer: React.FC<IBeatmapResultDrawerProps> = ({
                                 value={map.stackLeniency.toFixed(2)}
                             />
                             <InfoRow label="Drain" value={formatDrain(map.drainSeconds)} />
+                            <InfoRow
+                                label="PP"
+                                value={
+                                    ppInfo === undefined ? (
+                                        "..."
+                                    ) : ppInfo === null ? (
+                                        "-"
+                                    ) : ppInfo.maxAim !== undefined ? (
+                                        <Tooltip
+                                            title={`Aim: ${ppInfo.maxAim.toFixed(0)}  Speed: ${ppInfo.maxSpeed?.toFixed(0)}  Acc: ${ppInfo.maxAcc?.toFixed(0)}`}
+                                        >
+                                            <span>{ppInfo.maxPP.toFixed(0)}pp</span>
+                                        </Tooltip>
+                                    ) : (
+                                        `${ppInfo.maxPP.toFixed(0)}pp`
+                                    )
+                                }
+                            />
                         </Box>
 
                         <Divider sx={{ mb: 1.5 }} />
@@ -357,12 +963,18 @@ export const BeatmapResultDrawer: React.FC<IBeatmapResultDrawerProps> = ({
                             <InfoRow label="Set ID" value={map.beatmapSetId} />
                             <InfoRow
                                 label={__(I18nStrings.MAIN_PICKER_RESULT_UNPLAYED)}
-                                value={map.unplayed ? "Yes" : "No"}
+                                value={effectiveUnplayed ? "Yes" : "No"}
                             />
-                            <Tooltip title={map.lastPlayedTime ? formatDateTime(map.lastPlayedTime.getTime()) : null}>
+                            <Tooltip
+                                title={
+                                    effectiveLastPlayedTime ? formatDateTime(effectiveLastPlayedTime.getTime()) : null
+                                }
+                            >
                                 <InfoRow
                                     label={__(I18nStrings.MAIN_PICKER_WEIGHT_BM_LAST_PLAYED)}
-                                    value={map.lastPlayedTime ? formatTimeAgo(map.lastPlayedTime.getTime()) : "-"}
+                                    value={
+                                        effectiveLastPlayedTime ? formatTimeAgo(effectiveLastPlayedTime.getTime()) : "-"
+                                    }
                                 />
                             </Tooltip>
                         </Box>
@@ -391,52 +1003,13 @@ export const BeatmapResultDrawer: React.FC<IBeatmapResultDrawerProps> = ({
                             {showScores ? <KeyboardArrowUp fontSize="small" /> : <KeyboardArrowDown fontSize="small" />}
                         </Box>
                         <Collapse in={showScores}>
-                            <Box sx={{ display: "flex", flexDirection: "column", gap: 0.5, mb: 1 }}>
+                            <Box sx={{ mb: 1 }}>
                                 {mapScores.length === 0 ? (
                                     <Typography variant="caption" color="text.disabled">
                                         -
                                     </Typography>
                                 ) : (
-                                    [...mapScores]
-                                        .sort((a, b) => b.totalScore - a.totalScore)
-                                        .map((s) => {
-                                            const total = s.count300 + s.count100 + s.count50 + s.countMiss;
-                                            const acc =
-                                                total > 0
-                                                    ? ((s.count300 * 300 + s.count100 * 100 + s.count50 * 50) /
-                                                          (total * 300)) *
-                                                      100
-                                                    : 0;
-                                            return (
-                                                <Box
-                                                    key={`${s.totalScore}-${s.date}-${s.maxCombo}`}
-                                                    sx={{
-                                                        display: "grid",
-                                                        gridTemplateColumns: "2fr 1.5fr 1.5fr .5fr",
-                                                        gap: "0 8px",
-                                                        bgcolor: "action.hover",
-                                                        borderRadius: 1,
-                                                        px: 1,
-                                                        py: 0.5,
-                                                    }}
-                                                >
-                                                    <Typography variant="caption" noWrap sx={{ fontWeight: 600 }}>
-                                                        {s.totalScore.toLocaleString()}
-                                                    </Typography>
-                                                    <Typography variant="caption" color="text.secondary">
-                                                        {s.maxCombo}x
-                                                    </Typography>
-                                                    <Typography variant="caption" color="text.secondary">
-                                                        {acc.toFixed(2)}%
-                                                    </Typography>
-                                                    <Tooltip title={s.date ? formatDateTime(s.date.getTime()) : null}>
-                                                        <Typography variant="caption" color="text.secondary" noWrap>
-                                                            {s.date ? formatTimeAgo(s.date.getTime()) : "-"}
-                                                        </Typography>
-                                                    </Tooltip>
-                                                </Box>
-                                            );
-                                        })
+                                    <ScoreSection scores={scoreRows} ppMap={scorePPs} />
                                 )}
                             </Box>
                         </Collapse>
@@ -888,13 +1461,25 @@ const yinmoRandom = (pool: { map: IBeatmapData; weight: number }[]): IBeatmapDat
     if (totalWeight <= 0) return undefined;
 
     const timestamp = Date.now();
-    const percent = Math.ceil((totalWeight >= timestamp ? totalWeight : timestamp % totalWeight) % 10000);
+    const rawMod = totalWeight >= timestamp ? totalWeight : timestamp % totalWeight;
+    const percent = Math.ceil(rawMod % 10000);
+    if (percent <= 0 || !Number.isFinite(percent)) {
+        const total = sortPool.reduce((s, p) => s + p.weight, 0);
+        let r = Math.random() * total;
+        for (const p of sortPool) {
+            r -= p.weight;
+            if (r <= 0) return p.map;
+        }
+        return sortPool[sortPool.length - 1]?.map;
+    }
     const probabilities = sortPool.map((item) => (item.weight / totalWeight) * 100);
     const index = Math.ceil(timestamp % percent);
+    if (!Number.isFinite(index)) return sortPool[0]?.map;
     let result: IBeatmapData | undefined;
     let candidates = 0;
+    let safetyLimit = percent * sortPool.length * 200;
 
-    while (result === undefined) {
+    while (result === undefined && safetyLimit-- > 0) {
         for (let i = 0; i < sortPool.length && candidates < percent; i++) {
             const threshold = probabilities[i];
             const r = Math.random() * 100;
@@ -907,7 +1492,7 @@ const yinmoRandom = (pool: { map: IBeatmapData; weight: number }[]): IBeatmapDat
             }
         }
     }
-    return result;
+    return result ?? sortPool[0]?.map;
 };
 
 export const BeatmapPickerView: React.FC<IBeatmapPickerViewProps> = () => {
@@ -1158,6 +1743,12 @@ export const BeatmapPickerView: React.FC<IBeatmapPickerViewProps> = () => {
         [state, deferredMaps, generalFilter],
     );
 
+    const pickableCount = useMemo(() => {
+        if (state !== IBPState.Loaded || advancedSettings.weights.length === 0) return filteredMaps.length;
+        const pool = buildWeightedPool(filteredMaps, advancedSettings, collections, scoresByHash, history);
+        return pool.filter((p) => p.weight > 0).length;
+    }, [state, filteredMaps, advancedSettings, collections, scoresByHash, history]);
+
     const filteredPool = useMemo(() => {
         if (!showFilteredList || state !== IBPState.Loaded) return [];
         const wishlistCandidates = checkWishlist(filteredMaps, advancedSettings, scoresByHash, collections, history);
@@ -1385,7 +1976,7 @@ export const BeatmapPickerView: React.FC<IBeatmapPickerViewProps> = () => {
                 </Box>
                 <Box sx={{ px: 2, py: 0.5, borderTop: 1, borderColor: "divider", flexShrink: 0 }}>
                     <Typography variant="caption" color="text.secondary">
-                        {__(I18nStrings.BTN_PICKER_ROLL)}: {filteredMaps.length} / {totalBeatmapCount}
+                        {__(I18nStrings.BTN_PICKER_ROLL)}: {pickableCount} / {totalBeatmapCount}
                     </Typography>
                 </Box>
             </Drawer>
@@ -1495,7 +2086,7 @@ export const BeatmapPickerView: React.FC<IBeatmapPickerViewProps> = () => {
                     </span>
                     {state === IBPState.Loaded && (
                         <Typography variant="caption" sx={{ fontSize: "0.65rem", opacity: 0.8, lineHeight: 1 }}>
-                            {filteredMaps.length} / {totalBeatmapCount}
+                            {pickableCount} / {totalBeatmapCount}
                         </Typography>
                     )}
                 </Button>
