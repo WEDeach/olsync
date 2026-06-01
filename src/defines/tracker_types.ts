@@ -15,4 +15,6 @@ export interface TrackerUserSummary {
     updatedAt: number;
     dailyStats: TrackerDailyStat[];
     totalGrades: Record<string, number>;
+    zoomStart?: number;
+    zoomEnd?: number;
 }

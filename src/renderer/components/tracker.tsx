@@ -8,12 +8,6 @@ import {
     Select,
     Slider,
     Stack,
-    Table,
-    TableBody,
-    TableCell,
-    TableContainer,
-    TableHead,
-    TableRow,
     TextField,
     ToggleButton,
     ToggleButtonGroup,
@@ -27,7 +21,7 @@ import { IOsuCollection } from "../../defines/types";
 import { OsuBeatmap, OsuData, OsuScore } from "../../utils/osu";
 import { ConfigKey } from "../../utils/typed/config";
 import g from "../state";
-import { BeatmapResultDrawer } from "./beatmapPicker";
+import { BeatmapResultDrawer, makeScorePPKey, ScoreRecordRow, ScoreRecordTable } from "./beatmapPicker";
 
 interface HitCounts {
     count300: number;
@@ -56,28 +50,6 @@ function calcGrade(s: HitCounts): string {
     return "D";
 }
 
-const MOD_BITS: [number, string][] = [
-    [1, "NF"],
-    [2, "EZ"],
-    [8, "HD"],
-    [16, "HR"],
-    [32, "SD"],
-    [64, "DT"],
-    [128, "RX"],
-    [256, "HT"],
-    [512, "NC"],
-    [1024, "FL"],
-    [4096, "SO"],
-    [16384, "AP"],
-];
-
-function calcModsLabel(mods: number): string {
-    if (mods === 0) return "-";
-    return MOD_BITS.filter(([bit]) => (mods & bit) !== 0)
-        .map(([, name]) => name)
-        .join(",");
-}
-
 const GRADE_ORDER = ["SS", "S", "A", "B", "C", "D"];
 const GRADE_COLORS: Record<string, string> = {
     SS: "#cd1b9c",
@@ -87,8 +59,6 @@ const GRADE_COLORS: Record<string, string> = {
     C: "#e9784e",
     D: "#dd474d",
 };
-const RULESET_LABELS: Record<number, string> = { 0: "osu!", 1: "Taiko", 2: "Catch", 3: "Mania" };
-
 interface EChartProps {
     title: string;
     option: object;
@@ -176,10 +146,14 @@ export const TrackerView: React.FC = () => {
 
     const [allUsers, setAllUsers] = useState<string[]>([]);
     const [selectedUser, setSelectedUser] = useState("");
+    const isInitialUserSet = useRef(true);
     const [summaryByUser, setSummaryByUser] = useState<Map<string, TrackerUserSummary>>(new Map());
 
     const [zoomStart, setZoomStart] = useState(0);
     const [zoomEnd, setZoomEnd] = useState(100);
+    const [scorePPs, setScorePPs] = useState<Map<string, { pp: number; aim?: number; speed?: number; acc?: number }>>(
+        new Map(),
+    );
 
     const observerRef = useRef<IntersectionObserver | null>(null);
     const [chartsVisible, setChartsVisible] = useState(false);
@@ -232,76 +206,93 @@ export const TrackerView: React.FC = () => {
         }
     }, []);
 
-    useEffect(() => {
-        let cancelled = false;
+    const isLoadingRef = useRef(false);
+
+    const loadData = useCallback(async () => {
+        if (isLoadingRef.current) return;
+        isLoadingRef.current = true;
         setLoading(true);
-        (async () => {
-            try {
-                const [beatmaps, scoresMap, cols] = await Promise.all([
-                    OsuData.getBeatmaps(),
-                    OsuData.getScores(),
-                    OsuData.getCollections(),
-                ]);
-                if (cancelled) return;
-                const beatmapByHash = new Map<string, OsuBeatmap>(beatmaps.map((b) => [b.md5Hash, b]));
-                const flat: FlatScore[] = [];
-                const userSet = new Set<string>();
-                scoresMap.forEach((scores, md5Hash) => {
-                    for (const s of scores) {
-                        flat.push({
-                            md5Hash,
-                            userName: s.userName,
-                            date: s.date,
-                            count300: s.count300,
-                            count100: s.count100,
-                            count50: s.count50,
-                            countMiss: s.countMiss,
-                            totalScore: s.totalScore,
-                            maxCombo: s.maxCombo,
-                            mods: s.mods,
-                            ruleset: s.ruleset,
-                            beatmap: beatmapByHash.get(md5Hash),
-                        });
-                        if (s.userName) userSet.add(s.userName);
-                    }
-                });
-                const users = Array.from(userSet).sort();
-                const lastUser = g.config?.[ConfigKey.TRACKER_LAST_USER] as string | undefined;
-                const initialUser = lastUser && users.includes(lastUser) ? lastUser : (users[0] ?? "");
-                const cacheMap = new Map<string, TrackerUserSummary>();
-                if (initialUser) {
-                    const cache = await window.olsCore.getTrackerUserSummary(initialUser);
-                    if (cache && !("error" in (cache as object))) {
-                        cacheMap.set(initialUser, cache as TrackerUserSummary);
-                    }
+        try {
+            const [beatmaps, scoresMap, cols] = await Promise.all([
+                OsuData.getBeatmaps(),
+                OsuData.getScores(),
+                OsuData.getCollections(),
+            ]);
+            const beatmapByHash = new Map<string, OsuBeatmap>(beatmaps.map((b) => [b.md5Hash, b]));
+            const flat: FlatScore[] = [];
+            const userSet = new Set<string>();
+            scoresMap.forEach((scores, md5Hash) => {
+                for (const s of scores) {
+                    flat.push({
+                        md5Hash,
+                        userName: s.userName,
+                        date: s.date,
+                        count300: s.count300,
+                        count100: s.count100,
+                        count50: s.count50,
+                        countMiss: s.countMiss,
+                        totalScore: s.totalScore,
+                        maxCombo: s.maxCombo,
+                        mods: s.mods,
+                        ruleset: s.ruleset,
+                        beatmap: beatmapByHash.get(md5Hash),
+                    });
+                    if (s.userName) userSet.add(s.userName);
                 }
-                setAllScores(flat);
-                setAllUsers(users);
-                setSelectedUser(initialUser);
-                setCollections(cols);
-                setScoresByHash(scoresMap);
-                setSummaryByUser(cacheMap);
-                setLoading(false);
-                if (cacheMap.size === 0 && users.length > 0) {
-                    handleAnalyze(flat, users);
+            });
+            const users = Array.from(userSet).sort();
+            const lastUser = g.config?.[ConfigKey.TRACKER_LAST_USER] as string | undefined;
+            const initialUser = lastUser && users.includes(lastUser) ? lastUser : (users[0] ?? "");
+            const cacheMap = new Map<string, TrackerUserSummary>();
+            if (initialUser) {
+                const cache = await window.olsCore.getTrackerUserSummary(initialUser);
+                if (cache && !("error" in (cache as object))) {
+                    cacheMap.set(initialUser, cache as TrackerUserSummary);
                 }
-            } catch {
-                if (!cancelled) setLoading(false);
             }
-        })();
-        return () => {
-            cancelled = true;
-        };
+            setAllScores(flat);
+            setAllUsers(users);
+            isInitialUserSet.current = true;
+            setSelectedUser(initialUser);
+            setCollections(cols);
+            setScoresByHash(scoresMap);
+            setSummaryByUser(cacheMap);
+            const initialCache = cacheMap.get(initialUser);
+            setZoomStart(initialCache?.zoomStart ?? 0);
+            setZoomEnd(initialCache?.zoomEnd ?? 100);
+            setLoading(false);
+            if (cacheMap.size === 0 && users.length > 0) {
+                handleAnalyze(flat, users);
+            }
+        } catch {
+            setLoading(false);
+        } finally {
+            isLoadingRef.current = false;
+        }
     }, [handleAnalyze]);
+
+    useEffect(() => {
+        loadData();
+    }, [loadData]);
+
+    useEffect(() => {
+        OsuData.subscribe(loadData);
+        return () => OsuData.unsubscribe(loadData);
+    }, [loadData]);
 
     const userSummary = summaryByUser.get(selectedUser);
 
     useEffect(() => {
-        setZoomStart(0);
-        setZoomEnd(100);
-    }, [selectedUser, summaryByUser]);
+        const summary = summaryByUser.get(selectedUser);
+        setZoomStart(summary?.zoomStart ?? 0);
+        setZoomEnd(summary?.zoomEnd ?? 100);
+    }, [selectedUser]);
 
     useEffect(() => {
+        if (isInitialUserSet.current) {
+            isInitialUserSet.current = false;
+            return;
+        }
         if (selectedUser) {
             g.saveConfig(ConfigKey.TRACKER_LAST_USER, selectedUser);
         }
@@ -319,12 +310,35 @@ export const TrackerView: React.FC = () => {
         })();
     }, [selectedUser, summaryByUser, allScores, handleAnalyze]);
 
-    const onDataZoom = useCallback((params: any) => {
-        const b = params?.batch?.[0];
-        const s = b ?? params;
-        if (s?.start !== undefined) setZoomStart(s.start);
-        if (s?.end !== undefined) setZoomEnd(s.end);
-    }, []);
+    const saveZoomRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    const onDataZoom = useCallback(
+        (params: any) => {
+            const b = params?.batch?.[0];
+            const s = b ?? params;
+            const newStart = s?.start !== undefined ? s.start : undefined;
+            const newEnd = s?.end !== undefined ? s.end : undefined;
+            if (newStart !== undefined) setZoomStart(newStart);
+            if (newEnd !== undefined) setZoomEnd(newEnd);
+            if (newStart === undefined && newEnd === undefined) return;
+            if (saveZoomRef.current) clearTimeout(saveZoomRef.current);
+            saveZoomRef.current = setTimeout(() => {
+                setSummaryByUser((prev) => {
+                    const user = selectedUser;
+                    const existing = prev.get(user);
+                    if (!existing) return prev;
+                    const updated: TrackerUserSummary = {
+                        ...existing,
+                        zoomStart: newStart ?? existing.zoomStart,
+                        zoomEnd: newEnd ?? existing.zoomEnd,
+                    };
+                    window.olsCore.saveTrackerUserSummary(updated);
+                    return new Map([...prev, [user, updated]]);
+                });
+            }, 500);
+        },
+        [selectedUser],
+    );
 
     const visibleDailyStats = useMemo(() => {
         if (!userSummary || userSummary.dailyStats.length === 0) return [];
@@ -479,6 +493,55 @@ export const TrackerView: React.FC = () => {
         [allScores, selectedUser, dateRange],
     );
 
+    const filteredRecordsRef = useRef(filteredRecords);
+    useEffect(() => {
+        filteredRecordsRef.current = filteredRecords;
+    }, [filteredRecords]);
+
+    const calculatingKeys = useRef(new Set<string>());
+
+    useEffect(() => {
+        setScorePPs(new Map());
+        calculatingKeys.current.clear();
+    }, [filteredRecords]);
+
+    const handleVisibleKeys = useCallback((keys: string[]) => {
+        const records = filteredRecordsRef.current;
+        const scoreByKey = new Map(records.map((s) => [makeScorePPKey(s), s]));
+        for (const key of keys) {
+            if (calculatingKeys.current.has(key)) continue;
+            const s = scoreByKey.get(key);
+            if (!s?.beatmap) continue;
+            calculatingKeys.current.add(key);
+            window.olsCore
+                .calcPP({
+                    md5Hash: s.md5Hash,
+                    mods: s.mods,
+                    combo: s.maxCombo,
+                    n300: s.count300,
+                    n100: s.count100,
+                    n50: s.count50,
+                    misses: s.countMiss,
+                    totalScore: s.totalScore,
+                    beatmapId: s.beatmap.beatmapId,
+                    ar: s.beatmap.ar,
+                    od: s.beatmap.od,
+                    nCircles: s.beatmap.numCircles,
+                    nSliders: s.beatmap.numSliders,
+                    ruleset: s.ruleset,
+                })
+                .then((result) => {
+                    if (result && !("error" in result)) {
+                        setScorePPs((prev) => {
+                            const next = new Map(prev);
+                            next.set(key, { pp: result.pp, aim: result.aim, speed: result.speed, acc: result.acc });
+                            return next;
+                        });
+                    }
+                });
+        }
+    }, []);
+
     const osuPath = g.config?.[ConfigKey.PATH_STABLE_DIR] ?? "";
     const getDisplaySR = (bm: OsuBeatmap) =>
         bm.mode === 1 ? bm.srTaiko : bm.mode === 2 ? bm.srCtb : bm.mode === 3 ? bm.srMania : bm.srStd;
@@ -519,7 +582,10 @@ export const TrackerView: React.FC = () => {
                         size="small"
                         sx={{ height: 30 }}
                         value={selectedUser}
-                        onChange={(e) => setSelectedUser(e.target.value as string)}
+                        onChange={(e) => {
+                            isInitialUserSet.current = false;
+                            setSelectedUser(e.target.value as string);
+                        }}
                     >
                         {allUsers.map((u) => (
                             <MenuItem key={u} value={u}>
@@ -596,61 +662,33 @@ export const TrackerView: React.FC = () => {
                 )}
             </Stack>
 
-            <TableContainer component={Paper} sx={{ maxHeight: 500 }}>
-                <Table size="small" stickyHeader>
-                    <TableHead>
-                        <TableRow>
-                            <TableCell>時間</TableCell>
-                            <TableCell>曲目</TableCell>
-                            <TableCell>分數</TableCell>
-                            <TableCell>準確率</TableCell>
-                            <TableCell>最大連擊</TableCell>
-                            <TableCell>模式</TableCell>
-                            <TableCell>Mods</TableCell>
-                            <TableCell>評價</TableCell>
-                        </TableRow>
-                    </TableHead>
-                    <TableBody>
-                        {filteredRecords.slice(0, 500).map((s) => {
-                            const acc = calcAccuracy(s);
-                            const grade = calcGrade(s);
-                            const label = s.beatmap
-                                ? `${s.beatmap.artist} - ${s.beatmap.songTitle} [${s.beatmap.difficultyName}]`
-                                : s.md5Hash;
-                            return (
-                                <TableRow
-                                    key={`${s.md5Hash}_${s.date.getTime()}_${s.totalScore}`}
-                                    hover
-                                    sx={{ cursor: s.beatmap ? "pointer" : "default" }}
-                                    onClick={() => s.beatmap && setSelectedMap(s.beatmap)}
-                                >
-                                    <TableCell sx={{ whiteSpace: "nowrap" }}>
-                                        {dayjs(s.date).format("MM-DD HH:mm")}
-                                    </TableCell>
-                                    <TableCell
-                                        sx={{
-                                            maxWidth: 300,
-                                            overflow: "hidden",
-                                            textOverflow: "ellipsis",
-                                            whiteSpace: "nowrap",
-                                        }}
-                                    >
-                                        {label}
-                                    </TableCell>
-                                    <TableCell>{s.totalScore.toLocaleString()}</TableCell>
-                                    <TableCell>{acc.toFixed(2)}%</TableCell>
-                                    <TableCell>{s.maxCombo}x</TableCell>
-                                    <TableCell>{RULESET_LABELS[s.ruleset] ?? s.ruleset}</TableCell>
-                                    <TableCell>{calcModsLabel(s.mods)}</TableCell>
-                                    <TableCell sx={{ color: GRADE_COLORS[grade] ?? "inherit", fontWeight: "bold" }}>
-                                        {grade}
-                                    </TableCell>
-                                </TableRow>
-                            );
-                        })}
-                    </TableBody>
-                </Table>
-            </TableContainer>
+            <ScoreRecordTable
+                scores={filteredRecords.slice(0, 500).map(
+                    (s): ScoreRecordRow => ({
+                        md5Hash: s.md5Hash,
+                        date: s.date,
+                        count300: s.count300,
+                        count100: s.count100,
+                        count50: s.count50,
+                        countMiss: s.countMiss,
+                        totalScore: s.totalScore,
+                        maxCombo: s.maxCombo,
+                        mods: s.mods,
+                        ruleset: s.ruleset,
+                        beatmapLabel: s.beatmap
+                            ? `${s.beatmap.artist} - ${s.beatmap.songTitle} [${s.beatmap.difficultyName}]`
+                            : undefined,
+                    }),
+                )}
+                ppMap={scorePPs}
+                sortBy="date"
+                showBeatmapLabel
+                onVisibleKeysChange={handleVisibleKeys}
+                onRowClick={(row) => {
+                    const flat = filteredRecords.find((s) => makeScorePPKey(s) === makeScorePPKey(row));
+                    if (flat?.beatmap) setSelectedMap(flat.beatmap);
+                }}
+            />
 
             <BeatmapResultDrawer
                 map={selectedMap}
@@ -682,6 +720,16 @@ export const TrackerView: React.FC = () => {
                             const [s, e] = val as number[];
                             setZoomStart(s);
                             setZoomEnd(e);
+                        }}
+                        onChangeCommitted={(_, val) => {
+                            const [s, e] = val as number[];
+                            setSummaryByUser((prev) => {
+                                const existing = prev.get(selectedUser);
+                                if (!existing) return prev;
+                                const updated: TrackerUserSummary = { ...existing, zoomStart: s, zoomEnd: e };
+                                window.olsCore.saveTrackerUserSummary(updated);
+                                return new Map([...prev, [selectedUser, updated]]);
+                            });
                         }}
                         min={0}
                         max={100}
