@@ -1,4 +1,4 @@
-import { RespBeatmapLookup, RespBeatmapPack, RespBeatmapPacks } from "../types/api_resp";
+import { RespBeatmapAttributes, RespBeatmapLookup, RespBeatmapPack, RespBeatmapPacks } from "../types/api_resp";
 import BaseRoute from "./base";
 
 export type PackTypes = "standard" | "featured" | "tournament" | "loved" | "chart" | "theme" | "artist";
@@ -35,6 +35,14 @@ export default class BeatmapsRoute extends BaseRoute {
             return response;
         }
         throw new Error(`Failed to get beatmap pack: ${tag_id}.`);
+    }
+
+    async get_attributes(beatmapId: number, mods: number, rulesetId: number): Promise<RespBeatmapAttributes> {
+        return await this.client.request<RespBeatmapAttributes>(
+            "POST",
+            this.url_with_prefix(`/beatmaps/${beatmapId}/attributes`),
+            { mods, ruleset_id: rulesetId },
+        );
     }
 
     async lookup(params: Partial<Record<LookupQueryKeys, string | number>>): Promise<RespBeatmapLookup> {

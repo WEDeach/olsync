@@ -20,6 +20,7 @@ import { getDelayMs } from "../../utils/download";
 import {
     getDbMd5CheckExperiment,
     getPackRulesetByNmExperiment,
+    getUseApiMapAttrExperiment,
     getYinMoChanceExperiment,
 } from "../../utils/experiments";
 import __ from "../../utils/i18n";
@@ -135,6 +136,13 @@ export const SettingsDrawer: React.FC = () => {
                                         label={__(I18nStrings.MAIN_SETTINGS_PACK_RULESET_BY_NM)}
                                         onChange={(_, checked) =>
                                             g.saveConfig(ConfigKey.EXPERIMENT_PACK_RULESET_BY_NM, Boolean(checked))
+                                        }
+                                    />
+                                    <FormControlLabel
+                                        control={<Switch defaultChecked={getUseApiMapAttrExperiment()} />}
+                                        label={__(I18nStrings.MAIN_SETTINGS_USE_API_MAP_ATTR)}
+                                        onChange={(_, checked) =>
+                                            g.saveConfig(ConfigKey.EXPERIMENT_USE_API_MAP_ATTR, Boolean(checked))
                                         }
                                     />
                                 </Stack>

@@ -232,4 +232,5 @@ export enum I18nStrings {
     MAIN_SETTINGS_USE_YINMO_CHANCE = "main.settings.use_yinmo_chance",
     MAIN_SETTINGS_CHECK_FILE_BY_MD5 = "main.settings.check_file_by_md5",
     MAIN_SETTINGS_PACK_RULESET_BY_NM = "main.settings.pack_ruleset_by_nm",
+    MAIN_SETTINGS_USE_API_MAP_ATTR = "main.settings.use_api_map_attr",
 }

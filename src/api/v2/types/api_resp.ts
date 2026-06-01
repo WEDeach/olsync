@@ -378,3 +378,17 @@ export interface Owner {
     id: number;
     username: string;
 }
+
+export interface BeatmapDifficultyAttributes {
+    star_rating: number;
+    max_combo: number;
+    aim_difficulty?: number;
+    aim_difficult_slider_count?: number;
+    speed_difficulty?: number;
+    speed_note_count?: number;
+    slider_factor?: number;
+}
+
+export interface RespBeatmapAttributes {
+    attributes: BeatmapDifficultyAttributes;
+}

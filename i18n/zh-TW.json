@@ -117,7 +117,8 @@
             "others": "其他設定",
             "use_yinmo_chance": "使用 YinMoChance 來計算機率結果",
             "check_file_by_md5": "使用MD5校驗檢查檔案變更",
-            "pack_ruleset_by_nm": "使用NM摘要檢查圖包Mod"
+            "pack_ruleset_by_nm": "使用NM摘要檢查圖包Mod",
+            "use_api_map_attr": "使用 API 取得圖譜屬性計算 PP (實驗性)"
         },
         "name": "名稱",
         "author": "作者",

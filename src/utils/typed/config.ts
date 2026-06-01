@@ -43,10 +43,15 @@ export enum ConfigKey {
     /* Tracker */
     TRACKER_LAST_USER = "tracker:last_user",
 
+    /* UI */
+    UI_AUDIO_VOLUME = "ui:audio_volume",
+    UI_AUDIO_MUTED = "ui:audio_muted",
+
     /* Experiments */
     EXPERIMENT_YINMO_CHANCE = "experiment:yinmo_chance",
     EXPERIMENT_DB_MD5_CHECK = "experiment:db_md5_check",
     EXPERIMENT_PACK_RULESET_BY_NM = "experiment:pack_ruleset_by_nm",
+    EXPERIMENT_USE_API_MAP_ATTR = "experiment:use_api_map_attr",
 }
 
 export interface SyncState {
