@@ -38,6 +38,7 @@ export enum IPC_RD_NAMES {
     COUNT_BEATMAPS = "ipc:rd:count_beatmaps",
     GET_BEATMAP_INDEX = "ipc:rd:get_beatmap_index",
     GET_BEATMAP_DETAIL = "ipc:rd:get_beatmap_detail",
+    CALC_PP = "ipc:rd:calc_pp",
 }
 
 // CONFIG
