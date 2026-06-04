@@ -20,7 +20,6 @@ import { getDelayMs } from "../../utils/download";
 import {
     getDbMd5CheckExperiment,
     getPackRulesetByNmExperiment,
-    getUseApiMapAttrExperiment,
     getYinMoChanceExperiment,
 } from "../../utils/experiments";
 import __ from "../../utils/i18n";
@@ -138,22 +137,17 @@ export const SettingsDrawer: React.FC = () => {
                                             g.saveConfig(ConfigKey.EXPERIMENT_PACK_RULESET_BY_NM, Boolean(checked))
                                         }
                                     />
-                                    <FormControlLabel
-                                        control={<Switch defaultChecked={getUseApiMapAttrExperiment()} />}
-                                        label={__(I18nStrings.MAIN_SETTINGS_USE_API_MAP_ATTR)}
-                                        onChange={(_, checked) =>
-                                            g.saveConfig(ConfigKey.EXPERIMENT_USE_API_MAP_ATTR, Boolean(checked))
-                                        }
-                                    />
                                 </Stack>
 
                                 <Divider textAlign="left">
-                                    <Typography variant="subtitle2">語系</Typography>
+                                    <Typography variant="subtitle2">
+                                        {__(I18nStrings.MAIN_SETTINGS_LANGUAGE)}
+                                    </Typography>
                                 </Divider>
                                 <FormControl size="small">
-                                    <InputLabel>語系</InputLabel>
+                                    <InputLabel>{__(I18nStrings.MAIN_SETTINGS_LANGUAGE)}</InputLabel>
                                     <Select
-                                        label="語系"
+                                        label={__(I18nStrings.MAIN_SETTINGS_LANGUAGE)}
                                         value={g.config?.[ConfigKey.I18N_LANG] ?? "zh-TW"}
                                         onChange={(e) => {
                                             const val = e.target.value as string;
@@ -163,7 +157,7 @@ export const SettingsDrawer: React.FC = () => {
                                     >
                                         {Object.keys(langs).length === 0 ? (
                                             <MenuItem disabled value="">
-                                                {"No any i18n files (′゜ω。‵)"}
+                                                {__(I18nStrings.MAIN_SETTINGS_NO_I18N)} (′゜ω。‵)
                                             </MenuItem>
                                         ) : (
                                             Object.entries(langs).map(([code, name]) => (

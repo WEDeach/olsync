@@ -1,6 +1,9 @@
 import { action, makeAutoObservable } from "mobx";
+import { createLogger } from "../../../utils/logger";
 import { ConfigKey } from "../../../utils/typed/config";
 import g from "../../state";
+
+const log = createLogger("DViewAPI");
 
 interface State {}
 
@@ -26,14 +29,14 @@ export default class Controller {
     initClient = async () => {
         const init_result = await window.olsCore.initAC(this.ClientId, this.ClientSecret);
         if (init_result.error) {
-            console.log(init_result.error);
+            log.debug(init_result.error);
 
             g.setError({
                 message: init_result.error.message,
             });
         } else {
             const client = await window.olsCore.getAC();
-            console.log(client);
+            log.debug(client);
 
             await g.saveConfig(ConfigKey.API_CLIENT_ID, this.ClientId);
             await g.saveConfig(ConfigKey.API_CLIENT_SECRET, this.ClientSecret);

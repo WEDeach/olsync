@@ -30,6 +30,7 @@ import {
     ThemeProvider,
     ToggleButton,
     ToggleButtonGroup,
+    Tooltip,
     Typography,
 } from "@mui/material";
 import { observer } from "mobx-react";
@@ -96,12 +97,22 @@ export default class Main extends React.Component {
                                 onChange={this.controller.onBtnViewClicked}
                                 sx={{ flexGrow: 1 }}
                             >
-                                <ToggleButton value={SubViewType.COLLECTION}>收藏夾</ToggleButton>
-                                <ToggleButton value={SubViewType.SONG_RECOVERY_BY_SCORES}>歌曲缺失檢查</ToggleButton>
-                                <ToggleButton value={SubViewType.MAP_PACKS}>Packs</ToggleButton>
-                                <ToggleButton value={SubViewType.MAP_PICKER}>選圖器</ToggleButton>
-                                <ToggleButton value={SubViewType.TRACKER}>統計</ToggleButton>
-                                <ToggleButton value={SubViewType.NONE}>NONE</ToggleButton>
+                                <ToggleButton value={SubViewType.COLLECTION}>
+                                    {__(I18nStrings.BTN_TAB_COLLECTION)}
+                                </ToggleButton>
+                                <ToggleButton value={SubViewType.SONG_RECOVERY_BY_SCORES}>
+                                    {__(I18nStrings.BTN_TAB_SRS)}
+                                </ToggleButton>
+                                <ToggleButton value={SubViewType.MAP_PACKS}>
+                                    {__(I18nStrings.BTN_TAB_PACKS)}
+                                </ToggleButton>
+                                <ToggleButton value={SubViewType.MAP_PICKER}>
+                                    {__(I18nStrings.BTN_TAB_PICKER)}
+                                </ToggleButton>
+                                <ToggleButton value={SubViewType.TRACKER}>
+                                    {__(I18nStrings.BTN_TAB_TRACKER)}
+                                </ToggleButton>
+                                <ToggleButton value={SubViewType.NONE}>{__(I18nStrings.BTN_TAB_NONE)}</ToggleButton>
                             </ToggleButtonGroup>
                             <SettingsDrawer />
                         </Box>
@@ -423,9 +434,26 @@ export default class Main extends React.Component {
         return (
             <>
                 {this.controller.SMain === MainViewState.COLLECTION_IDLE && (
-                    <Button variant="contained" onClick={this.controller.onBtnCollectionReadClicked}>
-                        {__(I18nStrings.BTN_COLLECTION_READ)}
-                    </Button>
+                    <Tooltip
+                        title={
+                            !this.controller.LazerPath && !this.controller.StablePath
+                                ? __(I18nStrings.BTN_PATH_REQUIRED_TOOLTIP)
+                                : ""
+                        }
+                        arrow
+                        placement="top"
+                    >
+                        <span>
+                            <Button
+                                variant="contained"
+                                onClick={this.controller.onBtnCollectionReadClicked}
+                                fullWidth
+                                disabled={!this.controller.LazerPath && !this.controller.StablePath}
+                            >
+                                {__(I18nStrings.BTN_COLLECTION_READ)}
+                            </Button>
+                        </span>
+                    </Tooltip>
                 )}
                 {[MainViewState.COLLECTION_SELECT, MainViewState.COLLECTION_MERGE_CONFIRM].includes(
                     this.controller.SMain,
@@ -456,16 +484,16 @@ export default class Main extends React.Component {
     renderSyncState(state: NewSyncState) {
         return (
             <Grid container spacing={1}>
-                <Grid size={3}>最後同步時間</Grid>
+                <Grid size={3}>{__(I18nStrings.MAIN_SYNC_LAST_TIME)}</Grid>
                 <Grid size={9}>{state.last_updated ? formatTimeAgo(state.last_updated) : "-"}</Grid>
-                <Grid size={3}>最後同步預計數量</Grid>
+                <Grid size={3}>{__(I18nStrings.MAIN_SYNC_LAST_COUNT)}</Grid>
                 <Grid size={9}>{state.last_count ?? 0}</Grid>
-                <Grid size={3}>最後同步預計位置</Grid>
+                <Grid size={3}>{__(I18nStrings.MAIN_SYNC_LAST_OFFSET)}</Grid>
                 <Grid size={9}>{state.last_offset ?? 0}</Grid>
                 <Grid size={12}>
                     <Divider />
                 </Grid>
-                <Grid size={3}>當前同步目標數量</Grid>
+                <Grid size={3}>{__(I18nStrings.MAIN_SYNC_TARGET_COUNT)}</Grid>
                 <Grid size={9}>{state.new_count ?? 0}</Grid>
             </Grid>
         );

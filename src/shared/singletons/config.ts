@@ -2,9 +2,12 @@ import fs from "fs";
 import path from "path";
 import { GetLocalConfig, SaveLocalConfig } from "../../utils/config";
 import { pRoot, readJson, readJsonV2, saveJson, saveJsonV2 } from "../../utils/file";
+import { createLogger } from "../../utils/logger";
 import { SyncState } from "../../utils/typed/config";
 import { ServiceCode, SpaceId } from "../../utils/typed/file";
 import SingletonBase from "./base";
+
+const log = createLogger("Config");
 
 export default class Config extends SingletonBase {
     _config?: { [key: string]: any };
@@ -35,7 +38,7 @@ export default class Config extends SingletonBase {
         if (this._config === undefined) {
             throw new Error("Config has not been initialized.");
         }
-        console.log(`save config for ${k}: ${v}`);
+        log.info(`save config for ${k}: ${v}`);
         this._config[k] = v;
         await SaveLocalConfig(this._config);
     }

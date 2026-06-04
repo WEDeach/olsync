@@ -1,4 +1,5 @@
 import {
+    Alert,
     Box,
     Button,
     Chip,
@@ -15,11 +16,14 @@ import {
 } from "@mui/material";
 import dayjs from "dayjs";
 import ReactECharts from "echarts-for-react";
+import { Observer } from "mobx-react";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { TrackerDailyStat, TrackerUserSummary } from "../../defines/tracker_types";
 import { IOsuCollection } from "../../defines/types";
+import __ from "../../utils/i18n";
 import { OsuBeatmap, OsuData, OsuScore } from "../../utils/osu";
 import { ConfigKey } from "../../utils/typed/config";
+import { I18nStrings } from "../../utils/typed/i18n";
 import g from "../state";
 import { BeatmapResultDrawer, makeScorePPKey, ScoreRecordRow, ScoreRecordTable } from "./beatmapPicker";
 
@@ -37,16 +41,15 @@ function calcAccuracy(s: HitCounts): number {
 }
 
 function calcGrade(s: HitCounts): string {
-    const acc = calcAccuracy(s);
     const total = s.count300 + s.count100 + s.count50 + s.countMiss;
     if (total === 0) return "D";
-    const ratio300 = s.count300 / total;
-    const ratio50 = s.count300 + s.count100 + s.count50 > 0 ? s.count50 / (s.count300 + s.count100 + s.count50) : 0;
-    if (acc >= 100) return "SS";
-    if (acc >= 90 && s.countMiss === 0 && ratio50 <= 0.01) return "S";
-    if (acc >= 80 || (ratio300 >= 0.9 && s.countMiss === 0)) return "A";
-    if (acc >= 70 || (ratio300 >= 0.8 && s.countMiss === 0)) return "B";
-    if (acc >= 60) return "C";
+    const r300 = s.count300 / total;
+    const r50 = s.count50 / total;
+    if (r300 === 1) return "SS";
+    if (r300 > 0.9 && r50 <= 0.01 && s.countMiss === 0) return "S";
+    if ((r300 > 0.8 && s.countMiss === 0) || r300 > 0.9) return "A";
+    if ((r300 > 0.7 && s.countMiss === 0) || r300 > 0.8) return "B";
+    if (r300 > 0.6) return "C";
     return "D";
 }
 
@@ -138,6 +141,7 @@ function buildUserSummary(userName: string, scores: FlatScore[]): TrackerUserSum
 export const TrackerView: React.FC = () => {
     const [loading, setLoading] = useState(true);
     const [analyzing, setAnalyzing] = useState(false);
+    const [stablePathMissing, setStablePathMissing] = useState(false);
 
     const [allScores, setAllScores] = useState<FlatScore[]>([]);
     const [collections, setCollections] = useState<IOsuCollection[]>([]);
@@ -213,6 +217,31 @@ export const TrackerView: React.FC = () => {
         isLoadingRef.current = true;
         setLoading(true);
         try {
+            const stablePath = g.config?.[ConfigKey.PATH_STABLE_DIR] ?? "";
+            if (!stablePath) {
+                setStablePathMissing(true);
+                const summaries = await window.olsCore.listTrackerUserSummaries();
+                if (summaries.length > 0) {
+                    const cacheMap = new Map<string, TrackerUserSummary>();
+                    for (const s of summaries) {
+                        cacheMap.set(s.userName, s);
+                    }
+                    const lastUser = g.config?.[ConfigKey.TRACKER_LAST_USER] as string | undefined;
+                    const initialUser = lastUser && cacheMap.has(lastUser) ? lastUser : summaries[0].userName;
+                    const initialCache = cacheMap.get(initialUser);
+                    if (initialCache) {
+                        setSummaryByUser(cacheMap);
+                        setAllUsers(summaries.map((s) => s.userName));
+                        isInitialUserSet.current = true;
+                        setSelectedUser(initialUser);
+                        setZoomStart(initialCache.zoomStart ?? 0);
+                        setZoomEnd(initialCache.zoomEnd ?? 100);
+                    }
+                }
+                setLoading(false);
+                return;
+            }
+            setStablePathMissing(false);
             const [beatmaps, scoresMap, cols] = await Promise.all([
                 OsuData.getBeatmaps(),
                 OsuData.getScores(),
@@ -271,14 +300,67 @@ export const TrackerView: React.FC = () => {
         }
     }, [handleAnalyze]);
 
+    const isRefreshingRef = useRef(false);
+    const allScoresRef = useRef<FlatScore[]>([]);
+    useEffect(() => {
+        allScoresRef.current = allScores;
+    }, [allScores]);
+
+    const refreshScores = useCallback(async () => {
+        if (isRefreshingRef.current) return;
+        isRefreshingRef.current = true;
+        try {
+            const scoresMap = await OsuData.getScores();
+            const existingBeatmapByHash = new Map<string, OsuBeatmap | undefined>(
+                allScoresRef.current.map((s) => [s.md5Hash, s.beatmap]),
+            );
+            const flat: FlatScore[] = [];
+            const userSet = new Set<string>();
+            scoresMap.forEach((scores, md5Hash) => {
+                for (const s of scores) {
+                    flat.push({
+                        md5Hash,
+                        userName: s.userName,
+                        date: s.date,
+                        count300: s.count300,
+                        count100: s.count100,
+                        count50: s.count50,
+                        countMiss: s.countMiss,
+                        totalScore: s.totalScore,
+                        maxCombo: s.maxCombo,
+                        mods: s.mods,
+                        ruleset: s.ruleset,
+                        beatmap: existingBeatmapByHash.get(md5Hash),
+                    });
+                    if (s.userName) userSet.add(s.userName);
+                }
+            });
+            const users = Array.from(userSet).sort();
+            setAllScores(flat);
+            setAllUsers(users);
+            setScoresByHash(scoresMap);
+        } finally {
+            isRefreshingRef.current = false;
+        }
+    }, []);
+
     useEffect(() => {
         loadData();
     }, [loadData]);
 
     useEffect(() => {
-        OsuData.subscribe(loadData);
-        return () => OsuData.unsubscribe(loadData);
-    }, [loadData]);
+        return OsuData.subscribe("scores", refreshScores);
+    }, [refreshScores]);
+
+    const refreshBeatmaps = useCallback(async () => {
+        const beatmaps = await OsuData.getBeatmaps();
+        const beatmapByHash = new Map<string, OsuBeatmap>(beatmaps.map((b) => [b.md5Hash, b]));
+        setAllScores((prev) => prev.map((s) => ({ ...s, beatmap: beatmapByHash.get(s.md5Hash) })));
+    }, []);
+
+    useEffect(() => {
+        return OsuData.subscribe("beatmaps", refreshBeatmaps);
+    }, [refreshBeatmaps]);
 
     const userSummary = summaryByUser.get(selectedUser);
 
@@ -355,17 +437,23 @@ export const TrackerView: React.FC = () => {
         let cum = 0;
         const cumulative = daily.map((v) => (cum += v));
         return {
-            tooltip: { trigger: "axis" },
-            legend: { data: ["每日", "累計"] },
+            tooltip: { trigger: "axis", axisPointer: { type: "cross" } },
+            legend: { data: [__(I18nStrings.MAIN_TRACKER_CHART_DAILY), __(I18nStrings.MAIN_TRACKER_CHART_CUMULATIVE)] },
             xAxis: { type: "category", data: labels },
             yAxis: [
-                { type: "value", name: "次數" },
-                { type: "value", name: "累計" },
+                { type: "value", name: __(I18nStrings.MAIN_TRACKER_CHART_COUNT_LABEL) },
+                { type: "value", name: __(I18nStrings.MAIN_TRACKER_CHART_CUMULATIVE) },
             ],
             dataZoom: [{ type: "inside", xAxisIndex: 0, start: zoomStart, end: zoomEnd }],
             series: [
-                { name: "每日", type: "bar", data: daily, yAxisIndex: 0 },
-                { name: "累計", type: "line", data: cumulative, yAxisIndex: 1, smooth: true },
+                { name: __(I18nStrings.MAIN_TRACKER_CHART_DAILY), type: "bar", data: daily, yAxisIndex: 0 },
+                {
+                    name: __(I18nStrings.MAIN_TRACKER_CHART_CUMULATIVE),
+                    type: "line",
+                    data: cumulative,
+                    yAxisIndex: 1,
+                    smooth: true,
+                },
             ],
         };
     }, [userSummary, zoomStart, zoomEnd]);
@@ -377,17 +465,23 @@ export const TrackerView: React.FC = () => {
         let cum = 0;
         const cumulative = daily.map((v) => (cum += v));
         return {
-            tooltip: { trigger: "axis" },
-            legend: { data: ["每日", "累計"] },
+            tooltip: { trigger: "axis", axisPointer: { type: "cross" } },
+            legend: { data: [__(I18nStrings.MAIN_TRACKER_CHART_DAILY), __(I18nStrings.MAIN_TRACKER_CHART_CUMULATIVE)] },
             xAxis: { type: "category", data: labels },
             yAxis: [
-                { type: "value", name: "分數" },
-                { type: "value", name: "累計" },
+                { type: "value", name: __(I18nStrings.MAIN_TRACKER_CHART_SCORE_LABEL) },
+                { type: "value", name: __(I18nStrings.MAIN_TRACKER_CHART_CUMULATIVE) },
             ],
             dataZoom: [{ type: "inside", xAxisIndex: 0, start: zoomStart, end: zoomEnd }],
             series: [
-                { name: "每日", type: "bar", data: daily, yAxisIndex: 0 },
-                { name: "累計", type: "line", data: cumulative, yAxisIndex: 1, smooth: true },
+                { name: __(I18nStrings.MAIN_TRACKER_CHART_DAILY), type: "bar", data: daily, yAxisIndex: 0 },
+                {
+                    name: __(I18nStrings.MAIN_TRACKER_CHART_CUMULATIVE),
+                    type: "line",
+                    data: cumulative,
+                    yAxisIndex: 1,
+                    smooth: true,
+                },
             ],
         };
     }, [userSummary, zoomStart, zoomEnd]);
@@ -423,10 +517,10 @@ export const TrackerView: React.FC = () => {
             s.playCount > 0 ? +(s.totalAccSum / s.playCount).toFixed(2) : null,
         );
         return {
-            tooltip: { trigger: "axis" },
+            tooltip: { trigger: "axis", axisPointer: { type: "cross" } },
             xAxis: { type: "category", data: labels },
-            yAxis: { type: "value", min: 0, max: 100, axisLabel: { formatter: "{value}%" } },
-            dataZoom: [{ type: "inside", xAxisIndex: 0, start: zoomStart, end: zoomEnd }],
+            yAxis: { type: "value", scale: true, axisLabel: { formatter: "{value}%" } },
+            dataZoom: [{ type: "inside", xAxisIndex: 0, start: zoomStart, end: zoomEnd, filterMode: "filter" }],
             series: [{ type: "line", data: daily, smooth: true, connectNulls: true }],
         };
     }, [userSummary, zoomStart, zoomEnd]);
@@ -435,7 +529,7 @@ export const TrackerView: React.FC = () => {
         if (!userSummary) return {};
         const labels = userSummary.dailyStats.map((s) => s.date);
         return {
-            tooltip: { trigger: "axis" },
+            tooltip: { trigger: "axis", axisPointer: { type: "cross" } },
             legend: { data: ["300", "100", "50", "Miss"] },
             xAxis: { type: "category", data: labels },
             yAxis: { type: "value" },
@@ -549,7 +643,7 @@ export const TrackerView: React.FC = () => {
     if (loading) {
         return (
             <Stack alignItems="center" justifyContent="center" sx={{ py: 8 }}>
-                <Typography variant="body2">載入中…</Typography>
+                <Typography variant="body2">{__(I18nStrings.MAIN_TRACKER_LOADING)}</Typography>
             </Stack>
         );
     }
@@ -557,9 +651,23 @@ export const TrackerView: React.FC = () => {
     if (allUsers.length === 0) {
         return (
             <Stack alignItems="center" justifyContent="center" sx={{ py: 8 }}>
-                <Typography variant="body2" color="text.secondary">
-                    沒有成績資料
-                </Typography>
+                <Observer>
+                    {() => {
+                        const sp = g.config?.[ConfigKey.PATH_STABLE_DIR] ?? "";
+                        if (!sp) {
+                            return (
+                                <Alert severity="warning" sx={{ maxWidth: 480 }}>
+                                    {__(I18nStrings.MAIN_TRACKER_NO_DATA_PATH_REQUIRED)}
+                                </Alert>
+                            );
+                        }
+                        return (
+                            <Typography variant="body2" color="text.secondary">
+                                {__(I18nStrings.MAIN_TRACKER_NO_DATA)}
+                            </Typography>
+                        );
+                    }}
+                </Observer>
             </Stack>
         );
     }
@@ -568,13 +676,23 @@ export const TrackerView: React.FC = () => {
 
     return (
         <Stack spacing={2} sx={{ pb: sliderVisible ? 8 : 0 }}>
+            {stablePathMissing && (
+                <Observer>
+                    {() =>
+                        g.config?.[ConfigKey.PATH_STABLE_DIR] ? null : (
+                            <Alert severity="warning">{__(I18nStrings.MAIN_TRACKER_CACHE_WARNING)}</Alert>
+                        )
+                    }
+                </Observer>
+            )}
             {/* 成績分析 (all-time, from cache) */}
             <Stack direction="row" spacing={1} alignItems="center">
-                <Typography variant="subtitle1">成績分析</Typography>
+                <Typography variant="subtitle1">{__(I18nStrings.MAIN_TRACKER_SECTION_ANALYSIS)}</Typography>
                 <Box sx={{ flexGrow: 1 }} />
                 {userSummary && (
                     <Typography variant="caption" color="text.secondary">
-                        更新於 {dayjs(userSummary.updatedAt).format("YYYY-MM-DD HH:mm")}
+                        {__(I18nStrings.MAIN_TRACKER_UPDATED_AT)}{" "}
+                        {dayjs(userSummary.updatedAt).format("YYYY-MM-DD HH:mm")}
                     </Typography>
                 )}
                 {allUsers.length > 1 ? (
@@ -599,29 +717,45 @@ export const TrackerView: React.FC = () => {
                 <Button
                     size="small"
                     variant="outlined"
-                    disabled={analyzing}
+                    disabled={analyzing || stablePathMissing}
                     onClick={() => handleAnalyze(allScores, allUsers)}
                 >
-                    {analyzing ? "分析中…" : "重新分析"}
+                    {analyzing ? __(I18nStrings.MAIN_TRACKER_ANALYZING) : __(I18nStrings.BTN_TRACKER_REANALYZE)}
                 </Button>
             </Stack>
 
             {!userSummary && analyzing ? (
                 <Stack alignItems="center" justifyContent="center" sx={{ py: 4 }}>
                     <Typography variant="body2" color="text.secondary">
-                        分析中…
+                        {__(I18nStrings.MAIN_TRACKER_ANALYZING)}
                     </Typography>
                 </Stack>
             ) : (
                 <Box ref={chartSectionCallback}>
                     <Stack spacing={2}>
                         <Box sx={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 2 }}>
-                            <EChart title="遊玩次數" option={playCountOption} onDataZoom={onDataZoom} />
-                            <EChart title="成績" option={scoreChartOption} onDataZoom={onDataZoom} />
-                            <EChart title="評價分布" option={rankChartOption} />
-                            <EChart title="命中率" option={accChartOption} onDataZoom={onDataZoom} />
+                            <EChart
+                                title={__(I18nStrings.MAIN_TRACKER_CHART_PLAYS)}
+                                option={playCountOption}
+                                onDataZoom={onDataZoom}
+                            />
+                            <EChart
+                                title={__(I18nStrings.MAIN_TRACKER_CHART_SCORE)}
+                                option={scoreChartOption}
+                                onDataZoom={onDataZoom}
+                            />
+                            <EChart title={__(I18nStrings.MAIN_TRACKER_CHART_RANKS)} option={rankChartOption} />
+                            <EChart
+                                title={__(I18nStrings.MAIN_TRACKER_CHART_ACC)}
+                                option={accChartOption}
+                                onDataZoom={onDataZoom}
+                            />
                         </Box>
-                        <EChart title="命中計數 (300/100/50/Miss)" option={hitCountOption} onDataZoom={onDataZoom} />
+                        <EChart
+                            title={__(I18nStrings.MAIN_TRACKER_CHART_HITS)}
+                            option={hitCountOption}
+                            onDataZoom={onDataZoom}
+                        />
                     </Stack>
                 </Box>
             )}
@@ -630,16 +764,16 @@ export const TrackerView: React.FC = () => {
 
             {/* 遊玩紀錄 (live data, date filtered) */}
             <Stack ref={tableSectionCallback} direction="row" spacing={1} alignItems="center" flexWrap="wrap">
-                <Typography variant="subtitle1">遊玩紀錄</Typography>
+                <Typography variant="subtitle1">{__(I18nStrings.MAIN_TRACKER_SECTION_RECORDS)}</Typography>
                 <Box sx={{ flexGrow: 1 }} />
                 <Typography variant="body2" color="text.secondary">
-                    共 {filteredRecords.length} 筆
+                    {__(I18nStrings.MAIN_TRACKER_RECORDS_COUNT, { count: filteredRecords.length })}
                 </Typography>
                 <ToggleButtonGroup size="small" exclusive value={dateMode} onChange={(_, v) => v && setDateMode(v)}>
-                    <ToggleButton value="1d">今日</ToggleButton>
-                    <ToggleButton value="7d">7天</ToggleButton>
-                    <ToggleButton value="30d">30天</ToggleButton>
-                    <ToggleButton value="custom">自訂</ToggleButton>
+                    <ToggleButton value="1d">{__(I18nStrings.MAIN_TRACKER_DATE_TODAY)}</ToggleButton>
+                    <ToggleButton value="7d">{__(I18nStrings.MAIN_TRACKER_DATE_7D)}</ToggleButton>
+                    <ToggleButton value="30d">{__(I18nStrings.MAIN_TRACKER_DATE_30D)}</ToggleButton>
+                    <ToggleButton value="custom">{__(I18nStrings.MAIN_TRACKER_DATE_CUSTOM)}</ToggleButton>
                 </ToggleButtonGroup>
                 {dateMode === "custom" && (
                     <>

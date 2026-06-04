@@ -6,7 +6,10 @@ import * as path from "path";
 import { StableBeatmapDetail, StableBeatmapFilter } from "../../defines/stable_structs";
 import { IOsuCollection } from "../../defines/types";
 import { pathJoin, pBackupData } from "../../utils/file";
+import { createLogger } from "../../utils/logger";
 import SingletonBase from "./base";
+
+const log = createLogger("StableReader");
 
 enum PathType {
     Osu,
@@ -31,7 +34,13 @@ export default class StableReader extends SingletonBase {
     private _ensure_proc() {
         if (this._utilProc) return;
         const procPath = path.join(__dirname, "stableProcess.js");
-        this._utilProc = utilityProcess.fork(procPath);
+        this._utilProc = utilityProcess.fork(procPath, [], { stdio: "pipe" });
+        this._utilProc.stdout?.on("data", (chunk: Buffer) => {
+            process.stdout.write(chunk);
+        });
+        this._utilProc.stderr?.on("data", (chunk: Buffer) => {
+            process.stderr.write(chunk);
+        });
         this._utilProc.on("message", (msg: any) => {
             const p = this._pending.get(msg.id);
             if (!p) return;
@@ -66,7 +75,7 @@ export default class StableReader extends SingletonBase {
         this.stop_watch();
         this.base_path = fpath;
         this._post("init", { basePath: fpath });
-        console.debug(`StableReader init: ${fpath}`);
+        log.debug(`StableReader init: ${fpath}`);
     }
 
     invalidate_cache() {
@@ -110,7 +119,7 @@ export default class StableReader extends SingletonBase {
         for (const filename of watchedFiles) {
             this._refreshWatchStats(dir, filename);
         }
-        console.log("[READER] start watchFiles");
+        log.info("start watchFiles");
         if (isMd5CheckEnabled()) {
             void (async () => {
                 for (const filename of watchedFiles) {
@@ -147,13 +156,13 @@ export default class StableReader extends SingletonBase {
                     }
                     const deltaMtime = prevForLog && newStats ? newStats.mtimeMs - prevForLog.mtimeMs : null;
                     const deltaSize = prevForLog && newStats ? newStats.size - prevForLog.size : null;
-                    let logMsg = `[READER] notify ${filename} changed`;
+                    let logMsg = `notify ${filename} changed`;
                     if (deltaMtime !== null && deltaSize !== null) {
                         logMsg += `. mtime: ${deltaMtime >= 0 ? "+" : ""}${Math.round(deltaMtime)}, size: ${deltaSize >= 0 ? "+" : ""}${deltaSize}`;
                     }
                     logMsg += logSuffix;
                     handler.invalidate();
-                    console.log(logMsg);
+                    log.info(logMsg);
                     handler.notify();
                 }
             }, 1500);

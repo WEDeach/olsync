@@ -1,8 +1,10 @@
 import { app, BrowserWindow, ipcMain, Menu } from "electron";
 import * as fs from "fs";
 import * as url from "url";
+import SharedManager from "../../shared/sharedManager";
 import { getAllFiles, pathJoin, pI18n, readJson } from "../../utils/file";
 import { setDefaultLang, setI18n } from "../../utils/i18n";
+import { createLogger } from "../../utils/logger";
 import { ConfigKey } from "../../utils/typed/config";
 import { register as ipcAcCmdRegister } from "./ipc/ac";
 import { register as ipcCnCmdRegister } from "./ipc/cn";
@@ -14,12 +16,20 @@ import { register as ipcRdCmdRegister } from "./ipc/rd";
 import { register as ipcTrCmdRegister } from "./ipc/tr";
 import { register as ipcUpCmdRegister } from "./ipc/up";
 
+const log = createLogger("Main");
+
 let mainWindow: Electron.BrowserWindow | null;
+let windowStateTimer: NodeJS.Timeout | null = null;
 
 function createWindow() {
-    mainWindow = new BrowserWindow({
-        width: 1100,
-        height: 700,
+    const savedWidth = SharedManager.config.get(ConfigKey.WINDOW_WIDTH) as number | undefined;
+    const savedHeight = SharedManager.config.get(ConfigKey.WINDOW_HEIGHT) as number | undefined;
+    const savedX = SharedManager.config.get(ConfigKey.WINDOW_X) as number | undefined;
+    const savedY = SharedManager.config.get(ConfigKey.WINDOW_Y) as number | undefined;
+
+    const options: Electron.BrowserWindowConstructorOptions = {
+        width: savedWidth ?? 1100,
+        height: savedHeight ?? 700,
         backgroundColor: "#f2f2f2",
         webPreferences: {
             preload: pathJoin(__dirname, "js/preload.b.js"),
@@ -27,7 +37,14 @@ function createWindow() {
             nodeIntegration: false,
             devTools: process.env.NODE_ENV !== "production",
         },
-    });
+    };
+
+    if (savedX !== undefined && savedY !== undefined) {
+        options.x = savedX;
+        options.y = savedY;
+    }
+
+    mainWindow = new BrowserWindow(options);
 
     if (process.env.NODE_ENV === "development") {
         mainWindow.loadURL("http://localhost:3519");
@@ -45,6 +62,26 @@ function createWindow() {
         mainWindow = null;
     });
 
+    const saveWindowState = () => {
+        if (!mainWindow) return;
+        const bounds = mainWindow.getBounds();
+        SharedManager.config.save(ConfigKey.WINDOW_WIDTH, bounds.width);
+        SharedManager.config.save(ConfigKey.WINDOW_HEIGHT, bounds.height);
+        SharedManager.config.save(ConfigKey.WINDOW_X, bounds.x);
+        SharedManager.config.save(ConfigKey.WINDOW_Y, bounds.y);
+    };
+
+    const debouncedSave = () => {
+        if (windowStateTimer) clearTimeout(windowStateTimer);
+        windowStateTimer = setTimeout(() => {
+            windowStateTimer = null;
+            saveWindowState();
+        }, 500);
+    };
+
+    mainWindow.on("resize", debouncedSave);
+    mainWindow.on("move", debouncedSave);
+
     if (process.env.NODE_ENV === "development") {
         const preloadFile = pathJoin(__dirname, "js/preload.b.js");
         let reloadTimer: NodeJS.Timeout | null = null;
@@ -53,13 +90,13 @@ function createWindow() {
                 if (reloadTimer) clearTimeout(reloadTimer);
                 reloadTimer = setTimeout(() => {
                     if (mainWindow) {
-                        console.debug("[dev] preload rebuilt, reloading window...");
+                        log.child("dev").debug("preload rebuilt, reloading window...");
                         mainWindow.reload();
                     }
                 }, 300);
             });
         } catch (error) {
-            console.warn("[dev] failed to watch preload bundle:", error);
+            log.child("dev").warn("failed to watch preload bundle:", error);
         }
     }
 
@@ -75,7 +112,9 @@ function createMenu() {
 // This method will be called when Electron has finished
 // initialization and is ready to create browser windows.
 // Some APIs can only be used after this event occurs.
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+    await SharedManager.config.init();
+
     // cmd register
     ipcFsCmdRegister();
     ipcRdCmdRegister();

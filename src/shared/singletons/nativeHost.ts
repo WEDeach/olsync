@@ -1,7 +1,10 @@
 import { ChildProcess, spawn } from "child_process";
 import { HostType } from "../../defines/types";
 import { pathExistsSync } from "../../utils/file";
+import { createLogger } from "../../utils/logger";
 import SingletonBase from "./base";
+
+const log = createLogger("NativeHost");
 
 export default class NativeHost extends SingletonBase {
     private processGroup: { [key in HostType]?: ChildProcess } = {};
@@ -15,7 +18,7 @@ export default class NativeHost extends SingletonBase {
 
     async start(hostType: HostType, hostPath: string): Promise<boolean> {
         if (this.processGroup[hostType]) {
-            console.log(`Native Host '${hostType}' is already running`);
+            log.info(`Native Host '${hostType}' is already running`);
             return true;
         }
 
@@ -35,18 +38,18 @@ export default class NativeHost extends SingletonBase {
             });
 
             this.processGroup[hostType].stderr?.on("data", (data: Buffer) => {
-                console.error(`Native Host '${hostType}' stderr:`, data.toString());
+                log.error(`Native Host '${hostType}' stderr:`, data.toString());
             });
 
             this.processGroup[hostType].on("close", (code) => {
-                console.log(`Native Host '${hostType}' exited with code ${code}`);
+                log.info(`Native Host '${hostType}' exited with code ${code}`);
                 delete this.processGroup[hostType];
                 delete this.messageQueues[hostType];
                 delete this.buffers[hostType];
             });
 
             this.processGroup[hostType].on("error", (error) => {
-                console.error(`Native Host '${hostType}' error:`, error);
+                log.error(`Native Host '${hostType}' error:`, error);
 
                 const queue = this.messageQueues[hostType];
                 if (queue) {
@@ -61,10 +64,10 @@ export default class NativeHost extends SingletonBase {
                 delete this.buffers[hostType];
             });
 
-            console.log(`Native Host '${hostType}' started`);
+            log.info(`Native Host '${hostType}' started`);
             return true;
         } catch (error) {
-            console.error(`Failed to start Native Host '${hostType}':`, error);
+            log.error(`Failed to start Native Host '${hostType}':`, error);
             return false;
         }
     }
@@ -97,7 +100,7 @@ export default class NativeHost extends SingletonBase {
                     reject(new Error(`Message queue for '${hostType}' not initialized`));
                 }
 
-                console.log("Sent message to FDM:", message);
+                log.info("Sent message to FDM:", message);
             } catch (error) {
                 reject(error);
             }
@@ -108,7 +111,7 @@ export default class NativeHost extends SingletonBase {
         const buffer = this.buffers[hostType];
         const queue = this.messageQueues[hostType];
         if (!buffer || !queue) {
-            console.error(`Buffer or queue not found for '${hostType}'`);
+            log.error(`Buffer or queue not found for '${hostType}'`);
             return;
         }
         this.buffers[hostType] = Buffer.concat([buffer, data]);
@@ -126,7 +129,7 @@ export default class NativeHost extends SingletonBase {
                 const messageStr = messageBuffer.toString("utf-8");
                 const response = JSON.parse(messageStr);
 
-                console.log(`Received response from '${hostType}':`, response);
+                log.info(`Received response from '${hostType}':`, response);
 
                 const handler = queue.shift();
                 if (handler) {
@@ -136,10 +139,10 @@ export default class NativeHost extends SingletonBase {
                         handler.reject(new Error(response.error || "Unknown error"));
                     }
                 } else {
-                    console.warn(`No handler found for response from '${hostType}'`);
+                    log.warn(`No handler found for response from '${hostType}'`);
                 }
             } catch (error) {
-                console.error(`Failed to parse response from '${hostType}':`, error);
+                log.error(`Failed to parse response from '${hostType}':`, error);
                 const handler = queue.shift();
                 if (handler) {
                     handler.reject(error);
@@ -150,18 +153,18 @@ export default class NativeHost extends SingletonBase {
 
     stop(): void {
         if (this.processGroup) {
-            console.log("Stopping Native Host...");
+            log.info("Stopping Native Host...");
             Object.values(this.processGroup).forEach((proc) => {
                 if (proc) {
                     try {
                         proc.kill();
                     } catch (e) {
-                        console.error("Failed to kill process:", e);
+                        log.error("Failed to kill process:", e);
                     }
                 }
             });
             this.processGroup = {};
-            console.log("Native Host stopped");
+            log.info("Native Host stopped");
         }
     }
 }

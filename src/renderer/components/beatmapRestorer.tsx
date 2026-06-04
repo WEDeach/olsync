@@ -1,5 +1,5 @@
 import { Search } from "@mui/icons-material";
-import { Box, Button, ButtonGroup, Stack, ToggleButton, ToggleButtonGroup, Typography } from "@mui/material";
+import { Box, Button, ButtonGroup, Stack, ToggleButton, ToggleButtonGroup, Tooltip, Typography } from "@mui/material";
 import { Observer } from "mobx-react";
 import React, { useEffect, useState } from "react";
 import {
@@ -14,6 +14,7 @@ import { GetDLOptionByDirect, GetDLOptionByFDM, GetDLOptionByRows } from "../../
 import __ from "../../utils/i18n";
 import { LogError } from "../../utils/log";
 import { sleep } from "../../utils/time";
+import { ConfigKey } from "../../utils/typed/config";
 import { I18nStrings } from "../../utils/typed/i18n";
 import g from "../state";
 import { BeatmapFilterView, FilterType, SubFilterType } from "./beatmapFilter";
@@ -467,6 +468,7 @@ export const BeatmapRestorerView: React.FC<IBeatmapRestorerViewProps> = ({
             {() => {
                 const clientId = g.cacheVal.str_client_id ?? "";
                 const clientSecret = g.cacheVal.str_client_secret ?? "";
+                const stablePath = g.config?.[ConfigKey.PATH_STABLE_DIR] ?? "";
 
                 return (
                     <>
@@ -485,19 +487,44 @@ export const BeatmapRestorerView: React.FC<IBeatmapRestorerViewProps> = ({
                             allowedLanguages={OnlineBeatmapLangs()}
                         />
                         <Stack direction={"row"} spacing={1} justifyContent={"end"}>
-                            <Button variant="contained" onClick={() => onBtnSRSReadClicked()}>
-                                {__(I18nStrings.BTN_SRS_READ)}
-                            </Button>
-                            <Button
-                                variant="contained"
-                                onClick={() => {
-                                    onBtnSRSReadByOnlineClicked();
-                                    setRestoreType("online");
-                                }}
-                                disabled={clientId.length === 0 || clientSecret.length === 0}
+                            <Tooltip
+                                title={stablePath.length === 0 ? __(I18nStrings.MAIN_RESTORER_PATH_REQUIRED) : ""}
+                                arrow
+                                placement="top"
                             >
-                                {__(I18nStrings.BTN_SRS_READ_BY_ONLINE)}
-                            </Button>
+                                <span>
+                                    <Button
+                                        variant="contained"
+                                        onClick={() => onBtnSRSReadClicked()}
+                                        disabled={stablePath.length === 0}
+                                        fullWidth
+                                    >
+                                        {__(I18nStrings.BTN_SRS_READ)}
+                                    </Button>
+                                </span>
+                            </Tooltip>
+                            <Tooltip
+                                title={
+                                    clientId.length === 0 || clientSecret.length === 0
+                                        ? __(I18nStrings.MAIN_RESTORER_API_REQUIRED)
+                                        : ""
+                                }
+                                arrow
+                                placement="top"
+                            >
+                                <span>
+                                    <Button
+                                        variant="contained"
+                                        onClick={() => {
+                                            onBtnSRSReadByOnlineClicked();
+                                            setRestoreType("online");
+                                        }}
+                                        disabled={clientId.length === 0 || clientSecret.length === 0}
+                                    >
+                                        {__(I18nStrings.BTN_SRS_READ_BY_ONLINE)}
+                                    </Button>
+                                </span>
+                            </Tooltip>
                         </Stack>
                         <Stack direction={"row"} spacing={1} justifyContent={"space-between"}>
                             <ToggleButtonGroup

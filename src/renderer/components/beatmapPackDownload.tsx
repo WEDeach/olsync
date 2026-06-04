@@ -9,6 +9,7 @@ import {
     RadioGroup,
     Select,
     Stack,
+    Tooltip,
     Typography,
 } from "@mui/material";
 import { Observer } from "mobx-react";
@@ -19,6 +20,7 @@ import { getApiDownloadLink, getApiPreDelayMs } from "../../utils/api";
 import { GetDLOptionByDirect, GetDLOptionByFDM, GetDLOptionByRows } from "../../utils/download";
 import { getPackRulesetByNmExperiment } from "../../utils/experiments";
 import __ from "../../utils/i18n";
+import { createLogger } from "../../utils/logger";
 import { OsuData } from "../../utils/osu";
 import { sleep } from "../../utils/time";
 import { ConfigKey } from "../../utils/typed/config";
@@ -28,6 +30,8 @@ import { DataViewer } from "./dataViewer";
 import { IPropertyWithName } from "./table";
 
 export interface IBeatmapPackDownloadViewProps {}
+
+const log = createLogger("BeatmapPackDownload");
 
 const MODE_NAME_MAP: Record<string, string> = { "0": "osu", "1": "taiko", "2": "fruits", "3": "mania" };
 
@@ -138,7 +142,7 @@ const BeatmapPackDownloadOptions: React.FC<{
 
             <Box>
                 <Typography variant="h6" gutterBottom>
-                    下載模式
+                    {__(I18nStrings.MAIN_BPKS_DL_MODE_TITLE)}
                 </Typography>
                 <RadioGroup value={downloadMode} onChange={(e) => onDLModeChange(e.target.value as "full" | "diff")}>
                     <FormControlLabel value="full" control={<Radio />} label={__(I18nStrings.MAIN_BPKS_DL_MODE_FULL)} />
@@ -393,14 +397,16 @@ export const BeatmapPackDownloadView: React.FC<IBeatmapPackDownloadViewProps> = 
                     const mapIds = new Set(local.map((v) => v.beatmapSetId));
                     setExcludedPackMapIds(
                         new Set(
-                            processedPackInfos.flatMap((v) => v.beatmapsets.map((m) => m.id)).filter((v) => mapIds.has(v)),
+                            processedPackInfos
+                                .flatMap((v) => v.beatmapsets.map((m) => m.id))
+                                .filter((v) => mapIds.has(v)),
                         ),
                     );
                     g.setLoading(false);
                 }
             }
         } catch (error: any) {
-            console.error("Error fetching beatmap packs:", error);
+            log.error("Error fetching beatmap packs:", error);
         } finally {
             g.setLoading(false);
         }
@@ -451,7 +457,7 @@ export const BeatmapPackDownloadView: React.FC<IBeatmapPackDownloadViewProps> = 
 
         if (selectedPacks.length === 0) {
             g.setNotify({
-                message: "請至少選擇一個圖譜包！",
+                message: __(I18nStrings.MAIN_BPKS_SELECT_AT_LEAST_ONE),
                 severity: "warning",
             });
             return;
@@ -556,13 +562,26 @@ export const BeatmapPackDownloadView: React.FC<IBeatmapPackDownloadViewProps> = 
                 return (
                     <Stack spacing={2}>
                         {fetchedPacks.length === 0 ? (
-                            <Button
-                                variant="contained"
-                                onClick={handleOpenDialog}
-                                disabled={clientId.length === 0 || clientSecret.length === 0 || g.isLoading()}
+                            <Tooltip
+                                title={
+                                    clientId.length === 0 || clientSecret.length === 0
+                                        ? __(I18nStrings.MAIN_BPKS_API_REQUIRED)
+                                        : ""
+                                }
+                                arrow
+                                placement="top"
                             >
-                                {__(I18nStrings.BTN_BPKS_READ)}
-                            </Button>
+                                <span>
+                                    <Button
+                                        variant="contained"
+                                        onClick={handleOpenDialog}
+                                        disabled={clientId.length === 0 || clientSecret.length === 0 || g.isLoading()}
+                                        fullWidth
+                                    >
+                                        {__(I18nStrings.BTN_BPKS_READ)}
+                                    </Button>
+                                </span>
+                            </Tooltip>
                         ) : (
                             <>
                                 <Box sx={{ height: "60vh", width: "100%" }}>

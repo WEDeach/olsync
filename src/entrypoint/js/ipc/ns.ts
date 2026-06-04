@@ -83,6 +83,7 @@ export enum IPC_LA_NAMES {
 export enum IPC_TR_NAMES {
     GET_USER_SUMMARY = "ipc:tr:get_user_summary",
     SAVE_USER_SUMMARY = "ipc:tr:save_user_summary",
+    LIST_USER_SUMMARIES = "ipc:tr:list_user_summaries",
 }
 
 // DL

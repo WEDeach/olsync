@@ -9,11 +9,14 @@ import { IOsuCollection, OsuClients } from "../defines/types";
 import { IPC_RD_NAMES } from "../entrypoint/js/ipc/ns";
 import g from "../renderer/state";
 import __ from "./i18n";
+import { createLogger } from "./logger";
 import { readAllWithOffset, yieldToMain } from "./reader";
 import { ConfigKey } from "./typed/config";
 import { I18nStrings } from "./typed/i18n";
 
 const PAGE_SIZE = 500;
+
+const log = createLogger("uOsu");
 
 export type OsuBeatmap = {
     beatmapId: number;
@@ -50,6 +53,7 @@ export type OsuBeatmap = {
 
 export type OsuScore = StableScore;
 
+export type DataUpdateType = "beatmaps" | "scores" | "collections";
 type DataUpdateCallback = () => void;
 
 class OsuDataManager {
@@ -62,7 +66,11 @@ class OsuDataManager {
     private _dirtyBeatmaps = false;
     private _dirtyScores = false;
     private _dirtyCollections = false;
-    private _subscribers = new Set<DataUpdateCallback>();
+    private _subscribers = new Map<DataUpdateType, Set<DataUpdateCallback>>([
+        ["beatmaps", new Set()],
+        ["scores", new Set()],
+        ["collections", new Set()],
+    ]);
 
     private _beatmaps: OsuBeatmap[] | null = null;
     private _scores: Map<string, OsuScore[]> | null = null;
@@ -117,18 +125,47 @@ class OsuDataManager {
         return this._beatmaps !== null;
     }
 
-    subscribe(fn: DataUpdateCallback) {
-        this._subscribers.add(fn);
+    private async _ensureWatching() {
+        if (this._watching) return;
+        await this._ensureStable();
+        await window.olsCore.startStableWatch();
+        window.olsCore.on(IPC_RD_NAMES.STABLE_BEATMAPS_CHANGED, this._onBeatmapsChanged);
+        window.olsCore.on(IPC_RD_NAMES.STABLE_SCORES_CHANGED, this._onScoresChanged);
+        window.olsCore.on(IPC_RD_NAMES.STABLE_COLLECTIONS_CHANGED, this._onCollectionsChanged);
+        this._watching = true;
     }
 
-    unsubscribe(fn: DataUpdateCallback) {
-        this._subscribers.delete(fn);
+    /**
+     * Subscribe to data updates of a specific type.
+     * If there is already pending dirty data for this type, the callback will be
+     * called immediately (after the current refresh loop finishes or on next tick).
+     * Returns an unsubscribe function.
+     */
+    subscribe(type: DataUpdateType, fn: DataUpdateCallback): () => void {
+        this._subscribers.get(type)?.add(fn);
+        // If there's already dirty data for this type that was deferred, flush it now
+        const hasPending =
+            (type === "beatmaps" && this._dirtyBeatmaps) ||
+            (type === "scores" && this._dirtyScores) ||
+            (type === "collections" && this._dirtyCollections);
+        if (hasPending && !this._backgroundRefreshing) {
+            void this._runRefreshLoop();
+        }
+        return () => this.unsubscribe(type, fn);
     }
 
-    private _notify() {
-        this._subscribers.forEach((fn) => {
+    unsubscribe(type: DataUpdateType, fn: DataUpdateCallback) {
+        this._subscribers.get(type)?.delete(fn);
+    }
+
+    private _notifyType(type: DataUpdateType) {
+        this._subscribers.get(type)?.forEach((fn) => {
             fn();
         });
+    }
+
+    private _hasSubscribers(type: DataUpdateType): boolean {
+        return (this._subscribers.get(type)?.size ?? 0) > 0;
     }
 
     private _onBeatmapsChanged = () => {
@@ -152,29 +189,58 @@ class OsuDataManager {
         try {
             while (this._dirtyBeatmaps || this._dirtyScores || this._dirtyCollections) {
                 if (this._dirtyBeatmaps) {
-                    this._dirtyBeatmaps = false;
-                    this._beatmaps = null;
-                    this._beatmapIndex = null;
-                    g.setLoading(true, __(I18nStrings.MAIN_SRS_READING_LOCAL));
-                    await yieldToMain();
-                    await this.getBeatmaps();
+                    if (!this._hasSubscribers("beatmaps")) {
+                        // no subscriber yet — keep dirty, will flush when one subscribes
+                    } else {
+                        this._dirtyBeatmaps = false;
+                        this._beatmaps = null;
+                        this._beatmapIndex = null;
+                        g.setLoading(true, __(I18nStrings.MAIN_SRS_READING_LOCAL));
+                        await yieldToMain();
+                        log.info("getBeatmaps start");
+                        const _t0b = Date.now();
+                        await this.getBeatmaps();
+                        log.info(`getBeatmaps done in ${Date.now() - _t0b}ms`);
+                        g.setLoading(false);
+                        this._notifyType("beatmaps");
+                    }
                 }
                 if (this._dirtyScores) {
-                    this._dirtyScores = false;
-                    this._scores = null;
-                    g.setLoading(true, __(I18nStrings.MAIN_SRS_READING_SCORES));
-                    await yieldToMain();
-                    await this.getScores();
+                    if (!this._hasSubscribers("scores")) {
+                        // no subscriber yet — keep dirty, will flush when one subscribes
+                    } else {
+                        this._dirtyScores = false;
+                        this._scores = null;
+                        g.setLoading(true, __(I18nStrings.MAIN_SRS_READING_SCORES));
+                        await yieldToMain();
+                        log.info("getScores start");
+                        const _t0s = Date.now();
+                        await this.getScores();
+                        log.info(`getScores done in ${Date.now() - _t0s}ms`);
+                        g.setLoading(false);
+                        this._notifyType("scores");
+                    }
                 }
                 if (this._dirtyCollections) {
-                    this._dirtyCollections = false;
-                    this._stableCollections = null;
-                    g.setLoading(true, __(I18nStrings.MAIN_SRS_READING_COLLECTIONS));
-                    await yieldToMain();
-                    await this.getCollections();
+                    if (!this._hasSubscribers("collections")) {
+                        // no subscriber yet — keep dirty, will flush when one subscribes
+                    } else {
+                        this._dirtyCollections = false;
+                        this._stableCollections = null;
+                        g.setLoading(true, __(I18nStrings.MAIN_SRS_READING_COLLECTIONS));
+                        await yieldToMain();
+                        await this.getCollections();
+                        g.setLoading(false);
+                        this._notifyType("collections");
+                    }
                 }
+                // if all remaining dirty types have no subscribers, stop looping
+                const allDeferred =
+                    (!this._dirtyBeatmaps || !this._hasSubscribers("beatmaps")) &&
+                    (!this._dirtyScores || !this._hasSubscribers("scores")) &&
+                    (!this._dirtyCollections || !this._hasSubscribers("collections"));
+                if (allDeferred) break;
             }
-            this._notify();
         } finally {
             this._backgroundRefreshing = false;
             g.setLoading(false);
@@ -182,27 +248,23 @@ class OsuDataManager {
     }
 
     async init(): Promise<void> {
-        await this._ensureStable();
-        if (!this._watching) {
-            await window.olsCore.startStableWatch();
-            window.olsCore.on(IPC_RD_NAMES.STABLE_BEATMAPS_CHANGED, this._onBeatmapsChanged);
-            window.olsCore.on(IPC_RD_NAMES.STABLE_SCORES_CHANGED, this._onScoresChanged);
-            window.olsCore.on(IPC_RD_NAMES.STABLE_COLLECTIONS_CHANGED, this._onCollectionsChanged);
-            this._watching = true;
-        }
+        await this._ensureWatching();
         await this.getBeatmaps();
         await this.getScores();
         await this.getCollections();
     }
 
     async getBeatmaps(filter?: StableBeatmapFilter): Promise<OsuBeatmap[]> {
-        await this._ensureStable();
+        await this._ensureWatching();
         if (!this._beatmaps) {
+            log.info("IPC queryStableBeatmaps start");
+            const _t0 = Date.now();
             const first = await window.olsCore.queryStableBeatmaps({}, 0, PAGE_SIZE);
             const all = await readAllWithOffset(
                 (offset, limit) => window.olsCore.queryStableBeatmaps({}, offset, limit),
                 first,
             );
+            log.info(`IPC queryStableBeatmaps done in ${Date.now() - _t0}ms, count: ${all.data.length}`);
             this._beatmaps = all.data as OsuBeatmap[];
         }
         if (!filter || Object.keys(filter).length === 0) {
@@ -212,7 +274,7 @@ class OsuDataManager {
     }
 
     async getScores(): Promise<Map<string, OsuScore[]>> {
-        await this._ensureStable();
+        await this._ensureWatching();
         if (!this._scores) {
             const raw = await window.olsCore.getScores(OsuClients.Stable, 0, PAGE_SIZE);
             const map = new Map<string, OsuScore[]>();
@@ -233,7 +295,7 @@ class OsuDataManager {
     }
 
     async getCollections(): Promise<IOsuCollection[]> {
-        await this._ensureStable();
+        await this._ensureWatching();
         if (!this._stableCollections) {
             let cols = await window.olsCore.getCollections(OsuClients.Stable, 0, PAGE_SIZE);
             cols = await readAllWithOffset(

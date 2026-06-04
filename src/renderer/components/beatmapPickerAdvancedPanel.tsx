@@ -347,9 +347,13 @@ const DateConditionEditor: React.FC<{
                     value={mode}
                     onChange={(e) => onChange(e.target.value, "")}
                 >
-                    <MenuItem value={DateCondition.Before}>{__(I18nStrings.MAIN_PICKER_WEIGHT_OP_DATE_BEFORE)}</MenuItem>
+                    <MenuItem value={DateCondition.Before}>
+                        {__(I18nStrings.MAIN_PICKER_WEIGHT_OP_DATE_BEFORE)}
+                    </MenuItem>
                     <MenuItem value={DateCondition.After}>{__(I18nStrings.MAIN_PICKER_WEIGHT_OP_DATE_AFTER)}</MenuItem>
-                    <MenuItem value={DateCondition.Between}>{__(I18nStrings.MAIN_PICKER_WEIGHT_OP_DATE_BETWEEN)}</MenuItem>
+                    <MenuItem value={DateCondition.Between}>
+                        {__(I18nStrings.MAIN_PICKER_WEIGHT_OP_DATE_BETWEEN)}
+                    </MenuItem>
                     <MenuItem value={DateCondition.WithinSecs}>
                         {__(I18nStrings.MAIN_PICKER_WEIGHT_OP_DATE_WITHIN)}
                     </MenuItem>

@@ -1,9 +1,12 @@
 import { makeAutoObservable, observable, runInAction } from "mobx";
 import { DefaultObject } from "realm/dist/public-types/schema/types";
 import { OsuClients, OsuTables } from "../../../defines/types";
+import { createLogger } from "../../../utils/logger";
 import { ConfigKey } from "../../../utils/typed/config";
 import { IPropertyWithName } from "../../components/table";
 import g from "../../state";
+
+const log = createLogger("DViewStable");
 
 interface State {
     path?: string;
@@ -100,13 +103,13 @@ export default class Controller {
     onBtnReadOsuDBFileClicked = async () => {
         await window.olsCore.initStableReader(this.Path);
         const result = await window.olsCore.getBeatmaps(OsuClients.Stable, 0, 500);
-        console.log(result);
+        log.debug(result);
     };
 
     onBtnReadScoresClicked = async () => {
         await window.olsCore.initStableReader(this.Path);
         const result = await window.olsCore.getScores(OsuClients.Stable);
-        console.log(result);
+        log.debug(result);
     };
 
     loadSchemaObjs = async () => {

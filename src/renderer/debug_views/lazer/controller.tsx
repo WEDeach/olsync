@@ -1,7 +1,10 @@
 import { makeAutoObservable, observable, runInAction } from "mobx";
 import { DefaultObject } from "realm/dist/public-types/schema/types";
+import { createLogger } from "../../../utils/logger";
 import { IPropertyWithName } from "../../components/table";
 import g from "../../state";
+
+const log = createLogger("DViewLazer");
 
 interface State {
     path?: string;
@@ -70,7 +73,7 @@ export default class Controller {
             const modelNames = schemas.map((data: any) => {
                 return data.name;
             });
-            console.log(schemas);
+            log.debug(schemas);
 
             this.state.s_tables = modelNames;
         }

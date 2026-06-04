@@ -3,10 +3,13 @@ import * as fs from "fs";
 import * as path from "path";
 import type { StableBeatmapFilter, StableCollection, StableCollectionData } from "../../defines/stable_structs";
 import type { IOsuCollection } from "../../defines/types";
+import { createLogger } from "../../utils/logger";
 import { readWithOffset } from "../../utils/reader";
 import { readNullableString, writeNullableString } from "../../utils/string";
 
 const Parser = require("binary-parser").Parser;
+
+const log = createLogger("StableProcess");
 
 function backup_file_by_sha256(in_path: string, out_path: string) {
     const data = fs.readFileSync(in_path);
@@ -74,22 +77,36 @@ let _basePath: string | undefined;
 let _osu_db: any;
 let _scores: any;
 let _collections: StableCollection | undefined;
+let _osu_db_loading: Promise<void> | null = null;
+let _scores_loading: Promise<void> | null = null;
+let _collections_loading: Promise<void> | null = null;
 
 async function parse_osu_db(): Promise<void> {
     if (_osu_db !== undefined || !_basePath) return;
+    if (_osu_db_loading) return _osu_db_loading;
+    _osu_db_loading = _do_parse_osu_db().finally(() => {
+        _osu_db_loading = null;
+    });
+    return _osu_db_loading;
+}
+
+async function _do_parse_osu_db(): Promise<void> {
+    if (!_basePath) return;
 
     const dp = path.join(_basePath, "osu!.db");
     if (!fs.existsSync(dp)) {
-        console.log(`[READER/proc] osu file does not exist: ${dp}`);
+        log.info(`osu file does not exist: ${dp}`);
         _osu_db = null;
         return;
     }
 
-    console.time("[READER/proc] Read osu!.db");
+    const t0 = Date.now();
+    log.info("Reading osu!.db...");
     const buf = await fs.promises.readFile(dp);
-    console.timeEnd("[READER/proc] Read osu!.db");
+    log.info(`Read osu!.db done in ${Date.now() - t0}ms (${(buf.length / 1024 / 1024).toFixed(1)} MB)`);
 
-    console.time("[READER/proc] Parse osu!.db");
+    const t1 = Date.now();
+    log.info("Parsing osu!.db...");
     const versionParser = new Parser().uint32le("version");
     const { version } = versionParser.parse(buf);
 
@@ -174,15 +191,28 @@ async function parse_osu_db(): Promise<void> {
         .uint32le("userType");
 
     _osu_db = parser.parse(buf);
-    console.log(`[READER/proc] Total beatmaps: ${_osu_db.beatmaps.length}`);
-    console.timeEnd("[READER/proc] Parse osu!.db");
+    log.info(`Parse osu!.db done in ${Date.now() - t1}ms, total beatmaps: ${_osu_db.beatmaps.length}`);
 }
 
 async function parse_scores(): Promise<void> {
     if (_scores !== undefined || !_basePath) return;
+    if (_scores_loading) return _scores_loading;
+    _scores_loading = _do_parse_scores().finally(() => {
+        _scores_loading = null;
+    });
+    return _scores_loading;
+}
+
+async function _do_parse_scores(): Promise<void> {
+    if (!_basePath) return;
 
     const dp = path.join(_basePath, "scores.db");
+    const t0 = Date.now();
+    log.info("Reading scores.db...");
     const buf = await fs.promises.readFile(dp);
+    log.info(`Read scores.db done in ${Date.now() - t0}ms (${(buf.length / 1024).toFixed(0)} KB)`);
+    const t1 = Date.now();
+    log.info("Parsing scores.db...");
 
     const parser_score = new Parser()
         .uint8("ruleset")
@@ -226,16 +256,33 @@ async function parse_scores(): Promise<void> {
     });
 
     _scores = parser.parse(buf);
-    console.log(
-        `[READER/proc] Score Version: ${_scores.version}, Beatmap Count: ${_scores.beatmapCount}, Score Count: ${_scores.beatmapCount > 0 ? _scores.beatmaps.map((b: any) => b.scoreCount).reduce((a: number, b: number) => a + b) : 0}`,
+    const scoreCount =
+        _scores.beatmapCount > 0
+            ? _scores.beatmaps.map((b: any) => b.scoreCount).reduce((a: number, b: number) => a + b)
+            : 0;
+    log.info(
+        `Parse scores.db done in ${Date.now() - t1}ms, version: ${_scores.version}, beatmaps: ${_scores.beatmapCount}, scores: ${scoreCount}`,
     );
 }
 
 async function parse_collections(): Promise<void> {
     if (_collections !== undefined || !_basePath) return;
+    if (_collections_loading) return _collections_loading;
+    _collections_loading = _do_parse_collections().finally(() => {
+        _collections_loading = null;
+    });
+    return _collections_loading;
+}
+
+async function _do_parse_collections(): Promise<void> {
+    if (!_basePath) return;
 
     const dp = path.join(_basePath, "collection.db");
+    const t0 = Date.now();
+    log.info("Reading collection.db...");
     const buf = await fs.promises.readFile(dp);
+    log.info(`Read collection.db done in ${Date.now() - t0}ms`);
+    const t1 = Date.now();
 
     const parser = new Parser()
         .uint32le("version")
@@ -280,6 +327,7 @@ async function parse_collections(): Promise<void> {
         });
 
     _collections = parser.parse(buf);
+    log.info(`Parse collection.db done in ${Date.now() - t1}ms, collections: ${_collections?.collectionCount ?? 0}`);
 }
 
 async function handle(msg: any): Promise<unknown> {
@@ -446,7 +494,7 @@ async function handle(msg: any): Promise<unknown> {
                 const mapCountBuf = Buffer.alloc(4);
                 mapCountBuf.writeInt32LE(col.maps.length, 0);
                 buffers.push(mapCountBuf);
-                console.log(col.maps);
+                log.debug(col.maps);
                 for (const map of col.maps) {
                     buffers.push(writeNullableString(map.checksum));
                 }
@@ -460,16 +508,19 @@ async function handle(msg: any): Promise<unknown> {
 
         case "invalidate_beatmaps": {
             _osu_db = undefined;
+            _osu_db_loading = null;
             return null;
         }
 
         case "invalidate_scores": {
             _scores = undefined;
+            _scores_loading = null;
             return null;
         }
 
         case "invalidate_collections": {
             _collections = undefined;
+            _collections_loading = null;
             return null;
         }
 

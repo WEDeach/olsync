@@ -46,6 +46,10 @@ export enum ConfigKey {
     /* UI */
     UI_AUDIO_VOLUME = "ui:audio_volume",
     UI_AUDIO_MUTED = "ui:audio_muted",
+    WINDOW_WIDTH = "window:width",
+    WINDOW_HEIGHT = "window:height",
+    WINDOW_X = "window:x",
+    WINDOW_Y = "window:y",
 
     /* Experiments */
     EXPERIMENT_YINMO_CHANCE = "experiment:yinmo_chance",

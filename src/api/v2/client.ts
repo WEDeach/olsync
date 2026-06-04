@@ -1,10 +1,13 @@
 import { pathJoin, pCache, readJson, saveJson } from "../../utils/file";
+import { createLogger } from "../../utils/logger";
 import BeatmapsRoute from "./routes/beatmaps";
 import BeatmapsetsRoute from "./routes/beatmapsets";
 import OauthRoute from "./routes/oauth";
 import UsersRoute from "./routes/users";
 import { RespOAuthToken } from "./types/api_resp";
 import APIException from "./types/exceptions";
+
+const log = createLogger("API");
 
 export default class ApiClient {
     private client_id: string;
@@ -55,7 +58,7 @@ export default class ApiClient {
 
         if (data) {
             if (method === "GET") {
-                console.error(`GET method does not support data: ${endpoint}, ${data}`);
+                log.error(`GET method does not support data: ${endpoint}, ${data}`);
             } else {
                 ops.body = JSON.stringify(data);
             }
@@ -67,14 +70,14 @@ export default class ApiClient {
         }
 
         const response = await fetch(url, ops);
-        console.log(`[API] (${response.status} ${response.statusText}) ${endpoint}`);
+        log.info(`(${response.status} ${response.statusText}) ${endpoint}`);
         const headers: Record<string, string> = {};
         response.headers.forEach((value, key) => {
             headers[key] = value;
         });
         const rate_limit = headers["x-ratelimit-limit"] || "-";
         const rate_remaining = headers["x-ratelimit-remaining"] || "-";
-        console.log(`   >> ${rate_remaining}/${rate_limit}`);
+        log.info(`   >> ${rate_remaining}/${rate_limit}`);
         if (options?.redirect === "manual") {
             return response as any;
         }

@@ -11,4 +11,8 @@ export function register() {
     ipcMain.handle(IPC_TR_NAMES.SAVE_USER_SUMMARY, async (_, data: TrackerUserSummary) => {
         await SharedManager.tracker.save_user_summary(data);
     });
+
+    ipcMain.handle(IPC_TR_NAMES.LIST_USER_SUMMARIES, async () => {
+        return SharedManager.tracker.list_user_summaries();
+    });
 }

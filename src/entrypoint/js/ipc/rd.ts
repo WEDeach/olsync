@@ -5,8 +5,11 @@ import * as rosu from "rosu-pp-js";
 import { PPCalcArgs, StableBeatmapFilter } from "../../../defines/stable_structs";
 import { IOsuCollection, OsuClients } from "../../../defines/types";
 import SharedManager from "../../../shared/sharedManager";
+import { createLogger } from "../../../utils/logger";
 import { ConfigKey } from "../../../utils/typed/config";
 import { IPC_RD_NAMES } from "./ns";
+
+const log = createLogger("IPC_RD");
 
 export function register() {
     ipcMain.handle(IPC_RD_NAMES.INIT, async (_, path: string) => {
@@ -94,7 +97,10 @@ export function register() {
     });
 
     ipcMain.handle(IPC_RD_NAMES.CALC_PP, async (_, args: PPCalcArgs) => {
+        const t0 = Date.now();
         const detail = await SharedManager.stableReader.get_beatmap_detail(args.md5Hash);
+        const tDetail = Date.now() - t0;
+        if (tDetail > 100) log.warn(`CALC_PP get_beatmap_detail slow: ${tDetail}ms (${args.md5Hash})`);
         if (!detail) return null;
         const basePath = SharedManager.stableReader.get_base_path();
         if (!basePath) return null;

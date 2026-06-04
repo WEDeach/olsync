@@ -2,9 +2,12 @@ import { HostType } from "../defines/types";
 import g from "../renderer/state";
 import __ from "./i18n";
 import { LogError } from "./log";
+import { createLogger } from "./logger";
 import { sleep } from "./time";
 import { ConfigKey } from "./typed/config";
 import { I18nStrings } from "./typed/i18n";
+
+const log = createLogger("uDownload");
 
 type TCallback = () => Promise<any[]>;
 
@@ -125,7 +128,7 @@ export const GetDLOptionByDirect = (mapIds: number[]) => {
                             await window.olsCore.openExternal(link);
                             successCount++;
                         } catch (error) {
-                            console.error(`Failed to open link (sid: ${map_id}):`, error);
+                            log.error(`Failed to open link (sid: ${map_id}):`, error);
                             failCount++;
                             failedIds.push(map_id);
                         }

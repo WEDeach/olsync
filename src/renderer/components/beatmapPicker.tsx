@@ -13,6 +13,7 @@ import {
     Star,
 } from "@mui/icons-material";
 import {
+    Alert,
     Box,
     Button,
     Chip,
@@ -33,6 +34,7 @@ import {
     Typography,
 } from "@mui/material";
 import ReactECharts from "echarts-for-react";
+import { Observer } from "mobx-react";
 import React, { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { AutoSizer, List } from "react-virtualized";
 import { RankedStatus } from "../../api/v2/types/api_resp";
@@ -40,9 +42,10 @@ import { StableBeatmapDetail, StableBeatmapFilter } from "../../defines/stable_s
 import { IOsuCollection } from "../../defines/types";
 import { getYinMoChanceExperiment } from "../../utils/experiments";
 import __ from "../../utils/i18n";
+import { createLogger } from "../../utils/logger";
 import { OsuBeatmap, OsuData, OsuScore } from "../../utils/osu";
 import { yieldToMain } from "../../utils/reader";
-import { formatDateTime, formatTimeAgo } from "../../utils/time";
+import { formatDateTime, formatTimeAgo, useNow } from "../../utils/time";
 import { ConfigKey } from "../../utils/typed/config";
 import { I18nStrings } from "../../utils/typed/i18n";
 import g from "../state";
@@ -69,6 +72,8 @@ import {
 } from "./beatmapPickerTypes";
 
 type IBeatmapData = OsuBeatmap;
+
+const log = createLogger("BeatmapPicker");
 
 interface IBeatmapPickerViewProps {}
 
@@ -179,6 +184,7 @@ export const ScoreRecordTable: React.FC<ScoreRecordTableProps> = ({
     onVisibleKeysChange,
     highlightKey,
 }) => {
+    useNow();
     const sorted = React.useMemo(
         () =>
             [...scores].sort((a, b) =>
@@ -226,19 +232,35 @@ export const ScoreRecordTable: React.FC<ScoreRecordTableProps> = ({
             <Table size="small" stickyHeader>
                 <TableHead>
                     <TableRow>
-                        <TableCell sx={{ bgcolor: "background.paper" }}>評價</TableCell>
-                        {showBeatmapLabel && <TableCell sx={{ bgcolor: "background.paper" }}>曲目</TableCell>}
-                        <TableCell sx={{ bgcolor: "background.paper" }}>分數</TableCell>
+                        <TableCell sx={{ bgcolor: "background.paper" }}>
+                            {__(I18nStrings.MAIN_PICKER_TABLE_GRADE)}
+                        </TableCell>
+                        {showBeatmapLabel && (
+                            <TableCell sx={{ bgcolor: "background.paper" }}>
+                                {__(I18nStrings.MAIN_PICKER_TABLE_MAP)}
+                            </TableCell>
+                        )}
+                        <TableCell sx={{ bgcolor: "background.paper" }}>
+                            {__(I18nStrings.MAIN_PICKER_TABLE_SCORE)}
+                        </TableCell>
                         <TableCell sx={{ bgcolor: "background.paper" }}>300</TableCell>
                         <TableCell sx={{ bgcolor: "background.paper" }}>100</TableCell>
                         <TableCell sx={{ bgcolor: "background.paper" }}>50</TableCell>
                         <TableCell sx={{ bgcolor: "background.paper" }}>Miss</TableCell>
-                        <TableCell sx={{ bgcolor: "background.paper" }}>最大連擊</TableCell>
-                        <TableCell sx={{ bgcolor: "background.paper" }}>準確率</TableCell>
-                        <TableCell sx={{ bgcolor: "background.paper" }}>模式</TableCell>
+                        <TableCell sx={{ bgcolor: "background.paper" }}>
+                            {__(I18nStrings.MAIN_PICKER_TABLE_MAX_COMBO)}
+                        </TableCell>
+                        <TableCell sx={{ bgcolor: "background.paper" }}>
+                            {__(I18nStrings.MAIN_PICKER_TABLE_ACCURACY)}
+                        </TableCell>
+                        <TableCell sx={{ bgcolor: "background.paper" }}>
+                            {__(I18nStrings.MAIN_PICKER_TABLE_MODE)}
+                        </TableCell>
                         <TableCell sx={{ bgcolor: "background.paper" }}>Mods</TableCell>
                         <TableCell sx={{ bgcolor: "background.paper" }}>PP</TableCell>
-                        <TableCell sx={{ bgcolor: "background.paper" }}>時間</TableCell>
+                        <TableCell sx={{ bgcolor: "background.paper" }}>
+                            {__(I18nStrings.MAIN_PICKER_TABLE_TIME)}
+                        </TableCell>
                     </TableRow>
                 </TableHead>
                 <TableBody>
@@ -369,7 +391,7 @@ const ScoreOverviewChart: React.FC<ScoreOverviewChartProps> = ({ scores, onHover
         return {
             tooltip: {
                 trigger: "axis",
-                axisPointer: { type: "shadow" },
+                axisPointer: { type: "cross" },
                 formatter: (params: any[]) => {
                     const idx = params[0]?.dataIndex ?? 0;
                     const s = sorted[idx];
@@ -386,14 +408,21 @@ const ScoreOverviewChart: React.FC<ScoreOverviewChartProps> = ({ scores, onHover
                         `<span style="color:#2ecc71">▪ 100: ${s.count100}</span>`,
                         `<span style="color:#f39c12">▪ 50:  ${s.count50}</span>`,
                         `<span style="color:#e74c3c">▪ Miss: ${s.countMiss}</span>`,
-                        `<span style="color:#9b59b6">▪ 最大連擊: ${s.maxCombo}x</span>`,
-                        `<span style="color:${ACC_COLOR}">▪ 準確率: ${acc}%</span>`,
+                        `<span style="color:#9b59b6">▪ ${__(I18nStrings.MAIN_PICKER_TOOLTIP_MAX_COMBO)}: ${s.maxCombo}x</span>`,
+                        `<span style="color:${ACC_COLOR}">▪ ${__(I18nStrings.MAIN_PICKER_TOOLTIP_ACCURACY)}: ${acc}%</span>`,
                     ];
                     return lines.join("<br/>");
                 },
             },
             legend: {
-                data: ["300", "100", "50", "Miss", "最大連擊", "準確率"],
+                data: [
+                    "300",
+                    "100",
+                    "50",
+                    "Miss",
+                    __(I18nStrings.MAIN_PICKER_CHART_MAX_COMBO),
+                    __(I18nStrings.MAIN_PICKER_CHART_ACCURACY),
+                ],
                 bottom: 0,
                 textStyle: { fontSize: 11 },
             },
@@ -406,7 +435,7 @@ const ScoreOverviewChart: React.FC<ScoreOverviewChartProps> = ({ scores, onHover
             yAxis: [
                 {
                     type: "value",
-                    name: "命中數",
+                    name: __(I18nStrings.MAIN_PICKER_CHART_HIT_COUNT),
                     nameTextStyle: { fontSize: 10 },
                     axisLabel: { fontSize: 10 },
                     splitLine: { lineStyle: { opacity: 0.3 } },
@@ -461,7 +490,7 @@ const ScoreOverviewChart: React.FC<ScoreOverviewChartProps> = ({ scores, onHover
                     itemStyle: { color: "#e74c3c" },
                 },
                 {
-                    name: "最大連擊",
+                    name: __(I18nStrings.MAIN_PICKER_CHART_MAX_COMBO),
                     type: "line",
                     yAxisIndex: 2,
                     data: comboData,
@@ -471,7 +500,7 @@ const ScoreOverviewChart: React.FC<ScoreOverviewChartProps> = ({ scores, onHover
                     itemStyle: { color: "#9b59b6" },
                 },
                 {
-                    name: "準確率",
+                    name: __(I18nStrings.MAIN_PICKER_CHART_ACCURACY),
                     type: "line",
                     yAxisIndex: 1,
                     data: accData,
@@ -592,14 +621,13 @@ const calcModsLabel = (mods: number) =>
 const calcGrade = (s: { count300: number; count100: number; count50: number; countMiss: number }) => {
     const total = s.count300 + s.count100 + s.count50 + s.countMiss;
     if (total === 0) return "D";
-    const acc = ((s.count300 * 300 + s.count100 * 100 + s.count50 * 50) / (total * 300)) * 100;
-    const ratio300 = s.count300 / total;
-    const ratio50 = s.count300 + s.count100 + s.count50 > 0 ? s.count50 / (s.count300 + s.count100 + s.count50) : 0;
-    if (acc >= 100) return "SS";
-    if (acc >= 90 && s.countMiss === 0 && ratio50 <= 0.01) return "S";
-    if (acc >= 80 || (ratio300 >= 0.9 && s.countMiss === 0)) return "A";
-    if (acc >= 70 || (ratio300 >= 0.8 && s.countMiss === 0)) return "B";
-    if (acc >= 60) return "C";
+    const r300 = s.count300 / total;
+    const r50 = s.count50 / total;
+    if (r300 === 1) return "SS";
+    if (r300 > 0.9 && r50 <= 0.01 && s.countMiss === 0) return "S";
+    if ((r300 > 0.8 && s.countMiss === 0) || r300 > 0.9) return "A";
+    if ((r300 > 0.7 && s.countMiss === 0) || r300 > 0.8) return "B";
+    if (r300 > 0.6) return "C";
     return "D";
 };
 
@@ -630,8 +658,29 @@ export const BeatmapResultDrawer: React.FC<IBeatmapResultDrawerProps> = ({
     const [scorePPs, setScorePPs] = useState<Map<string, { pp: number; aim?: number; speed?: number; acc?: number }>>(
         new Map(),
     );
-    const mapScores: OsuScore[] = map ? (scoresByHash.get(map.md5Hash) ?? []) : [];
-    const scoreRows: ScoreRecordRow[] = mapScores.map((s) => ({ ...s, md5Hash: map?.md5Hash ?? s.md5Hash }));
+    const mapScores: OsuScore[] = React.useMemo(
+        () => (map ? (scoresByHash.get(map.md5Hash) ?? []) : []),
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [map?.md5Hash, scoresByHash],
+    );
+    const mapScoresKey = React.useMemo(
+        () =>
+            mapScores
+                .map((s) =>
+                    makeScorePPKey({
+                        md5Hash: map?.md5Hash ?? "",
+                        totalScore: s.totalScore,
+                        date: s.date,
+                        maxCombo: s.maxCombo,
+                    }),
+                )
+                .join("|"),
+        [mapScores, map?.md5Hash],
+    );
+    const scoreRows: ScoreRecordRow[] = React.useMemo(
+        () => mapScores.map((s) => ({ ...s, md5Hash: map?.md5Hash ?? s.md5Hash })),
+        [mapScores, map?.md5Hash],
+    );
     const latestScoreDate =
         mapScores.length > 0 ? mapScores.reduce((best, s) => (s.date > best ? s.date : best), mapScores[0].date) : null;
     const effectiveUnplayed = map ? (mapScores.length > 0 ? false : map.unplayed) : false;
@@ -755,7 +804,8 @@ export const BeatmapResultDrawer: React.FC<IBeatmapResultDrawerProps> = ({
         return () => {
             cancelled = true;
         };
-    }, [showScores, map, mapScores]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [showScores, map?.md5Hash, mapScoresKey]);
 
     const handleCopyId = () => {
         if (!map) return;
@@ -1707,7 +1757,7 @@ export const BeatmapPickerView: React.FC<IBeatmapPickerViewProps> = () => {
             await applyFromCache();
             setState(IBPState.Loaded);
         } catch (error) {
-            console.error(error);
+            log.error(error);
             setState(IBPState.None);
         } finally {
             isLoadingRef.current = false;
@@ -1717,8 +1767,14 @@ export const BeatmapPickerView: React.FC<IBeatmapPickerViewProps> = () => {
     const onBtnClickedByInit = () => loadData();
 
     useEffect(() => {
-        OsuData.subscribe(applyFromCache);
-        return () => OsuData.unsubscribe(applyFromCache);
+        const unsub1 = OsuData.subscribe("beatmaps", applyFromCache);
+        const unsub2 = OsuData.subscribe("scores", applyFromCache);
+        const unsub3 = OsuData.subscribe("collections", applyFromCache);
+        return () => {
+            unsub1();
+            unsub2();
+            unsub3();
+        };
     }, [applyFromCache]);
 
     useEffect(() => {
@@ -1981,6 +2037,18 @@ export const BeatmapPickerView: React.FC<IBeatmapPickerViewProps> = () => {
                 </Box>
             </Drawer>
 
+            {state === IBPState.None && (
+                <Observer>
+                    {() =>
+                        g.config?.[ConfigKey.PATH_STABLE_DIR] ? null : (
+                            <Alert severity="warning" sx={{ mx: 2 }}>
+                                {__(I18nStrings.MAIN_PICKER_PATH_REQUIRED)}
+                            </Alert>
+                        )
+                    }
+                </Observer>
+            )}
+
             <Box
                 ref={rollAreaRef}
                 sx={{
@@ -2053,7 +2121,11 @@ export const BeatmapPickerView: React.FC<IBeatmapPickerViewProps> = () => {
 
                 <Button
                     variant="contained"
-                    disabled={state === IBPState.Loading || (state === IBPState.Loaded && filteredMaps.length === 0)}
+                    disabled={
+                        state === IBPState.Loading ||
+                        (state === IBPState.Loaded && filteredMaps.length === 0) ||
+                        (g.config?.[ConfigKey.PATH_STABLE_DIR] ?? "").length === 0
+                    }
                     sx={{
                         position: "absolute",
                         left: "50%",
@@ -2071,7 +2143,7 @@ export const BeatmapPickerView: React.FC<IBeatmapPickerViewProps> = () => {
                             `0 0 0 8px ${theme.palette.background.default}, 0px 8px 24px rgba(0,0,0,0.4)`,
                         "&.Mui-disabled": {
                             opacity: 1,
-                            backgroundColor: (theme) => theme.palette.background.default,
+                            backgroundColor: "#C9A8AE",
                             color: (theme) => theme.palette.success.contrastText,
                         },
                     }}

@@ -1,3 +1,7 @@
+import { createLogger } from "./logger";
+
+const log = createLogger("uString");
+
 export function read7BitString(buf: Buffer) {
     let length = 0;
     let shift = 0;
@@ -32,7 +36,7 @@ export function write7BitString(str: string): Buffer {
         len >>= 7;
         buf_len++;
     } while (len > 0);
-    console.log(`write7BitString: ${str}, len: ${len}, buf_len: ${buf_len}`);
+    log.debug(`write7BitString: ${str}, len: ${len}, buf_len: ${buf_len}`);
     const buf = Buffer.alloc(buf_len + strBuf.length);
     let lenOffset = 0;
     len = strBuf.length;
