@@ -1,0 +1,412 @@
+{
+    "__LANG__": "日本語",
+    "main": {
+        "dl": {
+            "select": "ダウンロード方法を選択するか、<b>テキストダウンロード</b>を選択してダウンロードリンクをまとめて取得してください。<br><br>デフォルトのダウンロードURLはosu!公式ウェブサイトです。この場合、ダウンロードするにはアカウントにログインする必要があります！<br>現在使用中のダウンロードリンク: <b>:url</b><br><br>config内の<b>api:dlink</b>を編集することで、直接ダウンロード用のカスタムURLに設定できます！",
+            "fetching": "ダウンロードリンクを取得中...",
+            "nodata": "データがありません...",
+            "to_clipboard": ":count 件のダウンロードリンクをクリップボードにコピーしました",
+            "progress": "ダウンロード中... :current/:total"
+        },
+        "api": {
+            "client": {
+                "init": {
+                    "success": "APIの初期化に成功しました"
+                }
+            }
+        },
+        "srs": {
+            "player": {
+                "who": "あなたは...？",
+                "you": "これはあなたですか？"
+            },
+            "local": {
+                "reading": "ローカル履歴を読み込み中..."
+            },
+            "scores": {
+                "reading": "ローカルのスコアデータを読み込み中..."
+            },
+            "collections": {
+                "reading": "ローカルのコレクションデータを読み込み中..."
+            },
+            "online": {
+                "reading": "オンライン履歴を読み込み中...",
+                "success": "オンライン履歴の読み込みに成功しました！",
+                "nodata": "オンライン履歴にデータがありません！",
+                "aborted": "オンライン履歴の読み込みを停止しました..."
+            },
+            "reading": {
+                "failed": "データを読み込めませんでした: :reason",
+                "checksum": "チェックサムから譜面情報を取得中..."
+            },
+            "tip": {
+                "read_local_maps_required": "ここを表示するには、まずローカル履歴を読み込む必要があります",
+                "read_online_maps_required": "ここを表示するには、まずオンライン履歴を読み込む必要があります",
+                "all_map_already_downloaded": "不足している譜面はすべてダウンロードされているようです UwU"
+            }
+        },
+        "bpks": {
+            "dl": {
+                "options": {
+                    "title": "ビートマップパックのダウンロードオプション",
+                    "desc": "ダウンロードするパックのタイプ、期間、およびダウンロードモードを選択してください"
+                },
+                "type": {
+                    "label": "パックのタイプ",
+                    "all": "すべてのタイプ",
+                    "standard": "標準ビートマップパック",
+                    "featured": "Featured Artist パック",
+                    "tournament": "トーナメントパック",
+                    "loved": "LOVED パック",
+                    "chart": "Spotlight パック",
+                    "theme": "テーマパック",
+                    "artist": "アーティストパック"
+                },
+                "date_range": {
+                    "label": "期間",
+                    "7d": "過去7日間",
+                    "30d": "過去30日間",
+                    "6m": "過去半年間",
+                    "all": "無制限"
+                },
+                "mode": {
+                    "full": "フルダウンロード",
+                    "diff": "差分ダウンロード"
+                },
+                "gmode": {
+                    "all": "すべてのモード",
+                    "label": "ゲームモード"
+                },
+                "no_type_selected": "パックのタイプを少なくとも1つ選択してください！",
+                "start": "ビートマップパックの処理を開始...",
+                "fetching": "パックデータを取得中 (タイプ: :type)...",
+                "init_api": "APIを初期化中..."
+            },
+            "date_range": {
+                "confirm": "期間を「無制限」にすると、すべてのパックを取得するため、処理に長い時間がかかる場合があります。続行しますか？"
+            },
+            "select_at_least_one": "パックを少なくとも1つ選択してください！",
+            "api_required": "API Client ID と Secret の設定が必要です",
+            "dl_mode_title": "ダウンロードモード"
+        },
+        "update": {
+            "checking": "アップデートをチェック中...",
+            "available": "利用可能なアップデートがあります",
+            "no_update": "最新バージョンです",
+            "downloading": "アップデートをダウンロード中... :current/:total",
+            "verifying": "アップデートを検証中...",
+            "success": "アップデートが完了しました",
+            "failed": "アップデートに失敗しました",
+            "restart_required": "アップデートを適用するにはアプリケーションを再起動してください",
+            "version": {
+                "current": "現在のバージョン: :version",
+                "latest": "最新バージョン: :version"
+            },
+            "info": {
+                "files": ":count 個のファイルを更新する必要があります",
+                "size": "ダウンロードサイズ: :size MB"
+            }
+        },
+        "settings": {
+            "title": "設定",
+            "path": "パス設定",
+            "api": "API 設定",
+            "download": "ダウンロード設定",
+            "dlink": "ダウンロードリンク",
+            "api_delay": "API 遅延 (ms)",
+            "dl_delay": "ダウンロード遅延 (ms)",
+            "select_dir": "フォルダを選択",
+            "select_file": "ファイルを選択",
+            "others": "その他の設定",
+            "use_yinmo_chance": "確率の計算結果に YinMoChance を使用する",
+            "check_file_by_md5": "MD5チェックサムでファイルの変更を確認する",
+            "pack_ruleset_by_nm": "NMダイジェストでパックのModを確認する",
+            "use_api_map_attr": "APIから譜面属性を取得してPPを計算する (実験的)",
+            "language": "言語",
+            "no_i18n": "i18nファイルが見つかりません"
+        },
+        "name": "名前",
+        "author": "作者",
+        "date": "日付",
+        "version": "バージョン",
+        "ruleset": "モード",
+        "picker": {
+            "filter": {
+                "title": "フィルター",
+                "collection": {
+                    "title": "コレクションフィルター",
+                    "none": "指定なし",
+                    "exclude": "コレクションを除外"
+                }
+            },
+            "advanced": {
+                "title": "詳細設定"
+            },
+            "weight": {
+                "title": "重み設定",
+                "type": {
+                    "map": "譜面 ID",
+                    "set": "譜面セット ID",
+                    "collection": "コレクション",
+                    "beatmap": "譜面データ",
+                    "score": "スコア履歴",
+                    "history": "抽選履歴"
+                },
+                "id": "ID / 名前",
+                "value": "重み",
+                "add": "追加",
+                "field": "フィールド",
+                "operator": "条件",
+                "cond_value": "値",
+                "date": {
+                    "to": "～",
+                    "years": "年",
+                    "months": "月",
+                    "days": "日"
+                },
+                "hist": {
+                    "appeared": "出現歴あり",
+                    "not_appeared": "出現歴なし",
+                    "within_last": "直近 N 件以内に出現",
+                    "not_within_last": "直近 N 件以内に出現なし",
+                    "last_n": "N"
+                },
+                "bm": {
+                    "id": "譜面 ID",
+                    "set_id": "譜面セット ID",
+                    "artist": "アーティスト",
+                    "title": "タイトル",
+                    "creator": "マッパー",
+                    "ranked": "Ranked 状態",
+                    "drain": "ドレインタイム(秒)",
+                    "tags": "タグ",
+                    "unplayed": "未プレイ",
+                    "last_played": "最終プレイ日時",
+                    "ar": "AR",
+                    "cs": "CS",
+                    "hp": "HP",
+                    "od": "OD",
+                    "stack": "Stack Leniency",
+                    "sv": "Slider Velocity"
+                },
+                "sc": {
+                    "user": "ユーザー名",
+                    "300": "300数",
+                    "100": "100数",
+                    "50": "50数",
+                    "geki": "Geki数",
+                    "katu": "Katu数",
+                    "miss": "Miss数",
+                    "combo": "最大コンボ",
+                    "perfect": "PFC",
+                    "date": "日付"
+                },
+                "op": {
+                    "str": {
+                        "eq": "完全一致",
+                        "contains": "含む",
+                        "not_contains": "含まない"
+                    },
+                    "num": {
+                        "eq": "一致する",
+                        "gt": "より大きい",
+                        "lt": "より小さい",
+                        "gte": "以上",
+                        "lte": "以下",
+                        "neq": "一致しない"
+                    },
+                    "bool": {
+                        "true": "はい",
+                        "false": "いいえ"
+                    },
+                    "date": {
+                        "before": "これより前",
+                        "after": "これより後",
+                        "between": "指定期間内",
+                        "within": "今から指定期間内"
+                    }
+                }
+            },
+            "wishlist": {
+                "title": "ウィッシュリスト",
+                "label": "ルール名 (任意)",
+                "add": "ルールを追加",
+                "add_cond": "条件を追加"
+            },
+            "history": {
+                "title": "抽選履歴",
+                "empty": "履歴がありません",
+                "clear_confirm": "すべての抽選履歴を削除してもよろしいですか？"
+            },
+            "roll": {
+                "result": "選ばれた譜面: :title"
+            },
+            "result": {
+                "title": "抽選結果",
+                "web": "ウェブサイト",
+                "direct": "osu!direct",
+                "copy_id": "IDをコピー",
+                "copy_id_done": "コピーしました！",
+                "circles": "Circles",
+                "sliders": "Sliders",
+                "spinners": "Spinners",
+                "sv": "SV",
+                "stack": "Stack",
+                "mode": "モード",
+                "status": "ステータス",
+                "source": "ソース",
+                "unplayed": "未プレイ",
+                "scores": "スコア (:count 件)",
+                "collections": "コレクション"
+            },
+            "profile": {
+                "name": "プロファイル名",
+                "save": "保存",
+                "load": "適用",
+                "export": "JSON エクスポート",
+                "import": "JSON インポート",
+                "import_title": "プロファイル JSON を選択",
+                "saved": "プロファイルが保存されました",
+                "active": "使用中"
+            },
+            "table": {
+                "grade": "ランク",
+                "map": "曲名",
+                "score": "スコア",
+                "max_combo": "最大コンボ",
+                "accuracy": "精度",
+                "mode": "モード",
+                "time": "時間"
+            },
+            "chart": {
+                "hit_count": "ヒット数",
+                "max_combo": "最大コンボ",
+                "accuracy": "精度"
+            },
+            "tooltip": {
+                "max_combo": "最大コンボ",
+                "accuracy": "精度"
+            },
+            "path_required": "選曲機能を使用するには、まず右側の設定で osu! Stable のパスを入力してください"
+        },
+        "restorer": {
+            "path_required": "osu! Stable のパスが必要です。右側の設定で入力してください",
+            "api_required": "API Client ID と Secret の設定が必要です"
+        },
+        "sync": {
+            "last_time": "最終同期時刻",
+            "last_count": "最終同期予定数",
+            "last_offset": "最終同期予定位置",
+            "target_count": "現在の同期目標数"
+        },
+        "compare": {
+            "title": "差分比較",
+            "original": "オリジナル",
+            "target": "ターゲット",
+            "status": {
+                "added": "追加",
+                "removed": "削除",
+                "changed": "変更"
+            }
+        },
+        "tracker": {
+            "loading": "読み込み中…",
+            "no_data": {
+                "path_required": "統計機能を使用するには、まず右側の設定で osu! Stable のパスを入力してください",
+                "empty": "スコアデータがありません"
+            },
+            "cache_warning": "osu! Stable のパスが設定されていないため、キャッシュデータを表示しています。右側の設定でパスを入力してからこのページに戻ると、最新のデータが読み込まれます。",
+            "section": {
+                "analysis": "スコア分析",
+                "records": "プレイ履歴"
+            },
+            "updated_at": "更新日時",
+            "analyzing": "分析中…",
+            "chart": {
+                "plays": "プレイ回数",
+                "score": "スコア",
+                "ranks": "ランク分布",
+                "acc": "命中率",
+                "hits": "ヒットカウント (300/100/50/Miss)",
+                "daily": "日別",
+                "cumulative": "累計",
+                "count_label": "回数",
+                "score_label": "スコア"
+            },
+            "records": {
+                "count": "全 :count 件"
+            },
+            "date": {
+                "today": "今日",
+                "7d": "7日間",
+                "30d": "30日間",
+                "custom": "カスタム"
+            }
+        }
+    },
+    "btn": {
+        "srs": {
+            "read": "ローカル履歴を読み込む",
+            "online": {
+                "read": "オンライン履歴を読み込む",
+                "cached": "キャッシュ履歴を読み込む"
+            },
+            "player": {
+                "isme": "これは私です！",
+                "check": "プレイヤーを確認"
+            },
+            "group": {
+                "local": "ローカル",
+                "online": "オンライン"
+            },
+            "search": "検索",
+            "download": "ダウンロード",
+            "read_by_checksum": "譜面情報を取得 (APIが必要！)"
+        },
+        "cancel": "キャンセル",
+        "confirm": "確定",
+        "abort": "中止",
+        "dl": {
+            "rows": "テキストダウンロード",
+            "fdm": "FDMでダウンロード",
+            "direct": "osu!direct",
+            "direct_confirm": "osu!directダウンロードリンクを使用します:\n1. 先にosu!クライアントを起動し、ログイン済みかつosu!directが利用可能であることを確認してください。\n2. osu!クライアントの設定を開き、下部にある譜面の自動ダウンロードオプションを有効にしてください。\n3. サーバーへの負荷（乱用）を防ぐため、デフォルトでは10秒ごとに1枚の譜面をダウンロードします。何をしているか理解している場合を除き、この秒数を変更しないでください！"
+        },
+        "bpks": {
+            "read": "パックを読み込む"
+        },
+        "picker": {
+            "read": "譜面を読み込む",
+            "roll": "ガチャを引く！",
+            "filter": "フィルター",
+            "filter_collection": "コレクションフィルター",
+            "advanced": "詳細設定",
+            "weight": "重み設定",
+            "wishlist": "ウィッシュリスト",
+            "history": "抽選履歴",
+            "clear_history": "履歴をクリア",
+            "profiles": "プロファイル"
+        },
+        "update": {
+            "check": "アップデートを確認",
+            "download": "今すぐアップデート",
+            "later": "後で通知",
+            "restart": "今すぐ再起動",
+            "repo": "GitHubページへ"
+        },
+        "tab": {
+            "collection": "コレクション",
+            "srs": "不足譜面チェック",
+            "packs": "パック",
+            "picker": "選曲器",
+            "tracker": "統計",
+            "none": "NONE"
+        },
+        "path_required": {
+            "tooltip": "先に右側の設定で少なくとも1つの osu! パス（Stable または Lazer）を入力してください"
+        },
+        "tracker": {
+            "reanalyze": "再分析"
+        }
+    }
+}

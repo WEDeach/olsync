@@ -84,7 +84,10 @@
             },
             "date_range": {
                 "confirm": "若日期範圍為不限時間, 這將會獲取所有圖譜包, 此操作可能會花費很多時間, 是否繼續?"
-            }
+            },
+            "select_at_least_one": "請至少選擇一個圖譜包！",
+            "api_required": "需要設定 API Client ID 與 Secret",
+            "dl_mode_title": "下載模式"
         },
         "update": {
             "checking": "正在檢查更新...",
@@ -118,7 +121,9 @@
             "use_yinmo_chance": "使用 YinMoChance 來計算機率結果",
             "check_file_by_md5": "使用MD5校驗檢查檔案變更",
             "pack_ruleset_by_nm": "使用NM摘要檢查圖包Mod",
-            "use_api_map_attr": "使用 API 取得圖譜屬性計算 PP (實驗性)"
+            "use_api_map_attr": "使用 API 取得圖譜屬性計算 PP (實驗性)",
+            "language": "語系",
+            "no_i18n": "No any i18n files"
         },
         "name": "名稱",
         "author": "作者",
@@ -263,6 +268,79 @@
                 "import_title": "選擇設定檔 JSON",
                 "saved": "設定檔已儲存",
                 "active": "使用中"
+            },
+            "table": {
+                "grade": "評價",
+                "map": "曲目",
+                "score": "分數",
+                "max_combo": "最大連擊",
+                "accuracy": "準確率",
+                "mode": "模式",
+                "time": "時間"
+            },
+            "chart": {
+                "hit_count": "命中數",
+                "max_combo": "最大連擊",
+                "accuracy": "準確率"
+            },
+            "tooltip": {
+                "max_combo": "最大連擊",
+                "accuracy": "準確率"
+            },
+            "path_required": "請先在右側設定中填寫 osu! Stable 路徑才能使用選圖器"
+        },
+        "restorer": {
+            "path_required": "需要 osu! Stable 路徑，請先在右側設定中填寫",
+            "api_required": "需要設定 API Client ID 與 Secret"
+        },
+        "sync": {
+            "last_time": "最後同步時間",
+            "last_count": "最後同步預計數量",
+            "last_offset": "最後同步預計位置",
+            "target_count": "當前同步目標數量"
+        },
+        "compare": {
+            "title": "差異比較",
+            "original": "原始",
+            "target": "目標",
+            "status": {
+                "added": "新增",
+                "removed": "刪除",
+                "changed": "修改"
+            }
+        },
+        "tracker": {
+            "loading": "載入中…",
+            "no_data": {
+                "path_required": "請先在右側設定中填寫 osu! Stable 路徑才能使用統計功能",
+                "empty": "沒有成績資料"
+            },
+            "cache_warning": "osu! Stable 路徑未設定，目前顯示的是快取資料。前往右側設定填寫路徑後重新進入此頁面可載入最新資料。",
+            "section": {
+                "analysis": "成績分析",
+                "records": "遊玩紀錄"
+            },
+            "updated_at": "更新於",
+            "analyzing": "分析中…",
+            "chart": {
+                "plays": "遊玩次數",
+                "score": "成績",
+                "ranks": "評價分布",
+                "acc": "命中率",
+                "hits": "命中計數 (300/100/50/Miss)",
+                "daily": "每日",
+                "cumulative": "累計",
+                "count_label": "次數",
+                "score_label": "分數"
+            },
+            "records": {
+                "count": "共 :count 筆"
+            },
+            "date": {
+                "today": "今日",
+                "7d": "7天",
+                "30d": "30天",
+                "custom": "自訂"
             }
         }
     },
@@ -315,6 +393,20 @@
             "later": "稍後提醒",
             "restart": "立即重啟",
             "repo": "前往GitHub頁面"
+        },
+        "tab": {
+            "collection": "收藏夾",
+            "srs": "歌曲缺失檢查",
+            "packs": "Packs",
+            "picker": "選圖器",
+            "tracker": "統計",
+            "none": "NONE"
+        },
+        "path_required": {
+            "tooltip": "請先在右側設定中填寫至少一個 osu! 路徑（Stable 或 Lazer）"
+        },
+        "tracker": {
+            "reanalyze": "重新分析"
         }
     }
 }
