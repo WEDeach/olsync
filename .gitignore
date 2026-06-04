@@ -150,3 +150,9 @@ vite.config.ts.timestamp-*
 !.vscode/extensions.json
 /picker_profiles
 /tracker
+
+# Build snapshots for patch generation (auto-managed)
+/.build-snapshots
+
+# RSA signing keys (never commit private.pem)
+/keys/private.pem

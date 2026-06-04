@@ -1,6 +1,6 @@
 {
   "name": "olsync",
-  "version": "1.0.20",
+  "version": "1.0.21",
   "main": "./dist/main.js",
   "scripts": {
     "build": "concurrently \"npm run dev:electron\" \"npm run dev:react\"",
@@ -18,7 +18,10 @@
     "pack": "npm run build:prod && npm run build:electron-preload && electron-builder --dir",
     "dist": "npm run build:prod && npm run build:electron-preload && electron-builder",
     "predist:win": "npm run build:prod && npm run build:electron-preload",
-    "dist:win": "electron-builder --win && npx ts-node scripts/generate-manifest.ts ./release/win-unpacked %npm_package_version% ./release/win-unpacked",
+    "dist:win": "electron-builder --win && npx ts-node scripts/generate-manifest.ts ./release/win-unpacked %npm_package_version%",
+    "predist:win:signed": "npm run build:prod && npm run build:electron-preload",
+    "dist:win:signed": "electron-builder --win && npx ts-node scripts/generate-manifest.ts ./release/win-unpacked %npm_package_version% --sign-key ./keys/private.pem",
+    "gen-keys": "npx ts-node scripts/generate-manifest.ts --gen-keys ./keys",
     "lint": "biome check src",
     "lint:fix": "biome check --write src"
   },
