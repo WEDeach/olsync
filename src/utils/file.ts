@@ -3,14 +3,17 @@ import { createHash } from "crypto";
 import fs from "fs";
 import path from "path";
 import { fDevMode } from "./common";
+import { createLogger } from "./logger";
 import { ServiceCode, SpaceId } from "./typed/file";
+
+const log = createLogger("uFile");
 
 let originalFs: typeof fs;
 try {
     originalFs = require("original-fs");
-    console.log("[File] original-fs loaded successfully");
+    log.info("original-fs loaded successfully");
 } catch (_e) {
-    console.log("[File] original-fs not available, using standard fs");
+    log.info("original-fs not available, using standard fs");
     originalFs = fs;
 }
 
@@ -21,8 +24,8 @@ export const pBackupData = path.resolve(pRoot, ServiceCode.BackupData);
 export const pCache = path.resolve(pRoot, ServiceCode.Cache);
 export const pI18n = path.resolve(pRoot, ServiceCode.I18n);
 
-console.log(`[File] DEV_MODE: ${fDevMode}`);
-console.log(`[File] APP_ROOT: ${pRoot}`);
+log.info(`DEV_MODE: ${fDevMode}`);
+log.info(`APP_ROOT: ${pRoot}`);
 
 export const pathJoin = (...args: string[]) => path.join(...args);
 
@@ -30,28 +33,30 @@ export const readFileSync = (filePath: string) => fs.readFileSync(filePath, "utf
 export const readFileSyncBinary = (filePath: string) => fs.readFileSync(filePath);
 
 export const readAsarFile = (filePath: string): Buffer => {
+    const flog = log.child("readAsarFile");
     try {
-        console.log(`[readAsarFile] Reading: ${filePath}`);
+        flog.info(`Reading: ${filePath}`);
         const buffer = originalFs.readFileSync(filePath);
-        console.log(`[readAsarFile] Success, read ${buffer.length} bytes`);
+        flog.info(`Success, read ${buffer.length} bytes`);
         return buffer;
     } catch (error) {
-        console.error(`[readAsarFile] Failed to read ${filePath}:`, error);
+        flog.error(`Failed to read ${filePath}:`, error);
         throw error;
     }
 };
 
 export const writeAsarFile = (filePath: string, data: Buffer): void => {
+    const flog = log.child("writeAsarFile");
     try {
-        console.log(`[writeAsarFile] Writing to: ${filePath} (${data.length} bytes)`);
+        flog.info(`Writing to: ${filePath} (${data.length} bytes)`);
         const dir = path.dirname(filePath);
         if (!originalFs.existsSync(dir)) {
             originalFs.mkdirSync(dir, { recursive: true });
         }
         originalFs.writeFileSync(filePath, data);
-        console.log(`[writeAsarFile] Success`);
+        flog.info("Success");
     } catch (error) {
-        console.error(`[writeAsarFile] Failed to write ${filePath}:`, error);
+        flog.error(`Failed to write ${filePath}:`, error);
         throw error;
     }
 };
@@ -75,18 +80,32 @@ export const pathExistsSync = (path: string) => fs.existsSync(path);
 export const ensureDir = (path: string) => fs.promises.mkdir(path, { recursive: true });
 
 export const emptyDir = async (dirPath: string) => {
+    const flog = log.child("emptyDir");
     try {
         if (fs.existsSync(dirPath)) {
-            console.log(`[emptyDir] Clearing directory: ${dirPath}`);
-            await fs.promises.rm(dirPath, { recursive: true, force: true, maxRetries: 3 });
-            await fs.promises.mkdir(dirPath, { recursive: true });
-            console.log(`[emptyDir] Directory cleared and recreated`);
+            flog.info(`Clearing directory: ${dirPath}`);
+            // Delete files individually to avoid EBUSY on locked .asar files
+            const entries = await fs.promises.readdir(dirPath, { withFileTypes: true });
+            for (const entry of entries) {
+                const fullPath = path.join(dirPath, entry.name);
+                try {
+                    if (entry.isDirectory()) {
+                        await fs.promises.rm(fullPath, { recursive: true, force: true, maxRetries: 2 });
+                    } else {
+                        await fs.promises.unlink(fullPath);
+                    }
+                } catch (e) {
+                    // Skip locked files (usually .asar held by Electron)
+                    flog.warn(`Skipped deleting ${entry.name}: ${e}`);
+                }
+            }
+            flog.info("Directory cleared (some locked files may remain)");
         } else {
             await fs.promises.mkdir(dirPath, { recursive: true });
-            console.log(`[emptyDir] Directory created: ${dirPath}`);
+            flog.info(`Directory created: ${dirPath}`);
         }
     } catch (error) {
-        console.error(`[emptyDir] Failed to empty directory ${dirPath}:`, error);
+        flog.error(`Failed to empty directory ${dirPath}:`, error);
         throw error;
     }
 };
@@ -115,7 +134,7 @@ export const saveJson = async (name: string, data: object) => {
         await fs.promises.mkdir(path.dirname(name), { recursive: true });
         await fs.promises.writeFile(name, json, "utf8");
     } catch (e) {
-        console.error(`[saveJson] Failed to save ${name}:`, e);
+        log.child("saveJson").error(`Failed to save ${name}:`, e);
         throw e;
     }
 };
@@ -125,7 +144,7 @@ export const readJson = async (name: string) => {
         const content = await fs.promises.readFile(name, "utf8");
         return JSON.parse(content);
     } catch (e) {
-        console.error(`[readJson] Failed to read ${name}:`, e);
+        log.child("readJson").error(`Failed to read ${name}:`, e);
         return null;
     }
 };
@@ -136,9 +155,9 @@ export const saveJsonV2 = async (svc: ServiceCode, sid: SpaceId, name: string, d
         const p = path.join(pRoot, svc, sid, name);
         await fs.promises.mkdir(path.dirname(p), { recursive: true });
         await fs.promises.writeFile(p, d, "utf8");
-        console.log(`[saveJsonV2] Saved: ${p}`);
+        log.child("saveJsonV2").info(`Saved: ${p}`);
     } catch (e) {
-        console.error(`[saveJsonV2] Failed to save ${name}:`, e);
+        log.child("saveJsonV2").error(`Failed to save ${name}:`, e);
         throw e;
     }
 };
@@ -152,7 +171,7 @@ export const readJsonV2 = async <T = unknown>(svc: ServiceCode, sid: SpaceId, na
         }
         return null;
     } catch (e) {
-        console.error(`[readJsonV2] Failed to read ${name}:`, e);
+        log.child("readJsonV2").error(`Failed to read ${name}:`, e);
         return null;
     }
 };

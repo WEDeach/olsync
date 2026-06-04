@@ -1,16 +1,19 @@
 import { ipcMain } from "electron";
-import { UpdateDiff, Updater } from "../updater";
+import { createLogger } from "../../../utils/logger";
+import { UpdateConfig, UpdateDiff, Updater } from "../updater";
 import { IPC_UP_NAMES } from "./ns";
+
+const log = createLogger("IPC_UP");
 
 let updaterInstance: Updater | null = null;
 
 export function register() {
-    ipcMain.handle(IPC_UP_NAMES.INIT, async (_, updateBaseUrl: string) => {
+    ipcMain.handle(IPC_UP_NAMES.INIT, async (_, config: UpdateConfig) => {
         try {
-            updaterInstance = new Updater(updateBaseUrl);
+            updaterInstance = new Updater(config);
             return true;
         } catch (error) {
-            console.error("Failed to initialize updater:", error);
+            log.error("Failed to initialize updater:", error);
             return false;
         }
     });
@@ -49,7 +52,7 @@ export function register() {
                     }
                 })
                 .catch((error) => {
-                    console.error("Failed to download update:", error);
+                    log.error("Failed to download update:", error);
                     const errorMsg = error?.message || error?.toString() || "未知錯誤";
                     resolve({ success: false, error: errorMsg });
                 });
@@ -76,7 +79,9 @@ export function register() {
     ipcMain.handle(IPC_UP_NAMES.GET_CURRENT_VERSION, async (_) => {
         if (!updaterInstance) {
             const Updater = (await import("../updater")).Updater;
-            const tempInstance = new Updater("");
+            const tempInstance = new Updater({
+                sources: [],
+            });
             return await tempInstance.getCurrentVersion();
         }
         return await updaterInstance.getCurrentVersion();

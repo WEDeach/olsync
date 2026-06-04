@@ -88,7 +88,11 @@ declare global {
             getDLinkByBeatmapsetId: (beatmapset_id: number) => Promise<IPCR<string>>;
             fecthBeatmapPacks: (type: PackTypes, cursor_string?: string) => Promise<IPCR<RespBeatmapPacks>>;
             getBeatmapPack: (tag_id: any) => Promise<IPCR<CachedBeatmapPack>>;
-            initUpdater: (updateBaseUrl: string) => Promise<boolean>;
+            initUpdater: (config: {
+                sources: { url: string }[];
+                publicKey?: string;
+                concurrency?: number;
+            }) => Promise<boolean>;
             checkForUpdates: () => Promise<IPCR<UpdateDiff | null>>;
             downloadUpdate: (diff: UpdateDiff) => Promise<{ success: boolean; tempDir?: string; error?: string }>;
             executeUpdate: (tempDir: string) => Promise<boolean>;
@@ -97,6 +101,7 @@ declare global {
             fetchBeatmapByChecksum: (checksum: string) => Promise<IPCR<RespBeatmapLookup>>;
             getTrackerUserSummary: (userName: string) => Promise<TrackerUserSummary | null>;
             saveTrackerUserSummary: (data: TrackerUserSummary) => Promise<void>;
+            listTrackerUserSummaries: () => Promise<TrackerUserSummary[]>;
         };
     }
 }

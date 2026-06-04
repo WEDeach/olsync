@@ -1,9 +1,12 @@
 import { AlertProps, SnackbarOrigin } from "@mui/material";
 import { action, observable, runInAction } from "mobx";
 import { UpdateDiff } from "../entrypoint/js/updater";
+import { createLogger } from "../utils/logger";
 import { ConfigKey, SyncState } from "../utils/typed/config";
 import { IBeatmapListProps } from "./components/beatmapList";
 import { ICompareListProps } from "./components/compareList";
+
+const log = createLogger("State");
 
 interface IGlobalError {
     message: string;
@@ -186,19 +189,22 @@ Object.assign(g, {
             // 3. ingnore
             //   - prod
 
-            await window.olsCore.initUpdater(updateBaseUrl);
+            await window.olsCore.initUpdater({
+                sources: [{ url: updateBaseUrl }],
+                publicKey: `-----BEGIN RSA PUBLIC KEY-----\nMIIBCgKCAQEAy6o0Ax7zPtaOQdbbmJkNg4ii3AIQqoNHog9YuN5ZWIf+cFp/yUfz\nkWGsc55eDMUgZXD5FyupIYuZ0ACagxq3o6kVnhlfUth32UQeT0xJ5cgD3mRFxoTy\ndDTxja670ak2fAJQGk9nc7vocIdUi2I9eQoyyR1sVJ3FEJLlRf0qTTdIVHQTCEMx\nZuPNJUTPDtQmHyQyqcQpmwh\n+aqD7OhKG5GDZXmmnFTdwxlWqx8NbPnvXlcU0x+F9\n2HsuP6ZNwlgU+a0WBKtU6cPupG2X/ju8x6r+oPbiPq5LQpXKj2Y\n+2mdpiVIQvrEL\nz+qWe/NUXGz64Ar1w6PiAbReqBKLgH1ZkQIDAQAB\n-----END RSA PUBLIC KEY-----`,
+            });
             const diff = await window.olsCore.checkForUpdates();
             if (diff && "error" in diff) {
                 try {
                     const response = await fetch("https://api.github.com/repos/WEDeach/olsync/releases/latest");
                     if (response.ok) {
                         const data = await response.json();
-                        console.log(data);
+                        log.debug(data);
                         const ov = data.tag_name?.replace(/^v/, "");
                         return { type: "github", version: ov };
                     }
                 } catch (error) {
-                    console.error("Failed to check for updates from manifest:", error);
+                    log.error("Failed to check for updates from manifest:", error);
                 }
             } else if (diff?.needsUpdate) {
                 return { type: "base", ...diff };

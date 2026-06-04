@@ -107,7 +107,7 @@ contextBridge.exposeInMainWorld("olsCore", {
     sendMessage4DL: (hostType: HostType, message: any) => ipcInvoke(IPC_DL_NAMES.SEND, hostType, message),
 
     // updater
-    initUpdater: (updateBaseUrl: string) => ipcInvoke(IPC_UP_NAMES.INIT, updateBaseUrl),
+    initUpdater: (config: any) => ipcInvoke(IPC_UP_NAMES.INIT, config),
     checkForUpdates: () => ipcInvoke(IPC_UP_NAMES.CHECK_FOR_UPDATES),
     downloadUpdate: (diff: any) => ipcInvoke(IPC_UP_NAMES.DOWNLOAD_UPDATE, diff),
     executeUpdate: (tempDir: string) => ipcInvoke(IPC_UP_NAMES.EXECUTE_UPDATE, tempDir),
@@ -117,4 +117,5 @@ contextBridge.exposeInMainWorld("olsCore", {
     // tracker
     getTrackerUserSummary: (userName: string) => ipcInvoke(IPC_TR_NAMES.GET_USER_SUMMARY, userName),
     saveTrackerUserSummary: (data: any) => ipcInvoke(IPC_TR_NAMES.SAVE_USER_SUMMARY, data),
+    listTrackerUserSummaries: () => ipcInvoke(IPC_TR_NAMES.LIST_USER_SUMMARIES),
 });
