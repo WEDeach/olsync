@@ -60,7 +60,7 @@ export const BeatmapPickerFilterPanel: React.FC<IBeatmapPickerFilterPanelProps> 
                         show={false}
                         allowedFilterTypes={[
                             FilterType.Title,
-                            FilterType.RankState,
+                            FilterType.RankStateLocal,
                             FilterType.StarRating,
                             FilterType.Mode,
                         ]}

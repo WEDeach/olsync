@@ -1,4 +1,4 @@
-import { Settings } from "@mui/icons-material";
+import { FolderOpen, Info, Settings } from "@mui/icons-material";
 import {
     Divider,
     Drawer,
@@ -6,17 +6,19 @@ import {
     FormControlLabel,
     IconButton,
     InputLabel,
+    Link,
     MenuItem,
     Select,
     Stack,
     Switch,
     TextField,
+    Tooltip,
     Typography,
 } from "@mui/material";
 import { Observer } from "mobx-react";
 import React, { useEffect, useState } from "react";
 import { getApiDownloadLink, getApiPreDelayMs } from "../../utils/api";
-import { getDelayMs } from "../../utils/download";
+import { GetDelayMs } from "../../utils/download";
 import {
     getDbMd5CheckExperiment,
     getPackRulesetByNmExperiment,
@@ -63,7 +65,7 @@ export const SettingsDrawer: React.FC = () => {
                 <Observer>
                     {() => {
                         const apiDelay = getApiPreDelayMs();
-                        const dlDelay = getDelayMs();
+                        const dlDelay = GetDelayMs();
                         const dlink = getApiDownloadLink();
 
                         return (
@@ -91,7 +93,7 @@ export const SettingsDrawer: React.FC = () => {
                                     defaultValue={dlink}
                                     onChange={(e) => g.saveConfig(ConfigKey.API_DLINK, e.target.value)}
                                 />
-                                <Stack direction="row" spacing={2}>
+                                <Stack direction="row" spacing={1}>
                                     <TextField
                                         label={__(I18nStrings.MAIN_SETTINGS_API_DELAY)}
                                         variant="outlined"
@@ -113,25 +115,180 @@ export const SettingsDrawer: React.FC = () => {
                                 </Stack>
 
                                 <Divider textAlign="left">
+                                    <Typography variant="subtitle2">
+                                        {__(I18nStrings.MAIN_SETTINGS_DL_SECTION)}
+                                    </Typography>
+                                </Divider>
+                                <TextField
+                                    label={__(I18nStrings.MAIN_SETTINGS_DL_SAVE_DIR)}
+                                    variant="outlined"
+                                    size="small"
+                                    defaultValue={g.config?.[ConfigKey.DL_SAVE_DIR] ?? ""}
+                                    placeholder={__(I18nStrings.MAIN_SETTINGS_DL_SAVE_DIR_PLACEHOLDER)}
+                                    onChange={(e) => g.saveConfig(ConfigKey.DL_SAVE_DIR, e.target.value)}
+                                    slotProps={{
+                                        input: {
+                                            endAdornment: (
+                                                <IconButton
+                                                    size="small"
+                                                    onClick={async () => {
+                                                        const dir = await window.olsCore.openFile(
+                                                            __(I18nStrings.MAIN_SETTINGS_DL_SAVE_DIR_PICKER_TITLE),
+                                                            "openDirectory",
+                                                            [],
+                                                        );
+                                                        if (dir) g.saveConfig(ConfigKey.DL_SAVE_DIR, dir);
+                                                    }}
+                                                >
+                                                    <FolderOpen fontSize="small" />
+                                                </IconButton>
+                                            ),
+                                        },
+                                    }}
+                                />
+                                <Stack direction="row" spacing={1}>
+                                    <TextField
+                                        label={__(I18nStrings.MAIN_SETTINGS_DL_WORKERS)}
+                                        variant="outlined"
+                                        size="small"
+                                        type="number"
+                                        defaultValue={g.config?.[ConfigKey.DL_WORKERS] ?? 2}
+                                        sx={{ flexGrow: 1 }}
+                                        slotProps={{ htmlInput: { min: 1, max: 10 } }}
+                                        onChange={(e) => g.saveConfig(ConfigKey.DL_WORKERS, Number(e.target.value))}
+                                    />
+                                    <TextField
+                                        label={__(I18nStrings.MAIN_SETTINGS_DL_SPEED_LIMIT)}
+                                        variant="outlined"
+                                        size="small"
+                                        type="number"
+                                        defaultValue={g.config?.[ConfigKey.DL_SPEED_LIMIT_MBPS] ?? 0}
+                                        sx={{ flexGrow: 1 }}
+                                        slotProps={{ htmlInput: { min: 0, step: 0.5 } }}
+                                        onChange={(e) =>
+                                            g.saveConfig(ConfigKey.DL_SPEED_LIMIT_MBPS, Number(e.target.value))
+                                        }
+                                    />
+                                </Stack>
+                                <Stack direction="row" spacing={1}>
+                                    <TextField
+                                        label={__(I18nStrings.MAIN_SETTINGS_DL_CONCURRENCY)}
+                                        variant="outlined"
+                                        size="small"
+                                        type="number"
+                                        defaultValue={g.config?.[ConfigKey.DL_CONCURRENCY] ?? 10}
+                                        sx={{ flexGrow: 1 }}
+                                        slotProps={{ htmlInput: { min: 1, max: 32 } }}
+                                        onChange={(e) => g.saveConfig(ConfigKey.DL_CONCURRENCY, Number(e.target.value))}
+                                    />
+                                    <TextField
+                                        label={__(I18nStrings.MAIN_SETTINGS_DL_RATE_LIMIT)}
+                                        variant="outlined"
+                                        size="small"
+                                        type="number"
+                                        defaultValue={g.config?.[ConfigKey.DL_PRE_MIN_REQUESTS_LIMIT] ?? 48}
+                                        sx={{ flexGrow: 1 }}
+                                        slotProps={{ htmlInput: { min: 1, max: 120 } }}
+                                        onChange={(e) =>
+                                            g.saveConfig(ConfigKey.DL_PRE_MIN_REQUESTS_LIMIT, Number(e.target.value))
+                                        }
+                                    />
+                                    <TextField
+                                        label={__(I18nStrings.MAIN_SETTINGS_DL_MIN_CHUNK)}
+                                        variant="outlined"
+                                        size="small"
+                                        type="number"
+                                        defaultValue={(g.config?.[ConfigKey.DL_MIN_CHUNK_SIZE] ?? 3145728) / 1048576}
+                                        sx={{ flexGrow: 1 }}
+                                        slotProps={{ htmlInput: { min: 0.5, step: 0.5 } }}
+                                        onChange={(e) =>
+                                            g.saveConfig(ConfigKey.DL_MIN_CHUNK_SIZE, Number(e.target.value) * 1048576)
+                                        }
+                                    />
+                                    <TextField
+                                        label={__(I18nStrings.MAIN_SETTINGS_DL_MAX_CHUNK)}
+                                        variant="outlined"
+                                        size="small"
+                                        type="number"
+                                        defaultValue={(g.config?.[ConfigKey.DL_MAX_CHUNK_SIZE] ?? 5242880) / 1048576}
+                                        sx={{ flexGrow: 1 }}
+                                        slotProps={{ htmlInput: { min: 1, step: 0.5 } }}
+                                        onChange={(e) =>
+                                            g.saveConfig(ConfigKey.DL_MAX_CHUNK_SIZE, Number(e.target.value) * 1048576)
+                                        }
+                                    />
+                                </Stack>
+                                <TextField
+                                    label={__(I18nStrings.MAIN_SETTINGS_DL_MIRROR_URL)}
+                                    variant="outlined"
+                                    size="small"
+                                    defaultValue={g.config?.[ConfigKey.DL_MIRROR_URL] ?? ""}
+                                    placeholder={__(I18nStrings.MAIN_SETTINGS_DL_MIRROR_PLACEHOLDER)}
+                                    onChange={(e) => g.saveConfig(ConfigKey.DL_MIRROR_URL, e.target.value)}
+                                />
+                                <TextField
+                                    label={__(I18nStrings.MAIN_SETTINGS_DL_MIRROR_WORKERS)}
+                                    variant="outlined"
+                                    size="small"
+                                    type="number"
+                                    defaultValue={g.config?.[ConfigKey.DL_MIRROR_WORKERS] ?? 1}
+                                    slotProps={{ htmlInput: { min: 1, max: 5 } }}
+                                    onChange={(e) => g.saveConfig(ConfigKey.DL_MIRROR_WORKERS, Number(e.target.value))}
+                                />
+                                <FormControlLabel
+                                    control={
+                                        <Switch
+                                            checked={Boolean(g.config?.[ConfigKey.EXPERIMENT_SPEEDTEST_DNS_PROXY])}
+                                        />
+                                    }
+                                    label={
+                                        <Stack direction="row" alignItems="center" spacing={1} useFlexGap>
+                                            {__(I18nStrings.MAIN_SETTINGS_DL_SPEEDTEST_DNS)}
+                                            <Tooltip
+                                                title={
+                                                    <React.Fragment>
+                                                        {__(I18nStrings.MAIN_SETTINGS_DL_SPEEDTEST_DNS_DESC)}
+                                                        <Link
+                                                            href="https://yinmo.deachsword.com/blog/2023-08-osu-speed-up-beatmap-downloads"
+                                                            target="_blank"
+                                                            rel="noreferrer"
+                                                        >
+                                                            {__(I18nStrings.MAIN_SETTINGS_DL_SPEEDTEST_DNS_LINK)}
+                                                        </Link>
+                                                    </React.Fragment>
+                                                }
+                                                describeChild
+                                                arrow
+                                            >
+                                                <Info fontSize="small" />
+                                            </Tooltip>
+                                        </Stack>
+                                    }
+                                    onChange={(_, checked) =>
+                                        g.saveConfig(ConfigKey.EXPERIMENT_SPEEDTEST_DNS_PROXY, Boolean(checked))
+                                    }
+                                />
+
+                                <Divider textAlign="left">
                                     <Typography variant="subtitle2">{__(I18nStrings.MAIN_SETTINGS_OTHERS)}</Typography>
                                 </Divider>
-                                <Stack direction="column" spacing={1}>
+                                <Stack direction="column" spacing={2}>
                                     <FormControlLabel
-                                        control={<Switch defaultChecked={getYinMoChanceExperiment()} />}
+                                        control={<Switch checked={getYinMoChanceExperiment()} />}
                                         label={__(I18nStrings.MAIN_SETTINGS_USE_YINMO_CHANCE)}
                                         onChange={(_, checked) =>
                                             g.saveConfig(ConfigKey.EXPERIMENT_YINMO_CHANCE, Boolean(checked))
                                         }
                                     />
                                     <FormControlLabel
-                                        control={<Switch defaultChecked={getDbMd5CheckExperiment()} />}
+                                        control={<Switch checked={getDbMd5CheckExperiment()} />}
                                         label={__(I18nStrings.MAIN_SETTINGS_CHECK_FILE_BY_MD5)}
                                         onChange={(_, checked) =>
                                             g.saveConfig(ConfigKey.EXPERIMENT_DB_MD5_CHECK, Boolean(checked))
                                         }
                                     />
                                     <FormControlLabel
-                                        control={<Switch defaultChecked={getPackRulesetByNmExperiment()} />}
+                                        control={<Switch checked={getPackRulesetByNmExperiment()} />}
                                         label={__(I18nStrings.MAIN_SETTINGS_PACK_RULESET_BY_NM)}
                                         onChange={(_, checked) =>
                                             g.saveConfig(ConfigKey.EXPERIMENT_PACK_RULESET_BY_NM, Boolean(checked))

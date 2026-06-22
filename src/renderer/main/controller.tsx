@@ -25,6 +25,7 @@ export enum SubViewType {
     MAP_PACKS = 31,
     MAP_PICKER = 41,
     TRACKER = 51,
+    DOWNLOAD_HISTORY = 61,
     //
     D_STABLE = 1001,
     D_LAZER,
@@ -120,11 +121,11 @@ export default class Controller {
                 const langs = await window.olsCore.fetchLangs();
                 if (!langs[configLang]) {
                     g.setDialog(true, {
-                        content: `I18n file missing: ${configLang}`,
+                        content: __(I18nStrings.MAIN_I18N_FILE_MISSING, { lang: configLang }),
                         actions: [
-                            { label: "Cancel", callback: () => g.setDialog(false) },
+                            { label: __(I18nStrings.BTN_CANCEL), callback: () => g.setDialog(false) },
                             {
-                                label: "Reset",
+                                label: __(I18nStrings.BTN_RESET),
                                 callback: () => {
                                     g.saveConfig(ConfigKey.I18N_LANG, null);
                                     g.setDialog(false);
@@ -289,7 +290,7 @@ export default class Controller {
                 if ("error" in scores) {
                     g.setNotify({
                         message: __(I18nStrings.MAIN_SRS_READING_FAILED, {
-                            reason: "scores.db is not found in selected osu! directory",
+                            reason: __(I18nStrings.MAIN_SRS_SCORES_DB_NOT_FOUND),
                         }),
                         severity: "error",
                     });
@@ -700,6 +701,12 @@ export default class Controller {
         runInAction(() => {
             this.state.s_sub_view = value;
         });
+    };
+
+    @action
+    SetSubView = (value: SubViewType) => {
+        this.state.s_sub_view = value;
+        this.state.v_sub = undefined;
     };
 
     onBtnViewClicked = async (_: any, value: SubViewType) => {

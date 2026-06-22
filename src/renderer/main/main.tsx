@@ -36,13 +36,15 @@ import {
 import { observer } from "mobx-react";
 import React from "react";
 import __ from "../../utils/i18n";
-import { formatTimeAgo } from "../../utils/time";
+import { formatDateTime, formatTimeAgo } from "../../utils/time";
 import { I18nStrings } from "../../utils/typed/i18n";
 import { BeatmapList } from "../components/beatmapList";
 import { BeatmapPackDownloadView } from "../components/beatmapPackDownload";
 import { BeatmapPickerView } from "../components/beatmapPicker";
 import { BeatmapRestorerView } from "../components/beatmapRestorer";
 import CompareList from "../components/compareList";
+import { DownloadHistoryView } from "../components/downloadHistory";
+import { DownloadIndicator } from "../components/downloadIndicator";
 import { SettingsDrawer } from "../components/settingsDrawer";
 import { TrackerView } from "../components/tracker";
 import g, { NewSyncState } from "../state";
@@ -73,7 +75,8 @@ export default class Main extends React.Component {
             // https://mui.com/customization/theming/and
             <ThemeProvider theme={theme}>
                 <CssBaseline />
-                <Container maxWidth="lg" sx={{ height: "100%", minWidth: "64rem", p: 1 }}>
+                {/* maxWidth 原始為 lg, 改為 false 以禁用最大寬度限制, 日後可選擇添加選項來支持自定義 */}
+                <Container maxWidth={false} sx={{ height: "100%", minWidth: "64rem", p: 1 }}>
                     <Stack sx={{ height: "100%" }} spacing={2}>
                         {this.controller.IsDev && (
                             <ToggleButtonGroup
@@ -112,6 +115,9 @@ export default class Main extends React.Component {
                                 <ToggleButton value={SubViewType.TRACKER}>
                                     {__(I18nStrings.BTN_TAB_TRACKER)}
                                 </ToggleButton>
+                                <ToggleButton value={SubViewType.DOWNLOAD_HISTORY}>
+                                    {__(I18nStrings.BTN_TAB_DOWNLOAD)}
+                                </ToggleButton>
                                 <ToggleButton value={SubViewType.NONE}>{__(I18nStrings.BTN_TAB_NONE)}</ToggleButton>
                             </ToggleButtonGroup>
                             <SettingsDrawer />
@@ -123,6 +129,7 @@ export default class Main extends React.Component {
                         {SSubView === SubViewType.MAP_PACKS && this.renderMapPacks()}
                         {SSubView === SubViewType.MAP_PICKER && this.renderMapPicker()}
                         {SSubView === SubViewType.TRACKER && this.renderTracker()}
+                        {SSubView === SubViewType.DOWNLOAD_HISTORY && this.renderDownloadHistory()}
                     </Stack>
                     <Dialog
                         sx={(theme) => ({ zIndex: theme.zIndex.drawer + 1 })}
@@ -227,6 +234,32 @@ export default class Main extends React.Component {
                             </Stack>
                         </DialogContent>
                     </Dialog>
+                    <Dialog
+                        open={g.duplicateConfirm.show}
+                        onClose={() => g.closeDuplicateConfirm(false)}
+                        maxWidth="sm"
+                        fullWidth
+                    >
+                        <DialogTitle>{__(I18nStrings.MAIN_DL_DUPLICATE_TITLE)}</DialogTitle>
+                        <DialogContent>
+                            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                                {__(I18nStrings.MAIN_DL_DUPLICATE_DESC, { count: g.duplicateConfirm.items.length })}
+                            </Typography>
+                            <List dense>
+                                {g.duplicateConfirm.items.map((item) => (
+                                    <ListItemText key={item.task?.id ?? item.filename} primary={`- ${item.filename}`} />
+                                ))}
+                            </List>
+                        </DialogContent>
+                        <DialogActions>
+                            <Button onClick={() => g.closeDuplicateConfirm(false)} color="inherit">
+                                {__(I18nStrings.BTN_SKIP)}
+                            </Button>
+                            <Button onClick={() => g.closeDuplicateConfirm(true)} color="primary" variant="contained">
+                                {__(I18nStrings.BTN_REDOWNLOAD)}
+                            </Button>
+                        </DialogActions>
+                    </Dialog>
                     <Backdrop
                         sx={(theme) => ({ color: "#fff", zIndex: theme.zIndex.drawer + 2 })}
                         open={this.controller.SLoading.loading}
@@ -271,6 +304,10 @@ export default class Main extends React.Component {
                         )}
                     </Snackbar>
                 </Container>
+                <DownloadIndicator
+                    visible={this.controller.SSubView !== SubViewType.DOWNLOAD_HISTORY}
+                    onOpenHistory={() => this.controller.SetSubView(SubViewType.DOWNLOAD_HISTORY)}
+                />
             </ThemeProvider>
         );
     }
@@ -324,7 +361,10 @@ export default class Main extends React.Component {
                         sx={{ px: 2, py: 1 }}
                         avatar={<Checkbox checked={count_max === count_selected && count_max !== 0} />}
                         title={title}
-                        subheader={`${count_selected}/${count_max} selected`}
+                        subheader={__(I18nStrings.MAIN_COLLECTION_SELECTED_COUNT, {
+                            selected: count_selected,
+                            total: count_max,
+                        })}
                         disabled={count_max === 0}
                         onClick={() =>
                             SGV?.forEach((v) => {
@@ -372,7 +412,10 @@ export default class Main extends React.Component {
                                 <ListItemText
                                     id={labelId}
                                     primary={labelId}
-                                    secondary={count_subs > 0 && `${count_subs} subs`}
+                                    secondary={
+                                        count_subs > 0 &&
+                                        __(I18nStrings.MAIN_COLLECTION_SUBS_COUNT, { count: count_subs })
+                                    }
                                 />
                             </ListItemButton>
                             {false && count_subs > 0 && (
@@ -485,7 +528,15 @@ export default class Main extends React.Component {
         return (
             <Grid container spacing={1}>
                 <Grid size={3}>{__(I18nStrings.MAIN_SYNC_LAST_TIME)}</Grid>
-                <Grid size={9}>{state.last_updated ? formatTimeAgo(state.last_updated) : "-"}</Grid>
+                <Grid size={9}>
+                    {state.last_updated ? (
+                        <Tooltip title={formatDateTime(state.last_updated)} arrow>
+                            <span>{formatTimeAgo(state.last_updated)}</span>
+                        </Tooltip>
+                    ) : (
+                        "-"
+                    )}
+                </Grid>
                 <Grid size={3}>{__(I18nStrings.MAIN_SYNC_LAST_COUNT)}</Grid>
                 <Grid size={9}>{state.last_count ?? 0}</Grid>
                 <Grid size={3}>{__(I18nStrings.MAIN_SYNC_LAST_OFFSET)}</Grid>
@@ -509,5 +560,9 @@ export default class Main extends React.Component {
 
     renderTracker() {
         return <TrackerView />;
+    }
+
+    renderDownloadHistory() {
+        return <DownloadHistoryView />;
     }
 }

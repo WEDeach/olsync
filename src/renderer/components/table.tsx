@@ -1,5 +1,6 @@
 import {
     Avatar,
+    Box,
     Checkbox,
     FormControlLabel,
     Table as MTable,
@@ -9,11 +10,13 @@ import {
     TableContainer,
     TableHead,
     TableRow,
+    Tooltip,
 } from "@mui/material";
 import { observer } from "mobx-react";
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Dimensions } from "react-virtualized";
 import { DefaultObject, PropertyTypeName } from "realm/dist/public-types/schema/types";
+import { formatDateTime, formatTimeAgo } from "../../utils/time";
 import { AudioPlayer } from "./audioPlayer";
 
 interface Props {
@@ -23,6 +26,12 @@ interface Props {
     onScrollToBottom?: () => void;
     threshold?: number;
     rowHeight?: number;
+    onRowClick?: (row: any, index: number) => void;
+    size?: "small" | "medium";
+    onRowHover?: (key: string | null) => void;
+    highlightKey?: string | null;
+    onVisibleKeysChange?: (keys: string[]) => void;
+    getRowKey?: (row: DefaultObject, index: number) => any;
 }
 
 export interface CheckBoxWithCallback {
@@ -39,10 +48,26 @@ export interface IPropertyWithName {
     shell_link?: string;
     checkbox_toggler?: CheckBoxWithCallback;
     append_keys?: string[];
+    render?: (row: any) => React.ReactNode | null;
+    width?: string | number;
+    align?: "left" | "right" | "center";
 }
 
 export const Table = observer(
-    ({ dimensions, heads, rows, onScrollToBottom, threshold = 10, rowHeight = 100 }: Props) => {
+    ({
+        dimensions,
+        heads,
+        rows,
+        onScrollToBottom,
+        threshold = 10,
+        rowHeight = 100,
+        onRowClick,
+        size = "small",
+        onRowHover,
+        highlightKey,
+        onVisibleKeysChange,
+        getRowKey,
+    }: Props) => {
         const { height, width } = dimensions;
 
         const onScroll = (event: React.UIEvent<HTMLDivElement>) => {
@@ -60,6 +85,21 @@ export const Table = observer(
 
         const [scrollTop, setScrollTop] = useState(0);
         const [sortState, setSortState] = useState<{ key: string; order: "asc" | "desc" } | null>(null);
+        const headRef = useRef<HTMLTableSectionElement>(null);
+        const [measuredHeaderHeight, setMeasuredHeaderHeight] = useState(size === "small" ? 40 : 56);
+
+        useEffect(() => {
+            const el = headRef.current;
+            if (!el) return;
+            const update = () => {
+                const h = el.getBoundingClientRect().height;
+                if (h > 0) setMeasuredHeaderHeight(h);
+            };
+            update();
+            const obs = new ResizeObserver(update);
+            obs.observe(el);
+            return () => obs.disconnect();
+        }, []);
 
         const handleColumnSort = (key: string) => {
             setSortState((prev) => {
@@ -89,22 +129,32 @@ export const Table = observer(
         }, [rows, sortState]);
 
         const visibleRange = useMemo(() => {
-            const headerHeight = 56;
-            const availableHeight = height - headerHeight;
+            const availableHeight = height - measuredHeaderHeight;
 
             const startIndex = Math.floor(scrollTop / rowHeight);
             const visibleCount = Math.ceil(availableHeight / rowHeight) + 2;
             const endIndex = Math.min(startIndex + visibleCount, sortedRows.length);
 
             return { startIndex, endIndex, visibleCount };
-        }, [scrollTop, height, rowHeight, sortedRows.length]);
+        }, [scrollTop, height, rowHeight, sortedRows.length, measuredHeaderHeight]);
 
         const visibleRows = sortedRows.slice(visibleRange.startIndex, visibleRange.endIndex);
 
+        useEffect(() => {
+            if (!onVisibleKeysChange || !getRowKey) return;
+            const keys = visibleRows.map((row, index) => getRowKey(row, visibleRange.startIndex + index));
+            onVisibleKeysChange(keys);
+        }, [visibleRows, visibleRange.startIndex, onVisibleKeysChange, getRowKey]);
+
         return (
-            <TableContainer sx={{ height: height, width: width }} component={Paper} onScroll={onScroll}>
-                <MTable stickyHeader>
-                    <TableHead>
+            <TableContainer
+                sx={{ height: height, width: width }}
+                component={Paper}
+                variant="outlined"
+                onScroll={onScroll}
+            >
+                <MTable size={size} stickyHeader>
+                    <TableHead ref={headRef}>
                         <TableRow>
                             {heads.map((property) => {
                                 const colKey = property.key ?? (typeof property.name === "string" ? property.name : "");
@@ -139,17 +189,20 @@ export const Table = observer(
                                 return (
                                     <TableCell
                                         key={property.name}
-                                        sx={
-                                            isSortable
-                                                ? {
-                                                      "& .sort-icon": { visibility: "hidden" },
-                                                      "&:hover .sort-icon": { visibility: "visible" },
-                                                  }
-                                                : undefined
-                                        }
+                                        sx={{
+                                            backgroundColor: "background.paper",
+                                            fontWeight: 500,
+                                            width: property.width,
+                                            textAlign: property.align,
+                                            whiteSpace: "nowrap",
+                                            ...(isSortable && {
+                                                "& .sort-icon": { visibility: "hidden" },
+                                                "&:hover .sort-icon": { visibility: "visible" },
+                                            }),
+                                        }}
                                     >
                                         {property.checkbox_toggler ? (
-                                            <div style={{ display: "flex", alignItems: "center" }}>
+                                            <Box sx={{ display: "flex", alignItems: "center" }}>
                                                 <FormControlLabel
                                                     value="end"
                                                     control={<Checkbox />}
@@ -162,7 +215,7 @@ export const Table = observer(
                                                     }
                                                 />
                                                 {sortButton}
-                                            </div>
+                                            </Box>
                                         ) : (
                                             sortButton
                                         )}
@@ -180,17 +233,38 @@ export const Table = observer(
 
                         {visibleRows.map((row, index) => {
                             const actualIndex = visibleRange.startIndex + index;
+                            const rowKey = getRowKey ? getRowKey(row, actualIndex) : actualIndex;
+                            const isHighlighted = highlightKey !== undefined && rowKey === highlightKey;
                             return (
                                 <TableRow
-                                    key={actualIndex}
+                                    key={rowKey}
                                     hover
+                                    onClick={onRowClick ? () => onRowClick(row, actualIndex) : undefined}
+                                    onMouseEnter={() => onRowHover?.(rowKey as string)}
+                                    onMouseLeave={() => onRowHover?.(null)}
                                     sx={{
                                         height: rowHeight,
                                         "&:last-child td, &:last-child th": { border: 0 },
+                                        ...(onRowClick && { cursor: "pointer" }),
+                                        ...(isHighlighted && {
+                                            outline: "2px solid",
+                                            outlineColor: "primary.light",
+                                            outlineOffset: "-2px",
+                                            bgcolor: "rgba(25, 118, 210, 0.15)",
+                                        }),
                                     }}
                                 >
                                     {heads.map((property) => (
-                                        <TableCell key={property.name}>{renderCellContent(row, property)}</TableCell>
+                                        <TableCell
+                                            key={property.name}
+                                            sx={{
+                                                width: property.width,
+                                                textAlign: property.align,
+                                                whiteSpace: "nowrap",
+                                            }}
+                                        >
+                                            {renderCellContent(row, property)}
+                                        </TableCell>
                                     ))}
                                 </TableRow>
                             );
@@ -212,6 +286,10 @@ export const Table = observer(
 );
 
 const renderCellContent = (row: any, property: IPropertyWithName) => {
+    if (property.render) {
+        return property.render(row);
+    }
+
     let r: any = `{t:${property.type}}`;
     const key = property.key ?? property.name ?? "";
     const append_key = property.append_keys?.map((k) => row[k]).join(" ") ?? null;
@@ -238,7 +316,11 @@ const renderCellContent = (row: any, property: IPropertyWithName) => {
     ) {
         r = row[key];
         if (r instanceof Date) {
-            r = r.toLocaleString();
+            return (
+                <Tooltip title={formatDateTime(r.getTime())} arrow>
+                    <span>{formatTimeAgo(r.getTime())}</span>
+                </Tooltip>
+            );
         }
     } else if (property.type === "checkbox") {
         const isChecked = row[key]?.value === true;

@@ -11,11 +11,14 @@ import {
     Select,
     Stack,
     TextField,
+    Tooltip,
     Typography,
 } from "@mui/material";
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
+import { DefaultObject } from "realm/dist/public-types/schema/types";
 import { IOsuCollection } from "../../defines/types";
 import __ from "../../utils/i18n";
+import { formatDateTime, formatTimeAgo, useNow } from "../../utils/time";
 import { I18nStrings } from "../../utils/typed/i18n";
 import {
     BeatmapDataField,
@@ -35,8 +38,46 @@ import {
     ScoreRecordField,
     StringCondition,
 } from "./beatmapPickerTypes";
+import { DataViewer } from "./dataViewer";
+import { IPropertyWithName } from "./table";
 
 type FieldKind = "string" | "number" | "boolean" | "date";
+
+const normalizeHistoryFields = (item: IPickerHistory) => {
+    if (item.songTitle && item.difficultyName && item.artist) {
+        return {
+            artist: item.artist,
+            songTitle: item.songTitle,
+            difficultyName: item.difficultyName,
+            creatorName: item.creatorName ?? "",
+        };
+    }
+    const match = item.title.match(/^(.+) - (.+) \[(.+)\]$/);
+    return {
+        artist: match?.[1] ?? "",
+        songTitle: match?.[2] ?? item.title,
+        difficultyName: match?.[3] ?? "",
+        creatorName: item.creatorName ?? "",
+    };
+};
+
+const getHistoryTableHeads = (): IPropertyWithName[] => [
+    { name: __(I18nStrings.MAIN_PICKER_HISTORY_TABLE_SONG), type: "string", key: "songTitle" },
+    { name: __(I18nStrings.MAIN_PICKER_HISTORY_TABLE_DIFFICULTY), type: "string", key: "difficultyName" },
+    { name: __(I18nStrings.MAIN_PICKER_HISTORY_TABLE_ARTIST), type: "string", key: "artist" },
+    { name: __(I18nStrings.MAIN_PICKER_HISTORY_TABLE_CREATOR), type: "string", key: "creatorName" },
+    { name: "ID", type: "string", key: "beatmapId" },
+    {
+        name: __(I18nStrings.MAIN_PICKER_HISTORY_TABLE_PICKED_AT),
+        type: "string",
+        key: "pickedAt",
+        render: (row: any) => (
+            <Tooltip title={row.pickedAt ? formatDateTime(row.pickedAt) : null} arrow>
+                <span>{row.pickedAt ? formatTimeAgo(row.pickedAt) : "-"}</span>
+            </Tooltip>
+        ),
+    },
+];
 
 const BEATMAP_FIELD_KIND: Record<BeatmapDataField, FieldKind> = {
     [BeatmapDataField.Id]: "number",
@@ -846,6 +887,7 @@ interface IBeatmapPickerAdvancedPanelProps {
     section?: "weight" | "wishlist" | "history";
     onSettingsChanged: (settings: IPickerAdvancedSettings) => void;
     onClearHistory: () => void;
+    onHistoryItemClick?: (item: IPickerHistory) => void;
 }
 
 const wishlistDraftToCondItem = (draft: WeightDraft): IWishlistConditionItem => {
@@ -1232,7 +1274,29 @@ export const BeatmapPickerAdvancedPanel: React.FC<IBeatmapPickerAdvancedPanelPro
     section,
     onSettingsChanged,
     onClearHistory,
+    onHistoryItemClick,
 }) => {
+    useNow();
+
+    const historyRows: DefaultObject[] = useMemo(
+        () =>
+            history
+                .slice()
+                .reverse()
+                .map((h) => {
+                    const f = normalizeHistoryFields(h);
+                    return {
+                        songTitle: f.songTitle,
+                        difficultyName: f.difficultyName,
+                        artist: f.artist,
+                        creatorName: f.creatorName,
+                        beatmapId: String(h.beatmapId),
+                        pickedAt: h.pickedAt,
+                    };
+                }),
+        [history],
+    );
+
     const handleWeightsChanged = (weights: IWeightEntry[]) => {
         onSettingsChanged({ ...settings, weights });
     };
@@ -1265,63 +1329,48 @@ export const BeatmapPickerAdvancedPanel: React.FC<IBeatmapPickerAdvancedPanelPro
                 </>
             )}
             {(!section || section === "history") && (
-                <>
-                    {!section && <Divider />}
-                    <Box
-                        sx={
-                            section === "history"
-                                ? { display: "flex", flexDirection: "column", flexGrow: 1, overflow: "hidden" }
-                                : {}
-                        }
-                    >
-                        <Typography variant="subtitle2" color="text.secondary" textAlign="center">
-                            {__(I18nStrings.MAIN_PICKER_HISTORY_TITLE)}
-                        </Typography>
-                        <Box
-                            sx={{
-                                flexGrow: 1,
-                                overflowY: "auto",
-                                mt: 1,
-                                border: "1px solid",
-                                borderColor: "divider",
-                                borderRadius: 1,
-                                p: 0.5,
-                                ...(section !== "history" && { maxHeight: 160 }),
-                            }}
-                        >
-                            {history.length === 0 ? (
-                                <Typography variant="caption" color="text.secondary">
-                                    {__(I18nStrings.MAIN_PICKER_HISTORY_EMPTY)}
-                                </Typography>
-                            ) : (
-                                history
-                                    .slice()
-                                    .reverse()
-                                    .map((h) => (
-                                        <Typography
-                                            key={`${h.beatmapId}-${h.pickedAt}`}
-                                            variant="caption"
-                                            display="block"
-                                            noWrap
-                                        >
-                                            {h.beatmapId} - {h.title}
-                                        </Typography>
-                                    ))
-                            )}
-                        </Box>
-                        <Button
-                            size="small"
-                            variant="outlined"
-                            color="error"
-                            fullWidth
-                            sx={{ mt: 1 }}
-                            onClick={onClearHistory}
-                            disabled={history.length === 0}
-                        >
-                            {__(I18nStrings.BTN_PICKER_CLEAR_HISTORY)}
-                        </Button>
+                <Box
+                    sx={{
+                        display: "flex",
+                        flexDirection: "column",
+                        flexGrow: 1,
+                        overflow: "hidden",
+                        ...(section !== "history" && { height: "100%" }),
+                    }}
+                >
+                    <Typography variant="subtitle2" color="text.secondary" textAlign="center" sx={{ flexShrink: 0 }}>
+                        {__(I18nStrings.MAIN_PICKER_HISTORY_TITLE)}
+                    </Typography>
+                    <Box sx={{ flexGrow: 1, overflow: "hidden", mt: 1 }}>
+                        {history.length === 0 ? (
+                            <Typography variant="caption" color="text.secondary">
+                                {__(I18nStrings.MAIN_PICKER_HISTORY_EMPTY)}
+                            </Typography>
+                        ) : (
+                            <DataViewer
+                                heads={getHistoryTableHeads()}
+                                rows={historyRows}
+                                rows_total={history.length}
+                                rowHeight={36}
+                                onRowClick={(_row, index) => {
+                                    const item = history[history.length - 1 - index];
+                                    if (item) onHistoryItemClick?.(item);
+                                }}
+                            />
+                        )}
                     </Box>
-                </>
+                    <Button
+                        size="small"
+                        variant="outlined"
+                        color="error"
+                        fullWidth
+                        sx={{ mt: 1, flexShrink: 0 }}
+                        onClick={onClearHistory}
+                        disabled={history.length === 0}
+                    >
+                        {__(I18nStrings.BTN_PICKER_CLEAR_HISTORY)}
+                    </Button>
+                </Box>
             )}
         </Box>
     );

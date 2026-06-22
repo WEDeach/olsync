@@ -17,7 +17,7 @@ import React, { useState } from "react";
 import { BeatmapPack, RespBeatmapPack } from "../../api/v2/types/api_resp";
 import { OsuModes } from "../../defines/types";
 import { getApiDownloadLink, getApiPreDelayMs } from "../../utils/api";
-import { GetDLOptionByDirect, GetDLOptionByFDM, GetDLOptionByRows } from "../../utils/download";
+import { GetDLOptionByBuiltin, GetDLOptionByDirect, GetDLOptionByFDM, GetDLOptionByRows } from "../../utils/download";
 import { getPackRulesetByNmExperiment } from "../../utils/experiments";
 import __ from "../../utils/i18n";
 import { createLogger } from "../../utils/logger";
@@ -470,12 +470,22 @@ export const BeatmapPackDownloadView: React.FC<IBeatmapPackDownloadViewProps> = 
             const maps = fetchedPackInfos.flatMap((pack) => pack.beatmapsets);
             const mapIds = new Set(maps.map((v) => v.id));
             const flitedMapId = [...mapIds].filter((id) => !excludedPackMapIds.has(id));
-            const dlFetcher = async () =>
+            const dlFetcherDiff = async () =>
                 flitedMapId.map((map_id) => getApiDownloadLink().replace(":id", map_id.toString()));
+            downloadOptions = [
+                GetDLOptionByRows(dlFetcherDiff),
+                GetDLOptionByFDM(dlFetcherDiff),
+                GetDLOptionByDirect(flitedMapId),
+                GetDLOptionByBuiltin(flitedMapId.map((id) => ({ source: "osu-official" as const, beatmapsetId: id }))),
+            ];
+        } else {
+            const packUrls = fetchedPacks
+                .filter((p) => !excludedPackTags.has(p.tag))
+                .map((p) => ({ source: "pack" as const, url: p.url, filename: p.tag + ".zip" }));
             downloadOptions = [
                 GetDLOptionByRows(dlFetcher),
                 GetDLOptionByFDM(dlFetcher),
-                GetDLOptionByDirect(flitedMapId),
+                GetDLOptionByBuiltin(packUrls),
             ];
         }
         g.setDialog(true, {

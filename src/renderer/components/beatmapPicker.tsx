@@ -1,6 +1,7 @@
 import {
     AccountBox,
     Balance,
+    CloudDownload,
     ContentCopy,
     DeleteSweep,
     FilterList,
@@ -21,14 +22,7 @@ import {
     Divider,
     Drawer,
     IconButton,
-    Paper,
     Stack,
-    Table,
-    TableBody,
-    TableCell,
-    TableContainer,
-    TableHead,
-    TableRow,
     TextField,
     Tooltip,
     Typography,
@@ -36,9 +30,7 @@ import {
 import ReactECharts from "echarts-for-react";
 import { Observer } from "mobx-react";
 import React, { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
-import { AutoSizer, List } from "react-virtualized";
-import { RankedStatus } from "../../api/v2/types/api_resp";
-import { StableBeatmapDetail, StableBeatmapFilter } from "../../defines/stable_structs";
+import { StableBeatmapDetail } from "../../defines/stable_structs";
 import { IOsuCollection } from "../../defines/types";
 import { getYinMoChanceExperiment } from "../../utils/experiments";
 import __ from "../../utils/i18n";
@@ -49,6 +41,7 @@ import { formatDateTime, formatTimeAgo, useNow } from "../../utils/time";
 import { ConfigKey } from "../../utils/typed/config";
 import { I18nStrings } from "../../utils/typed/i18n";
 import g from "../state";
+import { AudioPlayer } from "./audioPlayer";
 import { FilterType, TFilterSetting } from "./beatmapFilter";
 import { BeatmapPickerAdvancedPanel } from "./beatmapPickerAdvancedPanel";
 import { BeatmapPickerFilterPanel } from "./beatmapPickerFilterPanel";
@@ -70,6 +63,9 @@ import {
     ScoreRecordField,
     StringCondition,
 } from "./beatmapPickerTypes";
+import { DataViewer } from "./dataViewer";
+import { InfoDialog } from "./infoDialog";
+import { IPropertyWithName } from "./table";
 
 type IBeatmapData = OsuBeatmap;
 
@@ -193,157 +189,149 @@ export const ScoreRecordTable: React.FC<ScoreRecordTableProps> = ({
         [scores, sortBy],
     );
 
-    const rowRefs = React.useRef<Map<string, Element>>(new Map());
-    const onVisibleKeysChangeRef = React.useRef(onVisibleKeysChange);
-    React.useEffect(() => {
-        onVisibleKeysChangeRef.current = onVisibleKeysChange;
-    }, [onVisibleKeysChange]);
+    const rows = React.useMemo(
+        () =>
+            sorted.map((s) => {
+                const total = s.count300 + s.count100 + s.count50 + s.countMiss;
+                const acc =
+                    total > 0 ? ((s.count300 * 300 + s.count100 * 100 + s.count50 * 50) / (total * 300)) * 100 : 0;
+                return { ...s, grade: calcGrade(s), accuracy: acc, ppKey: makeScorePPKey(s) };
+            }),
+        [sorted],
+    );
 
-    React.useEffect(() => {
-        if (!onVisibleKeysChangeRef.current) return;
-        const visibleKeys = new Set<string>();
-        const obs = new IntersectionObserver(
-            (entries) => {
-                for (const entry of entries) {
-                    const key = (entry.target as HTMLElement).dataset.ppkey!;
-                    if (entry.isIntersecting) visibleKeys.add(key);
-                    else visibleKeys.delete(key);
+    const heads: IPropertyWithName[] = [
+        {
+            name: __(I18nStrings.MAIN_PICKER_TABLE_GRADE),
+            type: "string",
+            key: "grade",
+            render: (row: any) => (
+                <Box sx={{ color: GRADE_COLORS[row.grade] ?? "inherit", fontWeight: "bold" }}>{row.grade}</Box>
+            ),
+        },
+        ...(showBeatmapLabel
+            ? [
+                  {
+                      name: __(I18nStrings.MAIN_PICKER_TABLE_MAP),
+                      type: "string" as const,
+                      key: "beatmapLabel",
+                      render: (row: any) => (
+                          <Box
+                              sx={{
+                                  maxWidth: 280,
+                                  overflow: "hidden",
+                                  textOverflow: "ellipsis",
+                                  whiteSpace: "nowrap",
+                              }}
+                          >
+                              {row.beatmapLabel ?? row.md5Hash}
+                          </Box>
+                      ),
+                  },
+              ]
+            : []),
+        {
+            name: __(I18nStrings.MAIN_PICKER_TABLE_SCORE),
+            type: "string",
+            key: "totalScore",
+            render: (row: any) => row.totalScore.toLocaleString(),
+        },
+        {
+            name: __(I18nStrings.MAIN_PICKER_TABLE_300),
+            type: "string",
+            key: "count300",
+            render: (row: any) => <Box sx={{ color: "#3498db" }}>{row.count300}</Box>,
+        },
+        {
+            name: __(I18nStrings.MAIN_PICKER_TABLE_100),
+            type: "string",
+            key: "count100",
+            render: (row: any) => <Box sx={{ color: "#2ecc71" }}>{row.count100}</Box>,
+        },
+        {
+            name: __(I18nStrings.MAIN_PICKER_TABLE_50),
+            type: "string",
+            key: "count50",
+            render: (row: any) => <Box sx={{ color: "#f39c12" }}>{row.count50}</Box>,
+        },
+        {
+            name: __(I18nStrings.MAIN_PICKER_TABLE_MISS),
+            type: "string",
+            key: "countMiss",
+            render: (row: any) => <Box sx={{ color: "#e74c3c" }}>{row.countMiss}</Box>,
+        },
+        {
+            name: __(I18nStrings.MAIN_PICKER_TABLE_MAX_COMBO),
+            type: "string",
+            key: "maxCombo",
+            render: (row: any) => `${row.maxCombo}x`,
+        },
+        {
+            name: __(I18nStrings.MAIN_PICKER_TABLE_ACCURACY),
+            type: "string",
+            key: "accuracy",
+            render: (row: any) => `${row.accuracy.toFixed(2)}%`,
+        },
+        {
+            name: __(I18nStrings.MAIN_PICKER_TABLE_MODE),
+            type: "string",
+            key: "ruleset",
+            render: (row: any) => RULESET_LABELS[row.ruleset] ?? `M${row.ruleset}`,
+        },
+        {
+            name: __(I18nStrings.MAIN_PICKER_TABLE_MODS),
+            type: "string",
+            key: "mods",
+            render: (row: any) => calcModsLabel(row.mods),
+        },
+        {
+            name: __(I18nStrings.MAIN_PICKER_TABLE_PP),
+            type: "string",
+            key: "pp",
+            render: (row: any) => {
+                const ppResult = ppMap.get(row.ppKey);
+                if (ppResult === undefined) return "...";
+                if (ppResult.aim !== undefined) {
+                    return (
+                        <Tooltip
+                            title={`Aim: ${ppResult.aim.toFixed(0)}  Speed: ${ppResult.speed?.toFixed(0)}  Acc: ${ppResult.acc?.toFixed(0)}`}
+                            arrow
+                        >
+                            <span>{ppResult.pp.toFixed(0)}pp</span>
+                        </Tooltip>
+                    );
                 }
-                onVisibleKeysChangeRef.current?.([...visibleKeys]);
+                return `${ppResult.pp.toFixed(0)}pp`;
             },
-            { threshold: 0.01 },
-        );
-        for (const [, el] of rowRefs.current) obs.observe(el);
-        return () => obs.disconnect();
-    }, [sorted]);
-
-    const setRowRef = React.useCallback((key: string, el: HTMLTableRowElement | null) => {
-        if (el) rowRefs.current.set(key, el);
-        else rowRefs.current.delete(key);
-    }, []);
-
-    const scrollToKey = React.useCallback((key: string) => {
-        const el = rowRefs.current.get(key);
-        el?.scrollIntoView({ block: "nearest", behavior: "smooth" });
-    }, []);
+        },
+        {
+            name: __(I18nStrings.MAIN_PICKER_TABLE_TIME),
+            type: "string",
+            key: "date",
+            render: (row: any) => (
+                <Box sx={{ whiteSpace: "nowrap", color: "text.secondary" }}>
+                    <Tooltip title={row.date ? formatDateTime(row.date.getTime()) : null} arrow>
+                        <span>{row.date ? formatTimeAgo(row.date.getTime()) : "-"}</span>
+                    </Tooltip>
+                </Box>
+            ),
+        },
+    ];
 
     return (
-        <TableContainer component={Paper} variant="outlined" sx={{ maxHeight: 500 }}>
-            <Table size="small" stickyHeader>
-                <TableHead>
-                    <TableRow>
-                        <TableCell sx={{ bgcolor: "background.paper" }}>
-                            {__(I18nStrings.MAIN_PICKER_TABLE_GRADE)}
-                        </TableCell>
-                        {showBeatmapLabel && (
-                            <TableCell sx={{ bgcolor: "background.paper" }}>
-                                {__(I18nStrings.MAIN_PICKER_TABLE_MAP)}
-                            </TableCell>
-                        )}
-                        <TableCell sx={{ bgcolor: "background.paper" }}>
-                            {__(I18nStrings.MAIN_PICKER_TABLE_SCORE)}
-                        </TableCell>
-                        <TableCell sx={{ bgcolor: "background.paper" }}>300</TableCell>
-                        <TableCell sx={{ bgcolor: "background.paper" }}>100</TableCell>
-                        <TableCell sx={{ bgcolor: "background.paper" }}>50</TableCell>
-                        <TableCell sx={{ bgcolor: "background.paper" }}>Miss</TableCell>
-                        <TableCell sx={{ bgcolor: "background.paper" }}>
-                            {__(I18nStrings.MAIN_PICKER_TABLE_MAX_COMBO)}
-                        </TableCell>
-                        <TableCell sx={{ bgcolor: "background.paper" }}>
-                            {__(I18nStrings.MAIN_PICKER_TABLE_ACCURACY)}
-                        </TableCell>
-                        <TableCell sx={{ bgcolor: "background.paper" }}>
-                            {__(I18nStrings.MAIN_PICKER_TABLE_MODE)}
-                        </TableCell>
-                        <TableCell sx={{ bgcolor: "background.paper" }}>Mods</TableCell>
-                        <TableCell sx={{ bgcolor: "background.paper" }}>PP</TableCell>
-                        <TableCell sx={{ bgcolor: "background.paper" }}>
-                            {__(I18nStrings.MAIN_PICKER_TABLE_TIME)}
-                        </TableCell>
-                    </TableRow>
-                </TableHead>
-                <TableBody>
-                    {sorted.map((s) => {
-                        const total = s.count300 + s.count100 + s.count50 + s.countMiss;
-                        const acc =
-                            total > 0
-                                ? ((s.count300 * 300 + s.count100 * 100 + s.count50 * 50) / (total * 300)) * 100
-                                : 0;
-                        const grade = calcGrade(s);
-                        const modsLabel = calcModsLabel(s.mods);
-                        const ppKey = makeScorePPKey(s);
-                        const ppResult = ppMap.get(ppKey);
-                        return (
-                            <TableRow
-                                key={ppKey}
-                                ref={(el) => setRowRef(ppKey, el)}
-                                data-ppkey={ppKey}
-                                hover
-                                sx={{
-                                    cursor: onRowClick ? "pointer" : "default",
-                                    ...(highlightKey === ppKey && {
-                                        outline: "2px solid",
-                                        outlineColor: "primary.light",
-                                        outlineOffset: "-2px",
-                                        bgcolor: "rgba(25, 118, 210, 0.15)",
-                                    }),
-                                }}
-                                onMouseEnter={() => onRowHover?.(ppKey)}
-                                onMouseLeave={() => onRowHover?.(null)}
-                                onClick={() => {
-                                    onRowClick?.(s);
-                                    scrollToKey(ppKey);
-                                }}
-                            >
-                                <TableCell sx={{ color: GRADE_COLORS[grade] ?? "inherit", fontWeight: "bold" }}>
-                                    {grade}
-                                </TableCell>
-                                {showBeatmapLabel && (
-                                    <TableCell
-                                        sx={{
-                                            maxWidth: 280,
-                                            overflow: "hidden",
-                                            textOverflow: "ellipsis",
-                                            whiteSpace: "nowrap",
-                                        }}
-                                    >
-                                        {s.beatmapLabel ?? s.md5Hash}
-                                    </TableCell>
-                                )}
-                                <TableCell>{s.totalScore.toLocaleString()}</TableCell>
-                                <TableCell sx={{ color: "#3498db" }}>{s.count300}</TableCell>
-                                <TableCell sx={{ color: "#2ecc71" }}>{s.count100}</TableCell>
-                                <TableCell sx={{ color: "#f39c12" }}>{s.count50}</TableCell>
-                                <TableCell sx={{ color: "#e74c3c" }}>{s.countMiss}</TableCell>
-                                <TableCell>{s.maxCombo}x</TableCell>
-                                <TableCell>{acc.toFixed(2)}%</TableCell>
-                                <TableCell>{RULESET_LABELS[s.ruleset] ?? `M${s.ruleset}`}</TableCell>
-                                <TableCell>{modsLabel}</TableCell>
-                                <TableCell>
-                                    {ppResult === undefined ? (
-                                        "..."
-                                    ) : ppResult.aim !== undefined ? (
-                                        <Tooltip
-                                            title={`Aim: ${ppResult.aim.toFixed(0)}  Speed: ${ppResult.speed?.toFixed(0)}  Acc: ${ppResult.acc?.toFixed(0)}`}
-                                        >
-                                            <span>{ppResult.pp.toFixed(0)}pp</span>
-                                        </Tooltip>
-                                    ) : (
-                                        `${ppResult.pp.toFixed(0)}pp`
-                                    )}
-                                </TableCell>
-                                <TableCell sx={{ whiteSpace: "nowrap", color: "text.secondary" }}>
-                                    <Tooltip title={s.date ? formatDateTime(s.date.getTime()) : null}>
-                                        <span>{s.date ? formatTimeAgo(s.date.getTime()) : "-"}</span>
-                                    </Tooltip>
-                                </TableCell>
-                            </TableRow>
-                        );
-                    })}
-                </TableBody>
-            </Table>
-        </TableContainer>
+        <DataViewer
+            heads={heads}
+            rows={rows}
+            rows_total={rows.length}
+            maxHeight={500}
+            rowHeight={33}
+            size="small"
+            getRowKey={(row) => row.ppKey}
+            onRowHover={onRowHover}
+            highlightKey={highlightKey}
+            onVisibleKeysChange={onVisibleKeysChange}
+            onRowClick={(row) => onRowClick?.(row)}
+        />
     );
 };
 
@@ -458,7 +446,7 @@ const ScoreOverviewChart: React.FC<ScoreOverviewChartProps> = ({ scores, onHover
             ],
             series: [
                 {
-                    name: "300",
+                    name: __(I18nStrings.MAIN_PICKER_TABLE_300),
                     type: "bar",
                     stack: "hits",
                     yAxisIndex: 0,
@@ -466,7 +454,7 @@ const ScoreOverviewChart: React.FC<ScoreOverviewChartProps> = ({ scores, onHover
                     itemStyle: { color: "#3498db" },
                 },
                 {
-                    name: "100",
+                    name: __(I18nStrings.MAIN_PICKER_TABLE_100),
                     type: "bar",
                     stack: "hits",
                     yAxisIndex: 0,
@@ -474,7 +462,7 @@ const ScoreOverviewChart: React.FC<ScoreOverviewChartProps> = ({ scores, onHover
                     itemStyle: { color: "#2ecc71" },
                 },
                 {
-                    name: "50",
+                    name: __(I18nStrings.MAIN_PICKER_TABLE_50),
                     type: "bar",
                     stack: "hits",
                     yAxisIndex: 0,
@@ -482,7 +470,7 @@ const ScoreOverviewChart: React.FC<ScoreOverviewChartProps> = ({ scores, onHover
                     itemStyle: { color: "#f39c12" },
                 },
                 {
-                    name: "Miss",
+                    name: __(I18nStrings.MAIN_PICKER_TABLE_MISS),
                     type: "bar",
                     stack: "hits",
                     yAxisIndex: 0,
@@ -650,6 +638,11 @@ export const BeatmapResultDrawer: React.FC<IBeatmapResultDrawerProps> = ({
 }) => {
     const [bgUrl, setBgUrl] = useState<string | null>(null);
     const [audioUrl, setAudioUrl] = useState<string | null>(null);
+    const [audioVolume, setAudioVolume] = useState<number>(() => {
+        const raw = Number(g.config?.[ConfigKey.UI_AUDIO_VOLUME] ?? 1);
+        return Number.isFinite(raw) ? Math.max(0, Math.min(1, raw)) : 1;
+    });
+    const [audioMuted, setAudioMuted] = useState<boolean>(() => Boolean(g.config?.[ConfigKey.UI_AUDIO_MUTED] ?? false));
     const [copyDone, setCopyDone] = useState(false);
     const [showScores, setShowScores] = useState(false);
     const [ppInfo, setPpInfo] = useState<
@@ -848,7 +841,7 @@ export const BeatmapResultDrawer: React.FC<IBeatmapResultDrawerProps> = ({
                     <Box
                         sx={{
                             position: "relative",
-                            height: 130,
+                            height: "18vh",
                             flexShrink: 0,
                             overflow: "hidden",
                             bgcolor: "action.selected",
@@ -880,36 +873,6 @@ export const BeatmapResultDrawer: React.FC<IBeatmapResultDrawerProps> = ({
                                 background: "linear-gradient(to top, rgba(0,0,0,0.75) 0%, transparent 100%)",
                             }}
                         >
-                            {audioUrl && (
-                                <Box
-                                    component="audio"
-                                    ref={(el: HTMLAudioElement | null) => {
-                                        if (el) {
-                                            const rawVol = Number(g.config?.[ConfigKey.UI_AUDIO_VOLUME] ?? 1);
-                                            const rawMuted = Boolean(g.config?.[ConfigKey.UI_AUDIO_MUTED] ?? false);
-                                            let settling = true;
-                                            el.volume = Number.isFinite(rawVol) ? Math.max(0, Math.min(1, rawVol)) : 1;
-                                            el.muted = rawMuted;
-                                            settling = false;
-                                            let lastVolume = el.volume;
-                                            let lastMuted = el.muted;
-                                            el.onvolumechange = () => {
-                                                if (settling) return;
-                                                const volChanged = el.volume !== lastVolume;
-                                                const mutedChanged = el.muted !== lastMuted;
-                                                if (!volChanged && !mutedChanged) return;
-                                                lastVolume = el.volume;
-                                                lastMuted = el.muted;
-                                                if (volChanged) g.saveConfig(ConfigKey.UI_AUDIO_VOLUME, el.volume);
-                                                if (mutedChanged) g.saveConfig(ConfigKey.UI_AUDIO_MUTED, el.muted);
-                                            };
-                                        }
-                                    }}
-                                    controls
-                                    src={audioUrl}
-                                    sx={{ width: "100%", height: 28, mb: 0.5, opacity: 0.9 }}
-                                />
-                            )}
                             <Typography
                                 variant="h6"
                                 noWrap
@@ -945,7 +908,6 @@ export const BeatmapResultDrawer: React.FC<IBeatmapResultDrawerProps> = ({
                             </Typography>
                         </Box>
                     </Box>
-
                     <Box sx={{ flex: 1, overflow: "auto", p: 1.5 }}>
                         <Box
                             sx={{
@@ -981,6 +943,7 @@ export const BeatmapResultDrawer: React.FC<IBeatmapResultDrawerProps> = ({
                                     ) : ppInfo.maxAim !== undefined ? (
                                         <Tooltip
                                             title={`Aim: ${ppInfo.maxAim.toFixed(0)}  Speed: ${ppInfo.maxSpeed?.toFixed(0)}  Acc: ${ppInfo.maxAcc?.toFixed(0)}`}
+                                            arrow
                                         >
                                             <span>{ppInfo.maxPP.toFixed(0)}pp</span>
                                         </Tooltip>
@@ -1005,20 +968,25 @@ export const BeatmapResultDrawer: React.FC<IBeatmapResultDrawerProps> = ({
                                 label={__(I18nStrings.MAIN_PICKER_RESULT_MODE)}
                                 value={MODE_LABELS[map.mode] ?? map.mode}
                             />
-                            <InfoRow label="Beatmap ID" value={map.beatmapId} />
+                            <InfoRow label={__(I18nStrings.MAIN_PICKER_RESULT_BEATMAP_ID)} value={map.beatmapId} />
                             <InfoRow
                                 label={__(I18nStrings.MAIN_PICKER_RESULT_STATUS)}
                                 value={RANKED_STATUS_LABELS[map.rankedStatus] ?? map.rankedStatus}
                             />
-                            <InfoRow label="Set ID" value={map.beatmapSetId} />
+                            <InfoRow label={__(I18nStrings.MAIN_PICKER_RESULT_SET_ID)} value={map.beatmapSetId} />
                             <InfoRow
                                 label={__(I18nStrings.MAIN_PICKER_RESULT_UNPLAYED)}
-                                value={effectiveUnplayed ? "Yes" : "No"}
+                                value={
+                                    effectiveUnplayed
+                                        ? __(I18nStrings.MAIN_PICKER_RESULT_YES)
+                                        : __(I18nStrings.MAIN_PICKER_RESULT_NO)
+                                }
                             />
                             <Tooltip
                                 title={
                                     effectiveLastPlayedTime ? formatDateTime(effectiveLastPlayedTime.getTime()) : null
                                 }
+                                arrow
                             >
                                 <InfoRow
                                     label={__(I18nStrings.MAIN_PICKER_WEIGHT_BM_LAST_PLAYED)}
@@ -1106,18 +1074,82 @@ export const BeatmapResultDrawer: React.FC<IBeatmapResultDrawerProps> = ({
                             </>
                         )}
                     </Box>
-
+                    {audioUrl && (
+                        <Box
+                            sx={{
+                                flexShrink: 0,
+                            }}
+                        >
+                            <AudioPlayer
+                                url={audioUrl}
+                                volume={audioVolume}
+                                muted={audioMuted}
+                                onVolumeChange={(v) => {
+                                    setAudioVolume(v);
+                                    g.saveConfig(ConfigKey.UI_AUDIO_VOLUME, v);
+                                }}
+                                onMutedChange={(m) => {
+                                    setAudioMuted(m);
+                                    g.saveConfig(ConfigKey.UI_AUDIO_MUTED, m);
+                                }}
+                            />
+                        </Box>
+                    )}
                     <Box
                         sx={{
                             flexShrink: 0,
-                            borderTop: 1,
-                            borderColor: "divider",
                             p: 1,
                             display: "flex",
                             justifyContent: "flex-end",
                             gap: 1,
                         }}
                     >
+                        <Button
+                            variant="contained"
+                            color="primary"
+                            startIcon={<CloudDownload />}
+                            onClick={async () => {
+                                const mirrorUrl = g.config?.[ConfigKey.DL_MIRROR_URL] as string | undefined;
+                                const setId = map.beatmapSetId;
+                                let source: "osu-official" | "mirror" = "osu-official";
+                                let url = `https://osu.ppy.sh/beatmapsets/${setId}/download`;
+                                if (mirrorUrl) {
+                                    source = "mirror";
+                                    url = mirrorUrl.replace("{id}", String(setId));
+                                }
+                                const result = await window.olsCore.dlEnqueue({
+                                    source,
+                                    url,
+                                    filename: `${setId}.osz`,
+                                    beatmapsetId: setId,
+                                });
+                                if (result.type === "duplicate") {
+                                    g.setNotify({
+                                        message: __(I18nStrings.MAIN_PICKER_DL_IN_QUEUE, { setId }),
+                                        severity: "info",
+                                    });
+                                } else if (result.type === "exists") {
+                                    g.setNotify({
+                                        message: __(I18nStrings.MAIN_PICKER_DL_EXISTS, { setId }),
+                                        severity: "info",
+                                    });
+                                } else if (result.type === "enqueued") {
+                                    if (result.task?.status === "held") {
+                                        g.setNotify({
+                                            message: __(I18nStrings.MAIN_PICKER_DL_AUTH_REQUIRED, { setId }),
+                                            severity: "warning",
+                                        });
+                                    } else {
+                                        g.setNotify({
+                                            message: __(I18nStrings.MAIN_PICKER_DL_ENQUEUED, { setId }),
+                                            severity: "success",
+                                        });
+                                    }
+                                }
+                            }}
+                        >
+                            {__(I18nStrings.BTN_PICKER_DOWNLOAD)}
+                        </Button>
                         <Button
                             variant="outlined"
                             startIcon={<Language />}
@@ -1138,6 +1170,7 @@ export const BeatmapResultDrawer: React.FC<IBeatmapResultDrawerProps> = ({
                                     ? __(I18nStrings.MAIN_PICKER_RESULT_COPY_ID_DONE)
                                     : __(I18nStrings.MAIN_PICKER_RESULT_COPY_ID)
                             }
+                            arrow
                         >
                             <Button
                                 variant="outlined"
@@ -1162,16 +1195,6 @@ enum IBPState {
     Loading,
     Loaded,
 }
-
-const RANK_STATUS_INT: Partial<Record<RankedStatus, number[]>> = {
-    [RankedStatus.Graveyard]: [2],
-    [RankedStatus.WIP]: [2],
-    [RankedStatus.Pending]: [2],
-    [RankedStatus.Ranked]: [4],
-    [RankedStatus.Approved]: [5],
-    [RankedStatus.Qualified]: [6],
-    [RankedStatus.Loved]: [7],
-};
 
 const evalStringCond = (value: string, op: StringCondition, target: string): boolean => {
     const v = (value ?? "").toLowerCase();
@@ -1215,9 +1238,9 @@ const evalDateCond = (date: Date, op: string, value: string): boolean => {
     if (op === DateCondition.After) return t > new Date(value).getTime();
     if (op === DateCondition.Between) {
         const [from, to] = value.split("~");
-        return t >= new Date(from?.trim() ?? "").getTime() && t <= new Date((to?.trim() ?? "") + "T23:59:59").getTime();
+        return t >= new Date(from?.trim() ?? "").getTime() && t <= new Date(`${to?.trim() ?? ""}T23:59:59`).getTime();
     }
-    if (op === DateCondition.WithinSecs) return (Date.now() - t) / 1000 <= (parseInt(value) || 0);
+    if (op === DateCondition.WithinSecs) return (Date.now() - t) / 1000 <= (parseInt(value, 10) || 0);
     return false;
 };
 
@@ -1239,61 +1262,72 @@ const filterMaps = (
     excludedCollections: string[],
     collections: IOsuCollection[],
 ): IBeatmapData[] => {
-    let result = maps.filter((m) => m.beatmapId !== 0);
+    const includedHashes =
+        includedCollections.length > 0
+            ? (() => {
+                  const s = new Set<string>();
+                  for (const colName of includedCollections) {
+                      const col = collections.find((c) => c.name === colName);
+                      if (col) for (const h of extractHashes(col.maps)) s.add(h);
+                  }
+                  return s;
+              })()
+            : null;
 
-    if (includedCollections.length > 0) {
-        const includedHashes = new Set<string>();
-        for (const colName of includedCollections) {
-            const col = collections.find((c) => c.name === colName);
-            if (col) for (const h of extractHashes(col.maps)) includedHashes.add(h);
-        }
-        result = result.filter((m) => includedHashes.has(m.md5Hash));
-    }
+    const excludedHashes =
+        excludedCollections.length > 0
+            ? (() => {
+                  const s = new Set<string>();
+                  for (const colName of excludedCollections) {
+                      const col = collections.find((c) => c.name === colName);
+                      if (col) for (const h of extractHashes(col.maps)) s.add(h);
+                  }
+                  return s;
+              })()
+            : null;
 
-    if (excludedCollections.length > 0) {
-        const excludedHashes = new Set<string>();
-        for (const colName of excludedCollections) {
-            const col = collections.find((c) => c.name === colName);
-            if (col) for (const h of extractHashes(col.maps)) excludedHashes.add(h);
-        }
-        result = result.filter((m) => !excludedHashes.has(m.md5Hash));
-    }
+    const titleQ = generalFilter[FilterType.Title] ? (generalFilter[FilterType.Title] as string).toLowerCase() : null;
 
-    if (generalFilter[FilterType.Title]) {
-        const q = (generalFilter[FilterType.Title] as string).toLowerCase();
-        result = result.filter(
-            (m) =>
-                (m.songTitle ?? "").toLowerCase().includes(q) || (m.songTitleUnicode ?? "").toLowerCase().includes(q),
-        );
-    }
+    const rankInts =
+        generalFilter[FilterType.RankStateLocal] &&
+        !(generalFilter[FilterType.RankStateLocal] as Array<number | "all">).includes("all")
+            ? new Set(generalFilter[FilterType.RankStateLocal] as number[])
+            : null;
 
-    if (generalFilter[FilterType.RankState] && !(generalFilter[FilterType.RankState] as string[]).includes("all")) {
-        const ranks = generalFilter[FilterType.RankState] as RankedStatus[];
-        const rankInts = new Set(ranks.flatMap((r) => RANK_STATUS_INT[r] ?? []));
-        result = result.filter((m) => rankInts.has(m.rankedStatus));
-    }
+    const modeSet =
+        generalFilter[FilterType.Mode] && !(generalFilter[FilterType.Mode] as any[]).includes("all")
+            ? new Set((generalFilter[FilterType.Mode] as number[]).map(Number))
+            : null;
 
+    let srMin: number | null = null;
+    let srMax: number | null = null;
     if (generalFilter[FilterType.StarRating]) {
         const sr = generalFilter[FilterType.StarRating];
         const [min = 0, max = 15] = Array.isArray(sr) && sr.length === 2 ? sr : [0, 15];
         if (min !== 0 || max !== 15) {
-            const selectedModes: Set<number> | null =
-                generalFilter[FilterType.Mode] && !(generalFilter[FilterType.Mode] as any[]).includes("all")
-                    ? new Set((generalFilter[FilterType.Mode] as number[]).map(Number))
-                    : null;
-            result = result.filter((m) => {
-                const eSR = get_effective_sr(m, selectedModes);
-                return eSR >= min && eSR <= max;
-            });
+            srMin = min;
+            srMax = max;
         }
     }
 
-    if (generalFilter[FilterType.Mode] && !(generalFilter[FilterType.Mode] as any[]).includes("all")) {
-        const modes = new Set((generalFilter[FilterType.Mode] as number[]).map(Number));
-        result = result.filter((m) => modes.has(m.mode) || m.mode === 0);
-    }
-
-    return result;
+    return maps.filter((m) => {
+        if (m.beatmapId === 0) return false;
+        if (includedHashes && !includedHashes.has(m.md5Hash)) return false;
+        if (excludedHashes?.has(m.md5Hash)) return false;
+        if (titleQ) {
+            const title = (m.songTitle ?? "").toLowerCase();
+            const titleU = (m.songTitleUnicode ?? "").toLowerCase();
+            if (!title.includes(titleQ) && !titleU.includes(titleQ)) return false;
+        }
+        if (rankInts && !rankInts.has(m.rankedStatus)) return false;
+        if (srMin !== null || srMax !== null) {
+            const eSR = get_effective_sr(m, modeSet);
+            if (srMin !== null && eSR < srMin) return false;
+            if (srMax !== null && eSR > srMax) return false;
+        }
+        if (modeSet && !(modeSet.has(m.mode) || m.mode === 0)) return false;
+        return true;
+    });
 };
 
 const matchesBeatmapCond = (m: IBeatmapData, cond: IWeightBeatmapCondition): boolean => {
@@ -1375,7 +1409,7 @@ const matchesHistoryCond = (m: IBeatmapData, history: IPickerHistory[], cond: IW
     const { operator, value } = cond;
     if (operator === HistoryCondition.Appeared) return history.some((h) => h.beatmapId === m.beatmapId);
     if (operator === HistoryCondition.NotAppeared) return !history.some((h) => h.beatmapId === m.beatmapId);
-    const n = Math.max(1, parseInt(value) || 1);
+    const n = Math.max(1, parseInt(value, 10) || 1);
     const recent = history.slice(-n);
     const appeared = recent.some((h) => h.beatmapId === m.beatmapId);
     if (operator === HistoryCondition.WithinLast) return appeared;
@@ -1386,15 +1420,10 @@ const matchesHistoryCond = (m: IBeatmapData, history: IPickerHistory[], cond: IW
 const buildWeightedPool = (
     maps: IBeatmapData[],
     advanced: IPickerAdvancedSettings,
-    collections: IOsuCollection[],
+    collectionMaps: Map<string, Set<string>>,
     scoresByHash: Map<string, OsuScore[]>,
     history: IPickerHistory[],
 ): { map: IBeatmapData; weight: number }[] => {
-    const collectionMaps = new Map<string, Set<string>>();
-    for (const col of collections) {
-        collectionMaps.set(col.name, extractHashes(col.maps));
-    }
-
     return maps.map((m) => {
         let weight = 1;
         for (const entry of advanced.weights) {
@@ -1452,14 +1481,10 @@ const checkWishlist = (
     maps: IBeatmapData[],
     advanced: IPickerAdvancedSettings,
     scoresByHash: Map<string, OsuScore[]>,
-    collections: IOsuCollection[],
+    collectionMaps: Map<string, Set<string>>,
     history: IPickerHistory[],
 ): IBeatmapData[] => {
     if (advanced.wishlist.length === 0) return [];
-    const collectionMaps = new Map<string, Set<string>>();
-    for (const col of collections) {
-        collectionMaps.set(col.name, extractHashes(col.maps));
-    }
 
     const matchesCondItem = (m: IBeatmapData, cond: (typeof advanced.wishlist)[0]["conditions"][0]): boolean => {
         if (cond.type === PickerTargetType.Map) return String(m.beatmapId) === cond.id;
@@ -1481,9 +1506,7 @@ const checkWishlist = (
     };
 
     return maps.filter((m) =>
-        advanced.wishlist
-            .map(normalizeWishlistEntry)
-            .some((entry) => entry.conditions.every((cond) => matchesCondItem(m, cond))),
+        advanced.wishlist.some((entry) => entry.conditions.every((cond) => matchesCondItem(m, cond))),
     );
 };
 
@@ -1569,6 +1592,12 @@ export const BeatmapPickerView: React.FC<IBeatmapPickerViewProps> = () => {
         "filter" | "collection" | "weight" | "wishlist" | "history" | "profiles" | null
     >(null);
     const [profileLoaded, setProfileLoaded] = useState(false);
+    const [migrationDialog, setMigrationDialog] = useState<{
+        open: boolean;
+        profileId: string;
+        outdatedKeys: number[];
+        pendingProfile: IPickerProfile | null;
+    }>({ open: false, profileId: "", outdatedKeys: [], pendingProfile: null });
     const initialSaveGuard = useRef(true);
     const loadedProfileRef = useRef<{
         generalFilter: TFilterSetting;
@@ -1678,6 +1707,26 @@ export const BeatmapPickerView: React.FC<IBeatmapPickerViewProps> = () => {
         }
     }, [state]);
 
+    const applyProfile = (id: string, profile: IPickerProfile) => {
+        setGeneralFilter(profile.generalFilter ?? {});
+        setIncludedCollections(profile.includedCollections ?? []);
+        setExcludedCollections(profile.excludedCollections ?? []);
+        setAdvancedSettings(normalizeAdvancedSettings(profile.advancedSettings ?? { weights: [], wishlist: [] }));
+        loadedProfileRef.current = {
+            profileId: id,
+            generalFilter: profile.generalFilter ?? {},
+            includedCollections: profile.includedCollections ?? [],
+            excludedCollections: profile.excludedCollections ?? [],
+            advancedSettings: normalizeAdvancedSettings(profile.advancedSettings ?? { weights: [], wishlist: [] }),
+        };
+    };
+
+    const getOutdatedFilterKeys = (profile: IPickerProfile): number[] => {
+        const outdated: number[] = [];
+        if (profile.generalFilter?.[FilterType.RankState] !== undefined) outdated.push(FilterType.RankState);
+        return outdated;
+    };
+
     useEffect(() => {
         const load = async () => {
             const id = g.config?.[ConfigKey.PICKER_ACTIVE_PROFILE] ?? "default";
@@ -1687,21 +1736,14 @@ export const BeatmapPickerView: React.FC<IBeatmapPickerViewProps> = () => {
                 window.olsCore.listPickerProfiles(),
             ]);
             if (profile) {
-                setGeneralFilter(profile.generalFilter ?? {});
-                setIncludedCollections(profile.includedCollections ?? []);
-                setExcludedCollections(profile.excludedCollections ?? []);
-                setAdvancedSettings(
-                    normalizeAdvancedSettings(profile.advancedSettings ?? { weights: [], wishlist: [] }),
-                );
-                loadedProfileRef.current = {
-                    profileId: id,
-                    generalFilter: profile.generalFilter ?? {},
-                    includedCollections: profile.includedCollections ?? [],
-                    excludedCollections: profile.excludedCollections ?? [],
-                    advancedSettings: normalizeAdvancedSettings(
-                        profile.advancedSettings ?? { weights: [], wishlist: [] },
-                    ),
-                };
+                const outdated = getOutdatedFilterKeys(profile);
+                if (outdated.length > 0) {
+                    setMigrationDialog({ open: true, profileId: id, outdatedKeys: outdated, pendingProfile: profile });
+                } else {
+                    applyProfile(id, profile);
+                    initialSaveGuard.current = false;
+                    setProfileLoaded(true);
+                }
             } else {
                 loadedProfileRef.current = {
                     profileId: id,
@@ -1710,37 +1752,22 @@ export const BeatmapPickerView: React.FC<IBeatmapPickerViewProps> = () => {
                     excludedCollections: [],
                     advancedSettings: { weights: [], wishlist: [] },
                 };
+                initialSaveGuard.current = false;
+                setProfileLoaded(true);
             }
             loadedHistoryRef.current = log ?? [];
             if (log?.length) setHistory(log);
             setProfiles(list ?? []);
-            initialSaveGuard.current = false;
-            setProfileLoaded(true);
         };
         load();
     }, []);
 
     const applyFromCache = useCallback(async () => {
         const cols = await OsuData.getCollections();
-        const { includedCollections: curIncluded, excludedCollections: curExcluded } = filterStateRef.current;
-        const backendFilter: StableBeatmapFilter = {};
-        const includedHashes: string[] = [];
-        const excludedHashes: string[] = [];
-        for (const colName of curIncluded) {
-            const col = cols.find((c) => c.name === colName);
-            if (col) for (const h of col.maps) includedHashes.push(h);
-        }
-        for (const colName of curExcluded) {
-            const col = cols.find((c) => c.name === colName);
-            if (col) for (const h of col.maps) excludedHashes.push(h);
-        }
-        if (curIncluded.length > 0) backendFilter.includedHashes = includedHashes;
-        if (curExcluded.length > 0) backendFilter.excludedHashes = excludedHashes;
         const allMaps = await OsuData.getBeatmaps();
         setTotalBeatmapCount(allMaps.length);
-        const local = Object.keys(backendFilter).length > 0 ? await OsuData.getBeatmaps(backendFilter) : allMaps;
         const scores = await OsuData.getScores();
-        setMaps(local);
+        setMaps(allMaps);
         setCollections(cols);
         setScoresByHash(scores);
     }, []);
@@ -1750,7 +1777,7 @@ export const BeatmapPickerView: React.FC<IBeatmapPickerViewProps> = () => {
         isLoadingRef.current = true;
         try {
             setState(IBPState.Loading);
-            OsuData.invalidate();
+            OsuData.invalidateData();
             g.setLoading(true, __(I18nStrings.MAIN_SRS_READING_LOCAL));
             await yieldToMain();
             await OsuData.init();
@@ -1786,6 +1813,7 @@ export const BeatmapPickerView: React.FC<IBeatmapPickerViewProps> = () => {
 
     const [showFilteredList, setShowFilteredList] = useState(false);
     const [pickedMap, setPickedMap] = useState<IBeatmapData | null>(null);
+    const [selectedHistoryMap, setSelectedHistoryMap] = useState<IBeatmapData | null>(null);
 
     const selectedModesSet = useMemo((): Set<number> | null => {
         const mf = generalFilter[FilterType.Mode];
@@ -1795,46 +1823,75 @@ export const BeatmapPickerView: React.FC<IBeatmapPickerViewProps> = () => {
 
     const deferredMaps = useDeferredValue(maps);
     const filteredMaps = useMemo(
-        () => (state === IBPState.Loaded ? filterMaps(deferredMaps, generalFilter, [], [], []) : []),
-        [state, deferredMaps, generalFilter],
+        () =>
+            state === IBPState.Loaded
+                ? filterMaps(deferredMaps, generalFilter, includedCollections, excludedCollections, collections)
+                : [],
+        [state, deferredMaps, generalFilter, includedCollections, excludedCollections, collections],
     );
 
+    const collectionMaps = useMemo(() => {
+        const m = new Map<string, Set<string>>();
+        for (const col of collections) {
+            m.set(col.name, extractHashes(col.maps));
+        }
+        return m;
+    }, [collections]);
+
+    const weightedPool = useMemo(() => {
+        if (state !== IBPState.Loaded || advancedSettings.weights.length === 0) return null;
+        return buildWeightedPool(filteredMaps, advancedSettings, collectionMaps, scoresByHash, history);
+    }, [state, filteredMaps, advancedSettings, collectionMaps, scoresByHash, history]);
+
     const pickableCount = useMemo(() => {
-        if (state !== IBPState.Loaded || advancedSettings.weights.length === 0) return filteredMaps.length;
-        const pool = buildWeightedPool(filteredMaps, advancedSettings, collections, scoresByHash, history);
-        return pool.filter((p) => p.weight > 0).length;
-    }, [state, filteredMaps, advancedSettings, collections, scoresByHash, history]);
+        if (state !== IBPState.Loaded) return filteredMaps.length;
+        if (!weightedPool) return filteredMaps.length;
+        return weightedPool.filter((p) => p.weight > 0).length;
+    }, [state, filteredMaps, weightedPool]);
 
     const filteredPool = useMemo(() => {
         if (!showFilteredList || state !== IBPState.Loaded) return [];
-        const wishlistCandidates = checkWishlist(filteredMaps, advancedSettings, scoresByHash, collections, history);
-        let sourcePool = filteredMaps;
+        const wishlistCandidates = checkWishlist(filteredMaps, advancedSettings, scoresByHash, collectionMaps, history);
+        let pool: { map: IBeatmapData; weight: number }[];
         if (wishlistCandidates.length > 0) {
-            const wPool = buildWeightedPool(wishlistCandidates, advancedSettings, collections, scoresByHash, history);
-            if (wPool.some((p) => p.weight > 0)) sourcePool = wishlistCandidates;
+            const wPool = buildWeightedPool(
+                wishlistCandidates,
+                advancedSettings,
+                collectionMaps,
+                scoresByHash,
+                history,
+            );
+            pool = wPool.some((p) => p.weight > 0)
+                ? wPool
+                : (weightedPool ??
+                  buildWeightedPool(filteredMaps, advancedSettings, collectionMaps, scoresByHash, history));
+        } else {
+            pool =
+                weightedPool ??
+                buildWeightedPool(filteredMaps, advancedSettings, collectionMaps, scoresByHash, history);
         }
-        const pool = buildWeightedPool(sourcePool, advancedSettings, collections, scoresByHash, history);
         const total = pool.reduce((s, p) => s + p.weight, 0);
         return pool
             .map((p) => ({ ...p, probability: total > 0 ? (p.weight / total) * 100 : 0 }))
             .sort((a, b) => b.probability - a.probability);
-    }, [showFilteredList, filteredMaps, advancedSettings, collections, scoresByHash, state, history]);
+    }, [showFilteredList, filteredMaps, advancedSettings, collectionMaps, scoresByHash, state, history, weightedPool]);
 
     const onBtnRoll = async () => {
         const filtered = filteredMaps;
         const now = Date.now();
 
-        const wishlistCandidates = checkWishlist(filtered, advancedSettings, scoresByHash, collections, history);
+        const wishlistCandidates = checkWishlist(filtered, advancedSettings, scoresByHash, collectionMaps, history);
         const wishlistPool =
             wishlistCandidates.length > 0
-                ? buildWeightedPool(wishlistCandidates, advancedSettings, collections, scoresByHash, history).filter(
+                ? buildWeightedPool(wishlistCandidates, advancedSettings, collectionMaps, scoresByHash, history).filter(
                       (p) => p.weight > 0,
                   )
                 : [];
         const pool =
             wishlistPool.length > 0
                 ? wishlistPool
-                : buildWeightedPool(filtered, advancedSettings, collections, scoresByHash, history);
+                : (weightedPool ??
+                  buildWeightedPool(filtered, advancedSettings, collectionMaps, scoresByHash, history));
         const picked = pickRandom(pool);
 
         if (!picked) return;
@@ -1842,6 +1899,10 @@ export const BeatmapPickerView: React.FC<IBeatmapPickerViewProps> = () => {
         const entry: IPickerHistory = {
             beatmapId: picked.beatmapId,
             title: `${picked.artist} - ${picked.songTitle} [${picked.difficultyName}]`,
+            artist: picked.artist,
+            songTitle: picked.songTitle,
+            difficultyName: picked.difficultyName,
+            creatorName: picked.creatorName,
             pickedAt: now,
         };
 
@@ -1856,6 +1917,15 @@ export const BeatmapPickerView: React.FC<IBeatmapPickerViewProps> = () => {
 
     const onClearHistory = () => {
         setHistory([]);
+    };
+
+    const onHistoryItemClick = (item: IPickerHistory) => {
+        const map = maps.find((m) => m.beatmapId === item.beatmapId) ?? null;
+        if (map) {
+            setSelectedHistoryMap(map);
+        } else {
+            g.setNotify({ message: __(I18nStrings.MAIN_PICKER_LOCAL_NOT_FOUND), severity: "warning" });
+        }
     };
 
     const onSaveProfile = async () => {
@@ -1877,10 +1947,13 @@ export const BeatmapPickerView: React.FC<IBeatmapPickerViewProps> = () => {
     const onLoadProfile = async (profileId: string) => {
         const profile = await window.olsCore.getPickerProfile(profileId);
         if (!profile) return;
-        setGeneralFilter(profile.generalFilter ?? {});
-        setIncludedCollections(profile.includedCollections ?? []);
-        setExcludedCollections(profile.excludedCollections ?? []);
-        setAdvancedSettings(normalizeAdvancedSettings(profile.advancedSettings ?? { weights: [], wishlist: [] }));
+        const outdated = getOutdatedFilterKeys(profile);
+        if (outdated.length > 0) {
+            applyProfile(profileId, profile);
+            setMigrationDialog({ open: true, profileId, outdatedKeys: outdated, pendingProfile: profile });
+        } else {
+            applyProfile(profileId, profile);
+        }
         setActiveProfileId(profileId);
         g.saveConfig(ConfigKey.PICKER_ACTIVE_PROFILE, profileId);
     };
@@ -1929,10 +2002,37 @@ export const BeatmapPickerView: React.FC<IBeatmapPickerViewProps> = () => {
         } catch {}
     };
 
-    const ROW_HEIGHT = 36;
-
     return (
         <>
+            <InfoDialog
+                open={migrationDialog.open}
+                title={__(I18nStrings.MAIN_PICKER_MIGRATION_TITLE)}
+                onConfirm={async () => {
+                    const cleaned = await window.olsCore.migratePickerProfile(
+                        migrationDialog.profileId,
+                        migrationDialog.outdatedKeys.map(String),
+                    );
+                    if (cleaned) applyProfile(migrationDialog.profileId, cleaned);
+                    if (!profileLoaded) {
+                        initialSaveGuard.current = false;
+                        setProfileLoaded(true);
+                    }
+                    setMigrationDialog((s) => ({ ...s, open: false }));
+                }}
+            >
+                <Typography variant="body2" sx={{ mb: 1 }}>
+                    {__(I18nStrings.MAIN_PICKER_MIGRATION_DESC)}
+                </Typography>
+                <ul style={{ margin: 0, paddingLeft: 20 }}>
+                    {migrationDialog.outdatedKeys.map((k) => (
+                        <li key={k}>
+                            <Typography variant="body2" sx={{ fontFamily: "monospace" }}>
+                                generalFilter &gt; {k}
+                            </Typography>
+                        </li>
+                    ))}
+                </ul>
+            </InfoDialog>
             <BeatmapResultDrawer
                 map={pickedMap}
                 displaySR={pickedMap ? get_effective_sr(pickedMap, selectedModesSet) : 0}
@@ -1941,94 +2041,84 @@ export const BeatmapPickerView: React.FC<IBeatmapPickerViewProps> = () => {
                 scoresByHash={scoresByHash}
                 onClose={() => setPickedMap(null)}
             />
+            <BeatmapResultDrawer
+                map={selectedHistoryMap}
+                displaySR={selectedHistoryMap ? get_effective_sr(selectedHistoryMap, selectedModesSet) : 0}
+                osuPath={g.config?.[ConfigKey.PATH_STABLE_DIR] ?? ""}
+                collections={collections}
+                scoresByHash={scoresByHash}
+                onClose={() => setSelectedHistoryMap(null)}
+            />
             <Drawer
                 anchor="bottom"
                 open={showFilteredList}
                 onClose={() => setShowFilteredList(false)}
                 sx={{ "& .MuiDrawer-paper": { height: "60vh", display: "flex", flexDirection: "column" } }}
             >
-                <Box
-                    sx={{
-                        px: 2,
-                        py: 0.5,
-                        display: "flex",
-                        alignItems: "center",
-                        borderBottom: 1,
-                        borderColor: "divider",
-                        flexShrink: 0,
-                    }}
-                >
-                    <Typography variant="subtitle2" sx={{ flex: "0 0 40%" }}>
-                        Title
-                    </Typography>
-                    <Typography variant="subtitle2" sx={{ flex: "0 0 30%" }}>
-                        Difficulty
-                    </Typography>
-                    <Typography variant="subtitle2" sx={{ flex: "0 0 12%", textAlign: "right" }}>
-                        ★
-                    </Typography>
-                    <Typography variant="subtitle2" sx={{ flex: "0 0 18%", textAlign: "right" }}>
-                        P%
-                    </Typography>
-                </Box>
-                <Box sx={{ flex: 1, minHeight: 0 }}>
-                    <AutoSizer>
-                        {({ width, height }) => (
-                            <List
-                                width={width}
-                                height={height}
-                                rowCount={filteredPool.length}
-                                rowHeight={ROW_HEIGHT}
-                                rowRenderer={({ index, key, style }) => {
-                                    const row = filteredPool[index];
-                                    return (
-                                        <Box
-                                            key={key}
-                                            style={style}
-                                            sx={{
-                                                display: "flex",
-                                                alignItems: "center",
-                                                px: 2,
-                                                borderBottom: "1px solid",
-                                                borderColor: "divider",
-                                                bgcolor: index % 2 === 0 ? "transparent" : "action.hover",
-                                                fontSize: "0.8rem",
-                                            }}
-                                        >
-                                            <Box
-                                                sx={{
-                                                    flex: "0 0 40%",
-                                                    overflow: "hidden",
-                                                    textOverflow: "ellipsis",
-                                                    whiteSpace: "nowrap",
-                                                    pr: 1,
-                                                }}
-                                            >
-                                                {row.map.artist ?? ""} - {row.map.songTitle ?? ""}
-                                            </Box>
-                                            <Box
-                                                sx={{
-                                                    flex: "0 0 30%",
-                                                    overflow: "hidden",
-                                                    textOverflow: "ellipsis",
-                                                    whiteSpace: "nowrap",
-                                                    pr: 1,
-                                                }}
-                                            >
-                                                {row.map.difficultyName}
-                                            </Box>
-                                            <Box sx={{ flex: "0 0 12%", textAlign: "right", pr: 1 }}>
-                                                {get_effective_sr(row.map, selectedModesSet).toFixed(2)}
-                                            </Box>
-                                            <Box sx={{ flex: "0 0 18%", textAlign: "right" }}>
-                                                {row.probability.toFixed(3)}%
-                                            </Box>
-                                        </Box>
-                                    );
-                                }}
-                            />
-                        )}
-                    </AutoSizer>
+                <Box sx={{ flex: 1, minHeight: 0, px: 2, pt: 0.5 }}>
+                    <DataViewer
+                        heads={[
+                            {
+                                name: __(I18nStrings.MAIN_PICKER_FILTER_POOL_TITLE),
+                                type: "string",
+                                key: "title",
+                                width: "40%",
+                                render: (row) => (
+                                    <Box
+                                        sx={{
+                                            overflow: "hidden",
+                                            textOverflow: "ellipsis",
+                                            whiteSpace: "nowrap",
+                                            pr: 1,
+                                        }}
+                                    >
+                                        {row.title}
+                                    </Box>
+                                ),
+                            },
+                            {
+                                name: __(I18nStrings.MAIN_PICKER_FILTER_POOL_DIFFICULTY),
+                                type: "string",
+                                key: "difficulty",
+                                width: "30%",
+                                render: (row) => (
+                                    <Box
+                                        sx={{
+                                            overflow: "hidden",
+                                            textOverflow: "ellipsis",
+                                            whiteSpace: "nowrap",
+                                            pr: 1,
+                                        }}
+                                    >
+                                        {row.difficulty}
+                                    </Box>
+                                ),
+                            },
+                            { name: "★", type: "string", key: "sr", width: "12%", align: "right" },
+                            {
+                                name: __(I18nStrings.MAIN_PICKER_FILTER_POOL_PROBABILITY),
+                                type: "string",
+                                key: "probability",
+                                width: "18%",
+                                align: "right",
+                                render: (row) => `${row.probability}%`,
+                            },
+                        ]}
+                        rows={filteredPool.map(({ map, probability }) => ({
+                            title: `${map.artist ?? ""} - ${map.songTitle ?? ""}`,
+                            difficulty: map.difficultyName,
+                            sr: get_effective_sr(map, selectedModesSet).toFixed(2),
+                            probability: probability.toFixed(3),
+                            _map: map,
+                        }))}
+                        rows_total={filteredPool.length}
+                        rowHeight={36}
+                        size="small"
+                        onRowClick={(row) => {
+                            setShowFilteredList(false);
+                            setPickedMap(row._map);
+                        }}
+                    />
                 </Box>
                 <Box sx={{ px: 2, py: 0.5, borderTop: 1, borderColor: "divider", flexShrink: 0 }}>
                     <Typography variant="caption" color="text.secondary">
@@ -2123,7 +2213,7 @@ export const BeatmapPickerView: React.FC<IBeatmapPickerViewProps> = () => {
                     variant="contained"
                     disabled={
                         state === IBPState.Loading ||
-                        (state === IBPState.Loaded && filteredMaps.length === 0) ||
+                        (state === IBPState.Loaded && pickableCount === 0) ||
                         (g.config?.[ConfigKey.PATH_STABLE_DIR] ?? "").length === 0
                     }
                     sx={{
@@ -2141,10 +2231,20 @@ export const BeatmapPickerView: React.FC<IBeatmapPickerViewProps> = () => {
                         gap: 0.5,
                         boxShadow: (theme) =>
                             `0 0 0 8px ${theme.palette.background.default}, 0px 8px 24px rgba(0,0,0,0.4)`,
+                        "&:hover": {
+                            transform: "translate(-50%, -50%)",
+                            boxShadow: (theme) =>
+                                `0 0 0 8px ${theme.palette.background.default}, 0px 12px 32px rgba(0,0,0,0.5)`,
+                        },
+                        "&:active": {
+                            transform: "translate(-50%, -50%)",
+                        },
                         "&.Mui-disabled": {
                             opacity: 1,
-                            backgroundColor: "#C9A8AE",
+                            backgroundColor: "#C4BCD4",
                             color: (theme) => theme.palette.success.contrastText,
+                            pointerEvents: "auto",
+                            cursor: "not-allowed",
                         },
                     }}
                     onClick={state === IBPState.Loaded ? onBtnRoll : onBtnClickedByInit}
@@ -2158,7 +2258,7 @@ export const BeatmapPickerView: React.FC<IBeatmapPickerViewProps> = () => {
                     </span>
                     {state === IBPState.Loaded && (
                         <Typography variant="caption" sx={{ fontSize: "0.65rem", opacity: 0.8, lineHeight: 1 }}>
-                            {pickableCount} / {totalBeatmapCount}
+                            {pickableCount} / {filteredMaps.length}
                         </Typography>
                     )}
                 </Button>
@@ -2343,6 +2443,7 @@ export const BeatmapPickerView: React.FC<IBeatmapPickerViewProps> = () => {
                             activePanel === "weight" || activePanel === "wishlist" || activePanel === "history"
                                 ? "block"
                                 : "none",
+                        height: "100%",
                     }}
                 >
                     <BeatmapPickerAdvancedPanel
@@ -2360,6 +2461,7 @@ export const BeatmapPickerView: React.FC<IBeatmapPickerViewProps> = () => {
                         }
                         onSettingsChanged={setAdvancedSettings}
                         onClearHistory={onClearHistory}
+                        onHistoryItemClick={onHistoryItemClick}
                     />
                 </Box>
                 <Box

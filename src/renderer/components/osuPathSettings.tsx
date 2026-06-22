@@ -1,7 +1,9 @@
 import { Button, Stack, TextField } from "@mui/material";
 import { Observer } from "mobx-react";
 import React from "react";
+import __ from "../../utils/i18n";
 import { ConfigKey } from "../../utils/typed/config";
+import { I18nStrings } from "../../utils/typed/i18n";
 import g from "../state";
 
 export interface IOsuPathSettingsProps {
@@ -51,7 +53,7 @@ export const OsuPathSettings: React.FC<IOsuPathSettingsProps> = ({ showStable = 
                                     }}
                                 />
                                 <Button variant="contained" onClick={onBtnLazerPathClicked}>
-                                    選擇檔案
+                                    {__(I18nStrings.MAIN_SETTINGS_SELECT_FILE)}
                                 </Button>
                             </Stack>
                         )}
@@ -67,7 +69,7 @@ export const OsuPathSettings: React.FC<IOsuPathSettingsProps> = ({ showStable = 
                                     }}
                                 />
                                 <Button variant="contained" onClick={onBtnStablePathClicked}>
-                                    選擇檔案
+                                    {__(I18nStrings.MAIN_SETTINGS_SELECT_FILE)}
                                 </Button>
                             </Stack>
                         )}

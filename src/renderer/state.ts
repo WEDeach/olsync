@@ -1,5 +1,6 @@
 import { AlertProps, SnackbarOrigin } from "@mui/material";
 import { action, observable, runInAction } from "mobx";
+import { DownloadTask } from "../defines/download_types";
 import { UpdateDiff } from "../entrypoint/js/updater";
 import { createLogger } from "../utils/logger";
 import { ConfigKey, SyncState } from "../utils/typed/config";
@@ -75,6 +76,12 @@ export interface IDialogState {
     renderFor?: string;
 }
 
+interface DuplicateConfirmState {
+    show: boolean;
+    items: Array<{ filename: string; task?: DownloadTask; req: any }>;
+    resolve?: (confirmed: boolean) => void;
+}
+
 interface IGlobalState {
     config?: { [key: string]: any };
     isDev: boolean;
@@ -84,6 +91,7 @@ interface IGlobalState {
     notify?: IGlobalNotify & IGlobalShowable;
     loadingState?: IGlobalLoading;
     dialog?: IDialogState;
+    duplicateConfirm: DuplicateConfirmState;
     version: string;
 
     bumpI18nVersion: () => void;
@@ -99,12 +107,18 @@ interface IGlobalState {
     isLoading: () => boolean;
     checkUpdate: (isForce?: boolean) => Promise<ICheckUpdateResult>;
     setDialog: (is_show: boolean, opt?: Omit<IDialogState, "show">) => void;
+    showDuplicateConfirm: (items: Array<{ filename: string; task?: DownloadTask; req: any }>) => Promise<boolean>;
+    closeDuplicateConfirm: (confirmed: boolean) => void;
 }
 
 const g: IGlobalState = observable({
     cacheVal: {},
     i18nVersion: 0,
-}) as IGlobalState;
+    duplicateConfirm: {
+        show: false,
+        items: [],
+    },
+}) as unknown as IGlobalState;
 
 Object.assign(g, {
     bumpI18nVersion: action(() => {
@@ -220,6 +234,24 @@ Object.assign(g, {
         g.dialog = {
             show: is_show,
             ...opt,
+        };
+    }),
+    showDuplicateConfirm: action((items: Array<{ filename: string; task?: DownloadTask; req: any }>) => {
+        return new Promise<boolean>((resolve) => {
+            g.duplicateConfirm = {
+                show: true,
+                items,
+                resolve,
+            };
+        });
+    }),
+    closeDuplicateConfirm: action((confirmed: boolean) => {
+        if (g.duplicateConfirm.resolve) {
+            g.duplicateConfirm.resolve(confirmed);
+        }
+        g.duplicateConfirm = {
+            show: false,
+            items: [],
         };
     }),
 });

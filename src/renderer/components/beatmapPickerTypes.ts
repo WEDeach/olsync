@@ -126,6 +126,10 @@ export interface IPickerAdvancedSettings {
 export interface IPickerHistory {
     beatmapId: number;
     title: string;
+    artist?: string;
+    songTitle?: string;
+    difficultyName?: string;
+    creatorName?: string;
     pickedAt: number;
 }
 

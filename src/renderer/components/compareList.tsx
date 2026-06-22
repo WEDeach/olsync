@@ -1,5 +1,7 @@
 import { Box, List, ListItem, ListItemText, Typography } from "@mui/material";
 import React from "react";
+import __ from "../../utils/i18n";
+import { I18nStrings } from "../../utils/typed/i18n";
 
 export interface ICompareListProps {
     source: { [key: string]: any };
@@ -34,16 +36,16 @@ function getDiffRows(source: any, target: any) {
 }
 
 const statusColor = {
-    added: "#d4f8db",
-    removed: "#ffeef0",
-    changed: "#fff5b1",
+    added: "rgba(76, 175, 80, 0.06)",
+    removed: "rgba(244, 67, 54, 0.06)",
+    changed: "rgba(255, 193, 7, 0.08)",
     unchanged: "inherit",
 };
 
 const statusLabel = {
-    added: "新增",
-    removed: "刪除",
-    changed: "修改",
+    added: __(I18nStrings.MAIN_COMPARE_STATUS_ADDED),
+    removed: __(I18nStrings.MAIN_COMPARE_STATUS_REMOVED),
+    changed: __(I18nStrings.MAIN_COMPARE_STATUS_CHANGED),
     unchanged: "",
 };
 
@@ -53,7 +55,7 @@ const CompareList: React.FC<ICompareListProps> = ({ source, target }) => {
     return (
         <Box>
             <Typography variant="h6" gutterBottom>
-                差異比較
+                {__(I18nStrings.MAIN_COMPARE_TITLE)}
             </Typography>
             <List>
                 {rows.map((row) => (
@@ -74,7 +76,7 @@ const CompareList: React.FC<ICompareListProps> = ({ source, target }) => {
                                     <Box sx={{ display: "flex", gap: 2 }}>
                                         <Box>
                                             <Typography variant="body2" color="text.secondary">
-                                                原始
+                                                {__(I18nStrings.MAIN_COMPARE_ORIGINAL)}
                                             </Typography>
                                             <Typography
                                                 variant="body1"
@@ -90,7 +92,7 @@ const CompareList: React.FC<ICompareListProps> = ({ source, target }) => {
                                         </Box>
                                         <Box>
                                             <Typography variant="body2" color="text.secondary">
-                                                目標
+                                                {__(I18nStrings.MAIN_COMPARE_TARGET)}
                                             </Typography>
                                             <Typography
                                                 variant="body1"
