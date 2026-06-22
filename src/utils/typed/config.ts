@@ -12,6 +12,9 @@ export enum ConfigKey {
     API_DLINK = "api:dlink",
     API_DELAY_MS = "api:delay_ms",
 
+    /* Auth */
+    AUTH_OSU_SESSION = "auth:osu_session",
+
     /* Sync State */
     SYNC_PLAYER_ID = "sync:player_id",
     SYNC_LAST_UPDATED = "sync:last_updated",
@@ -19,8 +22,19 @@ export enum ConfigKey {
     SYNC_ALAWAYS_SAVE_CACHE = "sync:always_save_cache",
     SYNC_PRE_COUNT = "sync:pre_count",
 
-    /* DL */
+    /* DL (legacy) */
     DL_DELAY_MS = "dl:delay_ms",
+
+    /* DL Manager */
+    DL_SAVE_DIR = "dl:save_dir",
+    DL_WORKERS = "dl:workers",
+    DL_SPEED_LIMIT_MBPS = "dl:speed_limit_mbps",
+    DL_MIRROR_URL = "dl:mirror_url",
+    DL_MIRROR_WORKERS = "dl:mirror_workers",
+    DL_CONCURRENCY = "dl:concurrency",
+    DL_MIN_CHUNK_SIZE = "dl:min_chunk_size",
+    DL_MAX_CHUNK_SIZE = "dl:max_chunk_size",
+    DL_PRE_MIN_REQUESTS_LIMIT = "dl:pre_min_requests_limit",
 
     /* BPKS */
     BPKS_DL_TYPE = "bpks:dl:type",
@@ -56,6 +70,7 @@ export enum ConfigKey {
     EXPERIMENT_DB_MD5_CHECK = "experiment:db_md5_check",
     EXPERIMENT_PACK_RULESET_BY_NM = "experiment:pack_ruleset_by_nm",
     EXPERIMENT_USE_API_MAP_ATTR = "experiment:use_api_map_attr",
+    EXPERIMENT_SPEEDTEST_DNS_PROXY = "experiment:speedtest_dns_proxy",
 }
 
 export interface SyncState {

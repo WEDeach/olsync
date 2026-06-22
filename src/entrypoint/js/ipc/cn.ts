@@ -42,4 +42,7 @@ export function register() {
     ipcMain.handle(IPC_CN_NAMES.SAVE_PICKER_LOG, async (_, profileId: string, data: any[]) => {
         await SharedManager.config.save_picker_log(profileId, data);
     });
+    ipcMain.handle(IPC_CN_NAMES.MIGRATE_PICKER_PROFILE, async (_, profileId: string, outdatedKeys: string[]) => {
+        return SharedManager.config.migrate_picker_profile(profileId, outdatedKeys);
+    });
 }

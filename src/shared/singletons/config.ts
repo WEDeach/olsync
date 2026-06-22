@@ -1,7 +1,7 @@
 import fs from "fs";
 import path from "path";
 import { GetLocalConfig, SaveLocalConfig } from "../../utils/config";
-import { pRoot, readJson, readJsonV2, saveJson, saveJsonV2 } from "../../utils/file";
+import { backupFileBySha256, pRoot, readJson, readJsonV2, saveJson, saveJsonV2 } from "../../utils/file";
 import { createLogger } from "../../utils/logger";
 import { SyncState } from "../../utils/typed/config";
 import { ServiceCode, SpaceId } from "../../utils/typed/file";
@@ -12,6 +12,7 @@ const log = createLogger("Config");
 export default class Config extends SingletonBase {
     _config?: { [key: string]: any };
     _syncStates?: SyncState[];
+    private _writeQueue: Promise<void> = Promise.resolve();
 
     async init() {
         if (this._config === undefined) {
@@ -40,7 +41,22 @@ export default class Config extends SingletonBase {
         }
         log.info(`save config for ${k}: ${v}`);
         this._config[k] = v;
-        await SaveLocalConfig(this._config);
+        const configToSave = this._config;
+        this._writeQueue = this._writeQueue.then(() => SaveLocalConfig(configToSave));
+        await this._writeQueue;
+    }
+
+    async saveMultiple(entries: { k: string; v: any }[]) {
+        if (this._config === undefined) {
+            throw new Error("Config has not been initialized.");
+        }
+        for (const { k, v } of entries) {
+            log.info(`save config for ${k}: ${v}`);
+            this._config[k] = v;
+        }
+        const configToSave = this._config;
+        this._writeQueue = this._writeQueue.then(() => SaveLocalConfig(configToSave));
+        await this._writeQueue;
     }
 
     async init_sync_state() {
@@ -119,6 +135,18 @@ export default class Config extends SingletonBase {
 
     async save_picker_log(profileId: string, data: any[]): Promise<void> {
         await saveJsonV2(ServiceCode.Data, SpaceId.PickerLog, `${profileId}.json`, data);
+    }
+
+    async migrate_picker_profile(profileId: string, outdatedKeys: string[]): Promise<any> {
+        const p = path.join(pRoot, ServiceCode.PickerProfile, `${profileId}.json`);
+        const data = await readJson(p);
+        if (!data) return null;
+        backupFileBySha256(p, path.join(pRoot, ServiceCode.PickerProfile, `${profileId}.json`));
+        if (data.generalFilter) {
+            for (const key of outdatedKeys) delete data.generalFilter[key];
+        }
+        await saveJson(p, data);
+        return data;
     }
 
     private async migrate_picker_legacy(): Promise<void> {

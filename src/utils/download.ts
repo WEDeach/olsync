@@ -1,3 +1,4 @@
+import { EnqueueRequest } from "../defines/download_types";
 import { HostType } from "../defines/types";
 import g from "../renderer/state";
 import __ from "./i18n";
@@ -11,7 +12,7 @@ const log = createLogger("uDownload");
 
 type TCallback = () => Promise<any[]>;
 
-export const getDelayMs = () => Number(g.config?.[ConfigKey.DL_DELAY_MS]) || 10000;
+export const GetDelayMs = () => Number(g.config?.[ConfigKey.DL_DELAY_MS]) || 10000;
 
 export const GetDLOptionByRows = (data_fetcher: TCallback) => {
     return {
@@ -134,7 +135,7 @@ export const GetDLOptionByDirect = (mapIds: number[]) => {
                         }
 
                         if (i < mapIds.length - 1) {
-                            await sleep(getDelayMs(), aborter.signal);
+                            await sleep(GetDelayMs(), aborter.signal);
                         }
                     }
                     g.setLoading(false);
@@ -149,6 +150,75 @@ export const GetDLOptionByDirect = (mapIds: number[]) => {
                 LogError(error);
             } finally {
                 g.setLoading(false);
+            }
+        },
+    };
+};
+
+type BuiltinItem =
+    | { source: "pack"; url: string; filename: string }
+    | { source: "osu-official"; beatmapsetId: number }
+    | { source: "mirror"; beatmapsetId: number };
+
+export const GetDLOptionByBuiltin = (items: BuiltinItem[]) => {
+    return {
+        label: __(I18nStrings.MAIN_DL_BUILTIN_LABEL),
+        callback: async () => {
+            try {
+                const OSU_DL_BASE = "https://osu.ppy.sh/beatmapsets";
+                const reqs: EnqueueRequest[] = items.map((item) => {
+                    if (item.source === "pack") {
+                        return { source: "pack" as const, url: item.url, filename: item.filename };
+                    }
+                    const setId = item.beatmapsetId;
+                    const url = `${OSU_DL_BASE}/${setId}/download`;
+                    return {
+                        source: item.source,
+                        url,
+                        filename: `${setId}.osz`,
+                        beatmapsetId: setId,
+                    };
+                });
+
+                // Use batch enqueue to check for duplicates first
+                const results = await window.olsCore.dlBatchEnqueue(reqs);
+
+                // Check if there are any duplicates or existing files
+                const duplicates = results.filter((r) => r.type === "duplicate" || r.type === "exists");
+                const newItems = results.filter((r) => r.type === "enqueued");
+
+                let retriedCount = 0;
+                if (duplicates.length > 0) {
+                    // Show MUI dialog for duplicates
+                    const confirmed = await g.showDuplicateConfirm(
+                        duplicates.map((d) => ({ filename: d.filename || "unknown", task: d.task, req: d.req })),
+                    );
+
+                    if (confirmed) {
+                        retriedCount = duplicates.length;
+                        // Retry duplicates by re-enqueueing
+                        for (const dup of duplicates) {
+                            // Cancel the old task if it's active
+                            if (dup.task && ["queued", "downloading", "held"].includes(dup.task.status)) {
+                                await window.olsCore.dlCancel(dup.task.id);
+                            }
+                            // Re-enqueue
+                            await window.olsCore.dlEnqueue(dup.req);
+                        }
+                    }
+                }
+
+                const totalEnqueued = newItems.length + retriedCount;
+                const skippedCount = duplicates.length - retriedCount;
+                g.setNotify({
+                    message: __(I18nStrings.MAIN_DL_ENQUEUED_NOTIFY, {
+                        count: totalEnqueued,
+                        skipPart: skippedCount > 0 ? `，${__(I18nStrings.BTN_SKIP)} ${skippedCount}` : "",
+                    }),
+                    severity: "success",
+                });
+            } catch (error) {
+                LogError(error);
             }
         },
     };
