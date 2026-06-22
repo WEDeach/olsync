@@ -1,12 +1,22 @@
 import dayjs from "dayjs";
 import relativeTime from "dayjs/plugin/relativeTime";
-import "dayjs/locale/zh-tw";
 import "dayjs/locale/en";
+import "dayjs/locale/ja";
+import "dayjs/locale/zh-tw";
 import { useEffect, useState } from "react";
 
 // plugins
 dayjs.extend(relativeTime);
-dayjs.locale(navigator.language.toLocaleLowerCase());
+dayjs.locale("zh-tw");
+
+export function setDayjsLocale(lang: string): void {
+    const localeMap: Record<string, string> = {
+        "zh-TW": "zh-tw",
+        "en-US": "en",
+        "ja-JP": "ja",
+    };
+    dayjs.locale(localeMap[lang] ?? "en");
+}
 
 export function formatTimeAgo(timestamp: number): string {
     return dayjs(timestamp).fromNow();
