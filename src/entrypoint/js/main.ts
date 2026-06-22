@@ -1,4 +1,8 @@
 import { app, BrowserWindow, ipcMain, Menu } from "electron";
+
+// Disable automation signals before Chromium starts (must be before app.whenReady)
+app.commandLine.appendSwitch("disable-blink-features", "AutomationControlled");
+
 import * as fs from "fs";
 import * as url from "url";
 import SharedManager from "../../shared/sharedManager";
@@ -65,10 +69,12 @@ function createWindow() {
     const saveWindowState = () => {
         if (!mainWindow) return;
         const bounds = mainWindow.getBounds();
-        SharedManager.config.save(ConfigKey.WINDOW_WIDTH, bounds.width);
-        SharedManager.config.save(ConfigKey.WINDOW_HEIGHT, bounds.height);
-        SharedManager.config.save(ConfigKey.WINDOW_X, bounds.x);
-        SharedManager.config.save(ConfigKey.WINDOW_Y, bounds.y);
+        SharedManager.config.saveMultiple([
+            { k: ConfigKey.WINDOW_WIDTH, v: bounds.width },
+            { k: ConfigKey.WINDOW_HEIGHT, v: bounds.height },
+            { k: ConfigKey.WINDOW_X, v: bounds.x },
+            { k: ConfigKey.WINDOW_Y, v: bounds.y },
+        ]);
     };
 
     const debouncedSave = () => {
@@ -121,7 +127,7 @@ app.whenReady().then(async () => {
     ipcCnCmdRegister();
     ipcAcCmdRegister();
     ipcLaCmdRegister();
-    ipcDlCmdRegister();
+    await ipcDlCmdRegister();
     ipcUpCmdRegister();
     ipcTrCmdRegister();
 
