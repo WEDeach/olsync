@@ -18,6 +18,10 @@
     * 僅獲取特定類型圖譜包 / 指定時間內 / 特定遊戲模式
     * 基於本地成績資料進行差異下載，可快速篩選未載譜面
 
+* 下載管理器 (Download Manager)
+  * 內建下載佇列，支援分塊下載與斷點續傳
+  * 內部登入與速率限制
+
 * 選圖器 (Map Picker)
   * 可透過篩選及比重設定來隨機選圖 (僅讀取本地地圖集)
   * 成績列表顯示 PP 及各分項數值（aim / speed / accuracy），基於 `rosu-pp-js` 本地計算
@@ -27,6 +31,11 @@
   * 以圖表呈現每日遊玩次數、分數、命中率及評價分布趨勢
   * 支援多用戶切換，並自動記憶上次瀏覽的用戶
   * 可依日期範圍篩選遊玩紀錄
+
+* 多語系 (i18n)
+  * 繁體中文 (zh-TW)
+  * 英文 (en-US)
+  * 日文 (ja-JP)
 
 ## 使用方式
 
@@ -39,6 +48,13 @@
 > 請切記不要隨意分享它們!
 
 ## 開發
+
+### 技術堆疊
+
+* **Electron** 35.x | **React** 19.x | **TypeScript** 5.8
+* **MUI** v7 | **MobX** 6.x 狀態管理
+* **Biome** 2.x (Lint / Format) | **Webpack** 5.x
+* **echarts** 6.x (圖表) | **rosu-pp-js** (PP 計算) | **realm** 12.x (Lazer DB)
 
 ### 安裝依賴
 
@@ -59,8 +75,19 @@ npm run build:prod
 npm run dist:win
 ```
 
+### 簽署建置
+
+```bash
+npm run gen-keys              # 首次產生 RSA 金鑰
+npm run dist:win:signed       # 建置並簽署 manifest
+```
+
 ## 系統需求
 
 * Windows 10 或更新版本
-* Node.js 16.x 或更新版本
+* Node.js 18.x 或更新版本
 * osu!stable 和/或 osu!lazer 客戶端
+
+## License
+
+[GPL-3.0-or-later](LICENSE)
