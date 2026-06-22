@@ -6,7 +6,88 @@
             "fetching": "正在獲取下載連結...",
             "nodata": "沒有任何資料...",
             "to_clipboard": "已複製 :count 個下載鏈接到剪貼簿",
-            "progress": "正在下載中... :current/:total"
+            "progress": "正在下載中... :current/:total",
+            "status": {
+                "queued": "排隊中",
+                "downloading": "下載中",
+                "paused": "已暫停",
+                "done": "完成",
+                "error": "錯誤",
+                "cancelled": "已取消",
+                "held": "等待登入",
+                "missing": "檔案遺失"
+            },
+            "title": "下載管理",
+            "tooltip": {
+                "copy_link": "複製連結",
+                "install": "安裝到 osu!",
+                "open_folder": "開啟所在資料夾",
+                "delete_file": "刪除檔案",
+                "pause": "暫停",
+                "cancel": "取消",
+                "resume": "恢復",
+                "retry": "重試",
+                "redownload": "重新下載",
+                "remove_record": "從記錄中移除",
+                "open_dl_folder": "開啟下載資料夾"
+            },
+            "login_required": "需登入 (:host)",
+            "login_button": "登入 osu!",
+            "auth_warning": "osu! 登入 required for :host - 請點擊上方「登入」按鈕繼續下載",
+            "no_active": "目前沒有進行中的下載",
+            "active_section": "進行中 / 排隊中:heldPart (:count)",
+            "history_section": "歷程 (:count)",
+            "chunks_progress": "chunks: :active / :total 進行中",
+            "history_cleared": "歷程已清除",
+            "login_success": "已登入 osu! 帳號，下載已恢復",
+            "login_incomplete": "登入未完成，請重新嘗試",
+            "link_copied": "連結已複製到剪貼簿",
+            "no_stable_path": "請先設定 osu!stable 路徑",
+            "install_failed": "安裝失敗: :reason",
+            "install_success": "已安裝 :count 個圖譜",
+            "file_deleted": "檔案已刪除",
+            "delete_failed": "刪除檔案失敗",
+            "batch_deleted": "已刪除 :success 個檔案:failPart",
+            "enqueued_notify": "已加入 :count 個下載任務:skipPart",
+            "builtin_label": "內建下載器",
+            "delete_confirm_title": "刪除檔案？",
+            "delete_confirm_label": "刪除",
+            "delete_confirm_body": "確定要刪除 :filename 嗎？",
+            "install_type_title": "選擇安裝類型",
+            "install_type_desc": "偵測到多種檔案類型，請選擇要安裝的類型：",
+            "install_type_item": ".:type (:count 個)",
+            "installing": "安裝中...",
+            "install_done_title": "安裝完成（:count 個成功）",
+            "install_cleanup_subtitle": "是否刪除以下原始檔案？",
+            "install_failed_reason": "安裝失敗: :reason",
+            "batch_delete_title": "刪除檔案確認",
+            "batch_delete_subtitle": "請選擇要刪除的檔案：",
+            "deleting": "刪除中...",
+            "clear_history_title": "清除歷程",
+            "clear_history_subtitle": "請選擇要清除的類型：",
+            "clear_history_item": ":label（:count 筆）",
+            "duplicate_title": "偵測到重複項目",
+            "duplicate_desc": "以下 :count 個項目已存在或正在下載中。是否重新下載？",
+            "redownload_title": "檔案已存在",
+            "redownload_desc": "以下檔案已下載完成，請選擇要重新下載的項目（預設不選取）：",
+            "unselect_all": "取消全選",
+            "select_all": "全選",
+            "auth_notify": "osu! 登入 required for :host",
+            "indicator": {
+                "failed": ":count 失敗",
+                "done": ":count 完成",
+                "queued": "排隊:count",
+                "held": "等待登入:count",
+                "failed_tooltip": ":count 個下載失敗，點擊查看詳情",
+                "done_tooltip": ":count 個下載已完成，點擊查看",
+                "active_tooltip": "下載中 :downloading 個，排隊 :queued 個，等待登入 :held 個"
+            },
+            "tab": {
+                "all": "全部 (:count)",
+                "done": "已完成 (:count)",
+                "cancelled": "取消 (:count)",
+                "error": "錯誤 (:count)"
+            }
         },
         "api": {
             "client": {
@@ -43,7 +124,8 @@
                 "read_local_maps_required": "你需要先讀取本地紀錄才能看到這裡的內容",
                 "read_online_maps_required": "你需要先讀取線上紀錄才能看到這裡的內容",
                 "all_map_already_downloaded": "看起來你已經下載了所有缺失的圖譜了UwU"
-            }
+            },
+            "scores_db_not_found": "在選擇的 osu! 目錄中找不到 scores.db"
         },
         "bpks": {
             "dl": {
@@ -105,7 +187,9 @@
             "info": {
                 "files": "需要更新 :count 個檔案",
                 "size": "下載大小: :size MB"
-            }
+            },
+            "download_failed_no_error": "下載失敗但沒有具體錯誤訊息",
+            "unknown_error": "未知錯誤"
         },
         "settings": {
             "title": "設定",
@@ -123,7 +207,23 @@
             "pack_ruleset_by_nm": "使用NM摘要檢查圖包Mod",
             "use_api_map_attr": "使用 API 取得圖譜屬性計算 PP (實驗性)",
             "language": "語系",
-            "no_i18n": "No any i18n files"
+            "no_i18n": "No any i18n files",
+            "dl_section": "下載器",
+            "dl_save_dir": "下載目錄",
+            "dl_save_dir_placeholder": "預設：系統下載資料夾",
+            "dl_save_dir_picker_title": "選擇下載目錄",
+            "dl_workers": "最大同時下載數",
+            "dl_speed_limit": "速度上限 (MB/s，0=不限)",
+            "dl_concurrency": "伺服器最大連接數",
+            "dl_rate_limit": "每分鐘最大請求數 (per server)",
+            "dl_min_chunk": "最小分塊大小 (MB)",
+            "dl_max_chunk": "最大分塊大小 (MB)",
+            "dl_mirror_url": "Mirror URL（自訂鏡像，留空則使用官方）",
+            "dl_mirror_placeholder": "例：https://beatconnect.io/b/{id}",
+            "dl_mirror_workers": "Mirror 最大同時下載數（建議 1）",
+            "dl_speedtest_dns": "使用 Speedtest DNS Proxy",
+            "dl_speedtest_dns_desc": "透過變更DNS設定來獲取更低的下載延遲, 詳細可參考 ",
+            "dl_speedtest_dns_link": "此文章"
         },
         "name": "名稱",
         "author": "作者",
@@ -137,7 +237,28 @@
                     "title": "收藏夾篩選",
                     "none": "不限收藏夾",
                     "exclude": "排除收藏夾"
-                }
+                },
+                "rank_state": "排名狀態",
+                "rank_state_local": "本機排名狀態",
+                "all": "全部",
+                "graveyard": "Graveyard",
+                "wip": "WIP",
+                "pending": "Pending",
+                "ranked": "Ranked",
+                "approved": "Approved",
+                "qualified": "Qualified",
+                "loved": "Loved",
+                "not_submitted": "本機",
+                "pending_wip_graveyard": "未排名",
+                "title_label": "標題",
+                "play_count": "遊玩次數",
+                "lang": "語言",
+                "mode": "模式"
+            },
+            "filter_pool": {
+                "title": "標題",
+                "difficulty": "難度",
+                "probability": "機率"
             },
             "advanced": {
                 "title": "進階設定"
@@ -154,6 +275,8 @@
                 },
                 "id": "ID / 名稱",
                 "value": "比重",
+                "increase": "增加",
+                "decrease": "減少",
                 "add": "新增",
                 "field": "欄位",
                 "operator": "條件",
@@ -236,7 +359,14 @@
             "history": {
                 "title": "抽選紀錄",
                 "empty": "尚無紀錄",
-                "clear_confirm": "確定要清除所有抽選紀錄嗎?"
+                "clear_confirm": "確定要清除所有抽選紀錄嗎?",
+                "table": {
+                    "song": "歌曲",
+                    "difficulty": "難度",
+                    "artist": "作者",
+                    "creator": "創作者",
+                    "picked_at": "挑選時間"
+                }
             },
             "roll": {
                 "result": "抽到了: :title"
@@ -257,7 +387,22 @@
                 "source": "來源",
                 "unplayed": "未遊玩",
                 "scores": "成績 (:count 筆)",
-                "collections": "收藏夾"
+                "collections": "收藏夾",
+                "beatmap_id": "圖譜 ID",
+                "set_id": "圖譜集 ID",
+                "yes": "是",
+                "no": "否",
+                "dl": {
+                    "in_queue": ":setId.osz 已在下載佇列中",
+                    "exists": ":setId.osz 已存在於下載資料夾",
+                    "auth_required": "需登入 osu! 帳號才能下載 :setId.osz",
+                    "enqueued": "已加入下載：:setId.osz"
+                },
+                "local_not_found": "無法在本地圖譜中找到此項目",
+                "migration": {
+                    "title": "此設定部分內容過舊",
+                    "desc": "以下設定項目不再支援，點擊確定後將自動刪除（會先備份原始設定檔）："
+                }
             },
             "profile": {
                 "name": "設定檔名稱",
@@ -273,6 +418,12 @@
                 "grade": "評價",
                 "map": "曲目",
                 "score": "分數",
+                "300": "300",
+                "100": "100",
+                "50": "50",
+                "miss": "Miss",
+                "mods": "Mods",
+                "pp": "PP",
                 "max_combo": "最大連擊",
                 "accuracy": "準確率",
                 "mode": "模式",
@@ -298,6 +449,16 @@
             "last_count": "最後同步預計數量",
             "last_offset": "最後同步預計位置",
             "target_count": "當前同步目標數量"
+        },
+        "collection": {
+            "selected_count": ":selected/:total 已選擇",
+            "subs_count": ":count 個子項"
+        },
+        "i18n": {
+            "file_missing": "找不到語系檔案: :lang"
+        },
+        "fs": {
+            "default_open_title": "選擇一個檔案"
         },
         "compare": {
             "title": "差異比較",
@@ -363,6 +524,10 @@
             "download": "下載",
             "read_by_checksum": "獲取圖譜資訊 (API需求!)"
         },
+        "ok": "確定",
+        "skip": "跳過",
+        "redownload": "重新下載",
+        "reset": "重置",
         "cancel": "取消",
         "confirm": "確認",
         "abort": "終止",
@@ -370,7 +535,16 @@
             "rows": "文本下載",
             "fdm": "透過FDM下載",
             "direct": "osu!direct",
-            "direct_confirm": "使用osu!direct下載連結:\n1. 請先打開osu!客戶端 並確保你已經登入且可以使用osu!direct\n2. 請進入osu!客戶端的設置當中, 在最後面幾個設置中找到自動下載圖譜的選項並打開\n3. 默認每10秒載一張圖, 這是為了確保不造成濫用問題, 除非你知道你在做甚麼否則不要擅自修改這個秒數!"
+            "direct_confirm": "使用osu!direct下載連結:\n1. 請先打開osu!客戶端 並確保你已經登入且可以使用osu!direct\n2. 請進入osu!客戶端的設置當中, 在最後面幾個設置中找到自動下載圖譜的選項並打開\n3. 默認每10秒載一張圖, 這是為了確保不造成濫用問題, 除非你知道你在做甚麼否則不要擅自修改這個秒數!",
+            "pause_all": "一鍵暫停",
+            "cancel_all": "一鍵取消",
+            "delete_all": "刪除全部",
+            "install_all": "安裝全部",
+            "clear_history": "清除歷程",
+            "keep_all": "保留全部",
+            "delete_selected": "刪除勾選的",
+            "clear_selected": "清除勾選的",
+            "redownload": "重新下載 (:count)"
         },
         "bpks": {
             "read": "讀取圖譜包"
@@ -378,6 +552,7 @@
         "picker": {
             "read": "讀取圖譜",
             "roll": "抽!",
+            "download": "下載",
             "filter": "篩選",
             "filter_collection": "收藏夾篩選",
             "advanced": "進階設定",
@@ -395,6 +570,7 @@
             "repo": "前往GitHub頁面"
         },
         "tab": {
+            "download": "下載",
             "collection": "收藏夾",
             "srs": "歌曲缺失檢查",
             "packs": "Packs",

@@ -6,7 +6,88 @@
             "fetching": "ダウンロードリンクを取得中...",
             "nodata": "データがありません...",
             "to_clipboard": ":count 件のダウンロードリンクをクリップボードにコピーしました",
-            "progress": "ダウンロード中... :current/:total"
+            "progress": "ダウンロード中... :current/:total",
+            "status": {
+                "queued": "待機中",
+                "downloading": "ダウンロード中",
+                "paused": "一時停止",
+                "done": "完了",
+                "error": "エラー",
+                "cancelled": "キャンセル済み",
+                "held": "ログイン待ち",
+                "missing": "ファイル紛失"
+            },
+            "title": "ダウンロード管理",
+            "tooltip": {
+                "copy_link": "リンクをコピー",
+                "install": "osu! にインストール",
+                "open_folder": "ファイルの場所を開く",
+                "delete_file": "ファイルを削除",
+                "pause": "一時停止",
+                "cancel": "キャンセル",
+                "resume": "再開",
+                "retry": "再試行",
+                "redownload": "再ダウンロード",
+                "remove_record": "履歴から削除",
+                "open_dl_folder": "ダウンロードフォルダを開く"
+            },
+            "login_required": "ログインが必要 (:host)",
+            "login_button": "osu! にログイン",
+            "auth_warning": ":host には osu! へのログインが必要です - 上記の「ログイン」ボタンをクリックしてダウンロードを続行してください",
+            "no_active": "現在進行中のダウンロードはありません",
+            "active_section": "進行中 / 待機中:heldPart (:count)",
+            "history_section": "履歴 (:count)",
+            "chunks_progress": "chunks: :active / :total 進行中",
+            "history_cleared": "履歴がクリアされました",
+            "login_success": "osu! アカウントにログインしました。ダウンロードを再開します",
+            "login_incomplete": "ログインが完了していません。もう一度お試しください",
+            "link_copied": "リンクをクリップボードにコピーしました",
+            "no_stable_path": "先に osu!stable のパスを設定してください",
+            "install_failed": "インストール失敗: :reason",
+            "install_success": ":count 個の譜面をインストールしました",
+            "file_deleted": "ファイルを削除しました",
+            "delete_failed": "ファイルの削除に失敗しました",
+            "batch_deleted": ":success 個のファイルを削除しました:failPart",
+            "enqueued_notify": ":count 件のダウンロードタスクを追加しました:skipPart",
+            "builtin_label": "内蔵ダウンロード機能",
+            "delete_confirm_title": "ファイルを削除しますか？",
+            "delete_confirm_label": "削除",
+            "delete_confirm_body": "本当に :filename を削除してもよろしいですか？",
+            "install_type_title": "インストールタイプの選択",
+            "install_type_desc": "複数のファイルタイプが検出されました。インストールするタイプを選択してください：",
+            "install_type_item": ".:type (:count 個)",
+            "installing": "インストール中...",
+            "install_done_title": "インストール完了（:count 個成功）",
+            "install_cleanup_subtitle": "以下の元ファイルを削除しますか？",
+            "install_failed_reason": "インストール失敗: :reason",
+            "batch_delete_title": "ファイル削除の確認",
+            "batch_delete_subtitle": "削除するファイルを選択してください：",
+            "deleting": "削除中...",
+            "clear_history_title": "履歴をクリア",
+            "clear_history_subtitle": "クリアするタイプを選択してください：",
+            "clear_history_item": ":label（:count 件）",
+            "duplicate_title": "重複項目を検出",
+            "duplicate_desc": "以下の :count 件の項目は既に存在するか、ダウンロード中です。再ダウンロードしますか？",
+            "redownload_title": "ファイルが既に存在します",
+            "redownload_desc": "以下のファイルはダウンロードが完了しています。再ダウンロードする項目を選択してください（デフォルトでは未選択）：",
+            "unselect_all": "全選択解除",
+            "select_all": "全選択",
+            "auth_notify": ":host には osu! へのログインが必要です",
+            "indicator": {
+                "failed": ":count 件失敗",
+                "done": ":count 件完了",
+                "queued": "待機 :count 件",
+                "held": "ログイン待ち :count 件",
+                "failed_tooltip": ":count 件のダウンロードが失敗しました。クリックして詳細を表示",
+                "done_tooltip": ":count 件のダウンロードが完了しました。クリックして表示",
+                "active_tooltip": "ダウンロード中 :downloading 件、待機中 :queued 件、ログイン待ち :held 件"
+            },
+            "tab": {
+                "all": "すべて (:count)",
+                "done": "完了 (:count)",
+                "cancelled": "キャンセル (:count)",
+                "error": "エラー (:count)"
+            }
         },
         "api": {
             "client": {
@@ -43,7 +124,8 @@
                 "read_local_maps_required": "ここを表示するには、まずローカル履歴を読み込む必要があります",
                 "read_online_maps_required": "ここを表示するには、まずオンライン履歴を読み込む必要があります",
                 "all_map_already_downloaded": "不足している譜面はすべてダウンロードされているようです UwU"
-            }
+            },
+            "scores_db_not_found": "選択された osu! ディレクトリ内に scores.db が見つかりません"
         },
         "bpks": {
             "dl": {
@@ -105,7 +187,9 @@
             "info": {
                 "files": ":count 個のファイルを更新する必要があります",
                 "size": "ダウンロードサイズ: :size MB"
-            }
+            },
+            "download_failed_no_error": "ダウンロードに失敗しましたが、具体的なエラーメッセージがありません",
+            "unknown_error": "不明なエラー"
         },
         "settings": {
             "title": "設定",
@@ -123,7 +207,23 @@
             "pack_ruleset_by_nm": "NMダイジェストでパックのModを確認する",
             "use_api_map_attr": "APIから譜面属性を取得してPPを計算する (実験的)",
             "language": "言語",
-            "no_i18n": "i18nファイルが見つかりません"
+            "no_i18n": "i18nファイルが見つかりません",
+            "dl_section": "ダウンロード機能",
+            "dl_save_dir": "ダウンロード先ディレクトリ",
+            "dl_save_dir_placeholder": "デフォルト：システムのダウンロードフォルダ",
+            "dl_save_dir_picker_title": "ダウンロード先フォルダを選択",
+            "dl_workers": "最大同時ダウンロード数",
+            "dl_speed_limit": "最高速度制限 (MB/s，0=無制限)",
+            "dl_concurrency": "サーバー最大接続数",
+            "dl_rate_limit": "1分あたりの最大リクエスト数 (サーバーごと)",
+            "dl_min_chunk": "最小分割ブロックサイズ (MB)",
+            "dl_max_chunk": "最大分割ブロックサイズ (MB)",
+            "dl_mirror_url": "カスタムミラー URL（空欄の場合は公式を使用）",
+            "dl_mirror_placeholder": "例：https://beatconnect.io/b/{id}",
+            "dl_mirror_workers": "ミラー最大同時ダウンロード数（推奨: 1）",
+            "dl_speedtest_dns": "Speedtest DNS プロキシを使用する",
+            "dl_speedtest_dns_desc": "DNS設定を変更してダウンロードの遅延を低減します。詳細は ",
+            "dl_speedtest_dns_link": "この記事を参照"
         },
         "name": "名前",
         "author": "作者",
@@ -137,7 +237,28 @@
                     "title": "コレクションフィルター",
                     "none": "指定なし",
                     "exclude": "コレクションを除外"
-                }
+                },
+                "rank_state": "ステータス",
+                "rank_state_local": "ローカルステータス",
+                "all": "すべて",
+                "graveyard": "Graveyard",
+                "wip": "WIP",
+                "pending": "Pending",
+                "ranked": "Ranked",
+                "approved": "Approved",
+                "qualified": "Qualified",
+                "loved": "Loved",
+                "not_submitted": "ローカル未提出",
+                "pending_wip_graveyard": "未ランク",
+                "title_label": "タイトル",
+                "play_count": "プレイ回数",
+                "lang": "言語",
+                "mode": "モード"
+            },
+            "filter_pool": {
+                "title": "タイトル",
+                "difficulty": "難易度",
+                "probability": "確率"
             },
             "advanced": {
                 "title": "詳細設定"
@@ -154,6 +275,8 @@
                 },
                 "id": "ID / 名前",
                 "value": "重み",
+                "increase": "増やす",
+                "decrease": "減らす",
                 "add": "追加",
                 "field": "フィールド",
                 "operator": "条件",
@@ -236,7 +359,14 @@
             "history": {
                 "title": "抽選履歴",
                 "empty": "履歴がありません",
-                "clear_confirm": "すべての抽選履歴を削除してもよろしいですか？"
+                "clear_confirm": "すべての抽選履歴を削除してもよろしいですか？",
+                "table": {
+                    "song": "楽曲",
+                    "difficulty": "難易度",
+                    "artist": "アーティスト",
+                    "creator": "クリエイター",
+                    "picked_at": "抽選日時"
+                }
             },
             "roll": {
                 "result": "選ばれた譜面: :title"
@@ -257,7 +387,22 @@
                 "source": "ソース",
                 "unplayed": "未プレイ",
                 "scores": "スコア (:count 件)",
-                "collections": "コレクション"
+                "collections": "コレクション",
+                "beatmap_id": "譜面 ID",
+                "set_id": "譜面セット ID",
+                "yes": "はい",
+                "no": "いいえ",
+                "dl": {
+                    "in_queue": ":setId.osz は既にダウンロードキューにあります",
+                    "exists": ":setId.osz は既にダウンロードフォルダに存在します",
+                    "auth_required": ":setId.osz をダウンロードするには osu! アカウントへのログインが必要です",
+                    "enqueued": "ダウンロードに追加されました：:setId.osz"
+                },
+                "local_not_found": "ローカルの譜面から該当する項目が見つかりませんでした",
+                "migration": {
+                    "title": "この設定の一部は古い形式です",
+                    "desc": "以下の設定項目はサポートされなくなりました。確定をクリックすると自動的に削除されます（元の設定ファイルは事前にバックアップされます）："
+                }
             },
             "profile": {
                 "name": "プロファイル名",
@@ -273,6 +418,12 @@
                 "grade": "ランク",
                 "map": "曲名",
                 "score": "スコア",
+                "300": "300",
+                "100": "100",
+                "50": "50",
+                "miss": "Miss",
+                "mods": "Mods",
+                "pp": "PP",
                 "max_combo": "最大コンボ",
                 "accuracy": "精度",
                 "mode": "モード",
@@ -298,6 +449,16 @@
             "last_count": "最終同期予定数",
             "last_offset": "最終同期予定位置",
             "target_count": "現在の同期目標数"
+        },
+        "collection": {
+            "selected_count": ":selected/:total 選択済み",
+            "subs_count": ":count 個の子項目"
+        },
+        "i18n": {
+            "file_missing": "言語ファイルが見つかりません: :lang"
+        },
+        "fs": {
+            "default_open_title": "ファイルを選択してください"
         },
         "compare": {
             "title": "差分比較",
@@ -363,6 +524,10 @@
             "download": "ダウンロード",
             "read_by_checksum": "譜面情報を取得 (APIが必要！)"
         },
+        "ok": "確定",
+        "skip": "スキップ",
+        "redownload": "再ダウンロード",
+        "reset": "リセット",
         "cancel": "キャンセル",
         "confirm": "確定",
         "abort": "中止",
@@ -370,7 +535,16 @@
             "rows": "テキストダウンロード",
             "fdm": "FDMでダウンロード",
             "direct": "osu!direct",
-            "direct_confirm": "osu!directダウンロードリンクを使用します:\n1. 先にosu!クライアントを起動し、ログイン済みかつosu!directが利用可能であることを確認してください。\n2. osu!クライアントの設定を開き、下部にある譜面の自動ダウンロードオプションを有効にしてください。\n3. サーバーへの負荷（乱用）を防ぐため、デフォルトでは10秒ごとに1枚の譜面をダウンロードします。何をしているか理解している場合を除き、この秒数を変更しないでください！"
+            "direct_confirm": "osu!directダウンロードリンクを使用します:\n1. 先にosu!クライアントを起動し、ログイン済みかつosu!directが利用可能であることを確認してください。\n2. osu!クライアントの設定を開き、下部にある譜面の自動ダウンロードオプションを有効にしてください。\n3. サーバーへの負荷（乱用）を防ぐため、デフォルトでは10秒ごとに1枚の譜面をダウンロードします。何をしているか理解している場合を除き、この秒数を変更しないでください！",
+            "pause_all": "一括一時停止",
+            "cancel_all": "一括キャンセル",
+            "delete_all": "すべて削除",
+            "install_all": "すべてインストール",
+            "clear_history": "履歴をクリア",
+            "keep_all": "すべて残す",
+            "delete_selected": "選択項目を削除",
+            "clear_selected": "選択項目をクリア",
+            "redownload": "再ダウンロード (:count)"
         },
         "bpks": {
             "read": "パックを読み込む"
@@ -378,6 +552,7 @@
         "picker": {
             "read": "譜面を読み込む",
             "roll": "ガチャを引く！",
+            "download": "ダウンロード",
             "filter": "フィルター",
             "filter_collection": "コレクションフィルター",
             "advanced": "詳細設定",
@@ -395,6 +570,7 @@
             "repo": "GitHubページへ"
         },
         "tab": {
+            "download": "ダウンロード",
             "collection": "コレクション",
             "srs": "不足譜面チェック",
             "packs": "パック",
