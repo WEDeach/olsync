@@ -149,10 +149,10 @@ export const readJson = async (name: string) => {
     }
 };
 
-export const saveJsonV2 = async (svc: ServiceCode, sid: SpaceId, name: string, data: any) => {
+export const saveJsonV2 = async (svc: ServiceCode, sid: SpaceId | null, name: string, data: any) => {
     try {
         const d = dumps(data);
-        const p = path.join(pRoot, svc, sid, name);
+        const p = path.join(pRoot, svc, sid || "", name);
         await fs.promises.mkdir(path.dirname(p), { recursive: true });
         await fs.promises.writeFile(p, d, "utf8");
         log.child("saveJsonV2").info(`Saved: ${p}`);
@@ -162,9 +162,9 @@ export const saveJsonV2 = async (svc: ServiceCode, sid: SpaceId, name: string, d
     }
 };
 
-export const readJsonV2 = async <T = unknown>(svc: ServiceCode, sid: SpaceId, name: string) => {
+export const readJsonV2 = async <T = unknown>(svc: ServiceCode, sid: SpaceId | null, name: string) => {
     try {
-        const p = path.join(pRoot, svc, sid, name);
+        const p = path.join(pRoot, svc, sid || "", name);
         if (fs.existsSync(p)) {
             const d = await fs.promises.readFile(p, "utf8");
             return loads(d) as T;

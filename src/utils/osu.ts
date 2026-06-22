@@ -250,7 +250,6 @@ class OsuDataManager {
     async init(): Promise<void> {
         await this._ensureWatching();
         await this.getBeatmaps();
-        await this.getScores();
         await this.getCollections();
     }
 
