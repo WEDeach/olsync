@@ -72,7 +72,7 @@ export default class NativeHost extends SingletonBase {
         }
     }
 
-    async sendMessage(hostType: HostType, message: any): Promise<any> {
+    async send_message(hostType: HostType, message: any): Promise<any> {
         const process = this.processGroup[hostType];
 
         if (!process || !process.stdin) {

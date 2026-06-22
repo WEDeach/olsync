@@ -1,5 +1,6 @@
 import Api from "./singletons/api";
 import Config from "./singletons/config";
+import DownloadManager from "./singletons/downloadManager";
 import LazerReader from "./singletons/lazerReader";
 import NativeHost from "./singletons/nativeHost";
 import StableReader from "./singletons/stable";
@@ -12,6 +13,7 @@ const SharedManager = {
     api: Api.getInstance as Api,
     nativeHost: NativeHost.getInstance as NativeHost,
     tracker: Tracker.getInstance as Tracker,
+    downloadManager: DownloadManager.getInstance as DownloadManager,
 } as const;
 
 export default SharedManager;

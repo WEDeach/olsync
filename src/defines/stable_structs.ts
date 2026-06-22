@@ -1,7 +1,10 @@
-export enum StableRankedStatus {
+// See more info at ppy wiki on github
+// https://github.com/ppy/osu/wiki/Legacy-database-file-structure
+
+export enum StableLocalBeatmapStatus {
     Unknown = 0,
     Unsubmitted = 1,
-    PendingWIPGraveyard = 2,
+    Unranked = 2,
     Unused = 3,
     Ranked = 4,
     Approved = 5,
@@ -88,7 +91,6 @@ export interface StableScore {
     version: number;
     md5Hash: string;
     userName: string;
-    replyHash: string;
     count300: number;
     count100: number;
     count50: number;
@@ -99,11 +101,10 @@ export interface StableScore {
     maxCombo: number;
     perfect: boolean;
     mods: number;
-    hpGraphString: null;
     date: Date;
     compressedReplay: number;
     legacyOnlineID: string;
-    additionalModData: null;
+    additionalModData: number | null;
 }
 
 export interface StableBeatmapDetail {
