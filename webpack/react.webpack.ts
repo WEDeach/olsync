@@ -25,7 +25,7 @@ const config: Configuration={
         rules: [
             {
                 test: /\.tsx?$/,
-                use: 'ts-loader',
+                use: { loader: 'ts-loader', options: { transpileOnly: true } },
             },
             {
                 test: /\.(png|svg|jpg|jpeg|gif)$/i,

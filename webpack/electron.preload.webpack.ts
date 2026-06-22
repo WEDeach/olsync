@@ -13,7 +13,9 @@ const config: Configuration={
     resolve: {
         extensions: ['.ts','.tsx','.js','.jsx','.html','.scss','.svg'],
     },
-    entry: path.resolve(rootPath,"src/entrypoint/js","preload.ts"),
+    entry: {
+        'preload.b': path.resolve(rootPath,"src/entrypoint/js","preload.ts"),
+    },
     target: 'electron-preload',
     externals: [
         nodeExternals({
@@ -28,7 +30,7 @@ const config: Configuration={
         rules: [
             {
                 test: /\.tsx?$/,
-                use: 'ts-loader',
+                use: { loader: 'ts-loader', options: { transpileOnly: true } },
             }
         ],
     },
@@ -37,7 +39,7 @@ const config: Configuration={
     },
     output: {
         path: path.resolve(rootPath,"dist","js"),
-        filename: "preload.b.js",
+        filename: "[name].js",
         libraryTarget: 'commonjs2',
     },
     plugins: [
