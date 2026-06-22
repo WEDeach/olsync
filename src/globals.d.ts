@@ -2,6 +2,7 @@ import { DefaultObject } from "realm/dist/public-types/schema/types";
 import ApiClient from "./api/v2/client";
 import { PackTypes } from "./api/v2/routes/beatmaps";
 import { RespBeatmapLookup, RespBeatmapPacks, RespUserInfo, RespUserMostPlayedBeatmaps } from "./api/v2/types/api_resp";
+import { DownloadTask, EnqueueRequest } from "./defines/download_types";
 import { PPCalcArgs, PPCalcResult, StableBeatmapDetail, StableBeatmapFilter } from "./defines/stable_structs";
 import { TrackerUserSummary } from "./defines/tracker_types";
 import { HostType, IOsuCollection, OsuClients } from "./defines/types";
@@ -81,10 +82,9 @@ declare global {
             listPickerProfiles: () => Promise<string[]>;
             getPickerLog: (profileId: string) => Promise<IPickerHistory[]>;
             savePickerLog: (profileId: string, data: IPickerHistory[]) => Promise<void>;
+            migratePickerProfile: (profileId: string, outdatedKeys: string[]) => Promise<IPickerProfile | null>;
             saveCachedMaps: (user_id: number, beatmap_ids: number[]) => Promise<void>;
             getCachedMaps: (user_id: number) => Promise<RespUserMostPlayedBeatmaps>;
-            initDL: (hostType: HostType) => Promise<boolean>;
-            sendMessage4DL: (hostType: HostType, message: any) => Promise<void>;
             getDLinkByBeatmapsetId: (beatmapset_id: number) => Promise<IPCR<string>>;
             fecthBeatmapPacks: (type: PackTypes, cursor_string?: string) => Promise<IPCR<RespBeatmapPacks>>;
             getBeatmapPack: (tag_id: any) => Promise<IPCR<CachedBeatmapPack>>;
@@ -102,8 +102,55 @@ declare global {
             getTrackerUserSummary: (userName: string) => Promise<TrackerUserSummary | null>;
             saveTrackerUserSummary: (data: TrackerUserSummary) => Promise<void>;
             listTrackerUserSummaries: () => Promise<TrackerUserSummary[]>;
+            // dl (downloader - unified: FDM legacy + built-in)
+            initDL: (hostType: HostType) => Promise<boolean>;
+            sendMessage4DL: (hostType: HostType, message: any) => Promise<void>;
+            dlEnqueue: (req: EnqueueRequest) => Promise<{
+                type: "duplicate" | "exists" | "enqueued";
+                task?: DownloadTask;
+                filename?: string;
+                savePath?: string;
+            }>;
+            dlBatchEnqueue: (reqs: EnqueueRequest[]) => Promise<
+                Array<{
+                    type: "enqueued" | "duplicate" | "exists";
+                    req: EnqueueRequest;
+                    task?: DownloadTask;
+                    filename?: string;
+                    savePath?: string;
+                }>
+            >;
+            dlCancel: (id: string) => Promise<void>;
+            dlPause: (id: string) => Promise<void>;
+            dlResume: (id: string) => Promise<void>;
+            dlRetry: (id: string) => Promise<void>;
+            dlClearHistory: (statuses?: string[]) => Promise<void>;
+            dlGetAllTasks: () => Promise<DownloadTask[]>;
+            dlOpenSaveDir: () => Promise<void>;
+            dlRevealFile: (filePath: string) => Promise<void>;
+            dlLoginOsu: () => Promise<{ success: boolean }>;
+            dlCheckExists: (filenames: string[]) => Promise<string[]>;
+            dlInstallFile: (taskId: string) => Promise<{ success: boolean; installedCount?: number; reason?: string }>;
+            dlDeleteFile: (taskId: string) => Promise<{ success: boolean }>;
+            dlGetRateStatus: () => Promise<Array<{ hostname: string; count: number; limit: number }>>;
+            dlOnEvent: (listener: (event: Electron.IpcRendererEvent, ...args: any[]) => void) => void;
+            dlOffEvent: (listener: (event: Electron.IpcRendererEvent, ...args: any[]) => void) => void;
+            dlOnTaskUpdated: (listener: (event: Electron.IpcRendererEvent, task: DownloadTask) => void) => void;
+            dlOffTaskUpdated: (listener: (event: Electron.IpcRendererEvent, task: DownloadTask) => void) => void;
+            dlOnSessionExpired: (listener: (event: Electron.IpcRendererEvent) => void) => void;
+            dlOffSessionExpired: (listener: (event: Electron.IpcRendererEvent) => void) => void;
+            dlOnAuthRequired: (
+                listener: (event: Electron.IpcRendererEvent, payload: { hostname: string }) => void,
+            ) => void;
+            dlOffAuthRequired: (
+                listener: (event: Electron.IpcRendererEvent, payload: { hostname: string }) => void,
+            ) => void;
+            dlOnLoginResult: (
+                listener: (event: Electron.IpcRendererEvent, payload: { success: boolean }) => void,
+            ) => void;
+            dlOffLoginResult: (
+                listener: (event: Electron.IpcRendererEvent, payload: { success: boolean }) => void,
+            ) => void;
         };
     }
 }
-
-export {};

@@ -55,6 +55,7 @@ export enum IPC_CN_NAMES {
     LIST_PICKER_PROFILES = "ipc:cn:list_picker_profiles",
     GET_PICKER_LOG = "ipc:cn:get_picker_log",
     SAVE_PICKER_LOG = "ipc:cn:save_picker_log",
+    MIGRATE_PICKER_PROFILE = "ipc:cn:migrate_picker_profile",
 }
 
 // API
@@ -86,11 +87,37 @@ export enum IPC_TR_NAMES {
     LIST_USER_SUMMARIES = "ipc:tr:list_user_summaries",
 }
 
-// DL
+// DL (Downloader - unified: built-in + legacy FDM)
 export enum IPC_DL_NAMES {
+    // Legacy FDM
     INIT = "ipc:dl:init",
     SEND = "ipc:dl:send",
+    // Built-in downloader
+    ENQUEUE = "ipc:dl:enqueue",
+    BATCH_ENQUEUE = "ipc:dl:batch_enqueue",
+    CANCEL = "ipc:dl:cancel",
+    PAUSE = "ipc:dl:pause",
+    RESUME = "ipc:dl:resume",
+    RETRY = "ipc:dl:retry",
+    CLEAR_HISTORY = "ipc:dl:clear_history",
+    GET_ALL_TASKS = "ipc:dl:get_all_tasks",
+    OPEN_SAVE_DIR = "ipc:dl:open_save_dir",
+    REVEAL_FILE = "ipc:dl:reveal_file",
+    LOGIN_OSU = "ipc:dl:login_osu",
+    CHECK_EXISTS = "ipc:dl:check_exists",
+    INSTALL_FILE = "ipc:dl:install_file",
+    DELETE_FILE = "ipc:dl:delete_file",
+    GET_RATE_STATUS = "ipc:dl:get_rate_status",
+    // push (main → renderer)
+    TASK_UPDATED = "ipc:dl:task_updated",
+    SESSION_EXPIRED = "ipc:dl:session_expired",
+    SESSION_READY = "ipc:dl:session_ready",
+    AUTH_REQUIRED = "ipc:dl:auth_required",
+    LOGIN_RESULT = "ipc:dl:login_result",
 }
+
+// Deprecated: Use IPC_DL_NAMES instead
+export const IPC_DLV2_NAMES = IPC_DL_NAMES;
 
 // UPDATER
 export enum IPC_UP_NAMES {
