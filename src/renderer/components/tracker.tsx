@@ -75,7 +75,7 @@ const EChart: React.FC<EChartProps> = ({ title, option, height = 300, onDataZoom
         <Paper variant="outlined" sx={{ p: 1 }}>
             <ReactECharts
                 option={option}
-                style={{ height }}
+                style={{ height, width: "100%", overflow: "hidden" }}
                 notMerge={false}
                 lazyUpdate
                 onEvents={onDataZoom ? { datazoom: onDataZoom } : undefined}
@@ -755,7 +755,7 @@ export const TrackerView: React.FC = () => {
             ) : (
                 <Box ref={chartSectionCallback}>
                     <Stack spacing={2}>
-                        <Box sx={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 2 }}>
+                        <Box sx={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 2, "& > *": { minWidth: 0 } }}>
                             <EChart
                                 title={__(I18nStrings.MAIN_TRACKER_CHART_PLAYS)}
                                 option={playCountOption}

@@ -7,6 +7,7 @@ import {
     MenuItem,
     OutlinedInput,
     Select,
+    Stack,
     Typography,
 } from "@mui/material";
 import React from "react";
@@ -48,7 +49,7 @@ export const BeatmapPickerFilterPanel: React.FC<IBeatmapPickerFilterPanelProps> 
     };
 
     return (
-        <Box sx={{ display: "flex", flexDirection: "column", p: 1, gap: 1 }}>
+        <Stack spacing={2} sx={{ p: 1 }}>
             {showFilter && (
                 <>
                     <Typography variant="subtitle2" color="text.secondary" textAlign="center">
@@ -136,6 +137,6 @@ export const BeatmapPickerFilterPanel: React.FC<IBeatmapPickerFilterPanelProps> 
                     </FormControl>
                 </>
             )}
-        </Box>
+        </Stack>
     );
 };
