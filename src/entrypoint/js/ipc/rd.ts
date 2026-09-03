@@ -2,9 +2,11 @@ import { BrowserWindow, ipcMain } from "electron";
 import * as fs from "fs";
 import * as path from "path";
 import * as rosu from "rosu-pp-js";
+import { LazerBeatmapDetailRequest } from "../../../defines/lazer_structs";
 import { PPCalcArgs, StableBeatmapFilter } from "../../../defines/stable_structs";
 import { IOsuCollection, OsuClients } from "../../../defines/types";
 import SharedManager from "../../../shared/sharedManager";
+import { fDevMode } from "../../../utils/common";
 import { createLogger } from "../../../utils/logger";
 import { ConfigKey } from "../../../utils/typed/config";
 import { IPC_RD_NAMES } from "./ns";
@@ -12,30 +14,39 @@ import { IPC_RD_NAMES } from "./ns";
 const log = createLogger("IPC_RD");
 
 export function register() {
+    const requireDevReaderAccess = () => {
+        if (!fDevMode) {
+            throw new Error("Raw Lazer Realm access is only available in development builds.");
+        }
+    };
+
     ipcMain.handle(IPC_RD_NAMES.INIT, async (_, path: string) => {
-        SharedManager.lazerReader.init(path);
+        await SharedManager.lazerReader.init(path);
     });
 
     ipcMain.handle(IPC_RD_NAMES.SCHEMAS, async (_) => {
+        requireDevReaderAccess();
         const reader = SharedManager.lazerReader;
-        return reader.get_schemas();
+        return await reader.get_schemas();
     });
 
     ipcMain.handle(IPC_RD_NAMES.GET_SCHEMA, async (_, name: string) => {
-        return SharedManager.lazerReader.get_schema_by_name(name);
+        requireDevReaderAccess();
+        return await SharedManager.lazerReader.get_schema_by_name(name);
     });
 
     ipcMain.handle(IPC_RD_NAMES.GET_SCHEMA_OBJS, async (_, name: string, limit?: number, offset?: number) => {
-        return SharedManager.lazerReader.get_objects(name, limit, offset);
+        requireDevReaderAccess();
+        return await SharedManager.lazerReader.get_objects(name, limit, offset);
     });
 
     ipcMain.handle(IPC_RD_NAMES.CLOSE, async (_) => {
-        return SharedManager.lazerReader.close();
+        return await SharedManager.lazerReader.close();
     });
 
     ipcMain.handle(IPC_RD_NAMES.INIT_STABLE, async (_, path: string) => {
         const reader = SharedManager.stableReader;
-        reader.init(path);
+        await reader.init(path);
     });
 
     ipcMain.handle(IPC_RD_NAMES.START_STABLE_WATCH, async (_) => {
@@ -51,20 +62,20 @@ export function register() {
     ipcMain.handle(
         IPC_RD_NAMES.GET_COLLECTIONS,
         async (_, type: OsuClients = OsuClients.Stable, offset?: number, limit?: number) => {
-            if (type === OsuClients.Lazer) return SharedManager.lazerReader.get_collections(offset, limit);
+            if (type === OsuClients.Lazer) return await SharedManager.lazerReader.get_collections(offset, limit);
             return SharedManager.stableReader.collections(offset, limit);
         },
     );
 
     ipcMain.handle(IPC_RD_NAMES.SET_COLLECTIONS, async (_, type: OsuClients, collections: IOsuCollection[]) => {
-        if (type === OsuClients.Lazer) return SharedManager.lazerReader.set_collections(collections);
+        if (type === OsuClients.Lazer) return await SharedManager.lazerReader.set_collections(collections);
         return SharedManager.stableReader.set_collections(collections);
     });
 
     ipcMain.handle(
         IPC_RD_NAMES.GET_BEATMAPS,
         async (_, type: OsuClients = OsuClients.Stable, offset?: number, limit?: number) => {
-            if (type === OsuClients.Lazer) throw new Error("Not implemented");
+            if (type === OsuClients.Lazer) return await SharedManager.lazerReader.get_beatmaps(offset, limit);
             return SharedManager.stableReader.beatmaps(offset, limit);
         },
     );
@@ -72,7 +83,7 @@ export function register() {
     ipcMain.handle(
         IPC_RD_NAMES.GET_SCORES,
         async (_, type: OsuClients = OsuClients.Stable, offset?: number, limit?: number) => {
-            if (type === OsuClients.Lazer) throw new Error("Not implemented");
+            if (type === OsuClients.Lazer) return await SharedManager.lazerReader.get_scores(offset, limit);
             return SharedManager.stableReader.scores(offset, limit);
         },
     );
@@ -96,6 +107,24 @@ export function register() {
         return SharedManager.stableReader.get_beatmap_detail(md5Hash);
     });
 
+    ipcMain.handle(
+        IPC_RD_NAMES.QUERY_STABLE_SCORES_BY_USER,
+        async (_, userName: string, dateFrom?: number, dateTo?: number, offset?: number, limit?: number) => {
+            return SharedManager.stableReader.query_scores_by_user(userName, dateFrom, dateTo, offset, limit);
+        },
+    );
+
+    ipcMain.handle(
+        IPC_RD_NAMES.QUERY_STABLE_SCORES_BY_HASHES,
+        async (_, hashes: string[], userName?: string, offset?: number, limit?: number) => {
+            return SharedManager.stableReader.query_scores_by_hashes(hashes, userName, offset, limit);
+        },
+    );
+
+    ipcMain.handle(IPC_RD_NAMES.QUERY_STABLE_USERS, async () => {
+        return SharedManager.stableReader.query_users();
+    });
+
     ipcMain.handle(IPC_RD_NAMES.CALC_PP, async (_, args: PPCalcArgs) => {
         const t0 = Date.now();
         const detail = await SharedManager.stableReader.get_beatmap_detail(args.md5Hash);
@@ -107,7 +136,9 @@ export function register() {
         const osuFilePath = path.join(basePath, "Songs", detail.path, detail.osuFileName);
         const bytes = fs.readFileSync(osuFilePath);
         const map = new rosu.Beatmap(bytes);
-        const maxAttrs = new rosu.Performance({ mods: args.mods, lazer: false }).calculate(map);
+        const lazer = args.lazer ?? false;
+        const rosuMods = lazer ? (args.modsData ?? args.mods) : args.mods;
+        const maxAttrs = new rosu.Performance({ mods: rosuMods, lazer }).calculate(map);
         const hasScoreStats =
             args.combo !== undefined ||
             args.n300 !== undefined ||
@@ -116,8 +147,8 @@ export function register() {
             args.misses !== undefined;
         const scoreAttrs = hasScoreStats
             ? new rosu.Performance({
-                  mods: args.mods,
-                  lazer: false,
+                  mods: rosuMods,
+                  lazer,
                   combo: args.combo,
                   n300: args.n300,
                   n100: args.n100,
@@ -138,5 +169,64 @@ export function register() {
             maxSpeed: maxAttrs.ppSpeed ?? undefined,
             maxAcc: maxAttrs.ppAccuracy ?? undefined,
         };
+    });
+
+    ipcMain.handle(IPC_RD_NAMES.QUERY_LAZER_BEATMAPS, async (_, spec: any, offset: number = 0, limit: number = 500) => {
+        return await SharedManager.lazerReader.query_beatmaps(spec, offset, limit);
+    });
+
+    ipcMain.handle(IPC_RD_NAMES.COUNT_LAZER_BEATMAPS, async (_, spec: any) => {
+        return await SharedManager.lazerReader.count_beatmaps(spec);
+    });
+
+    ipcMain.handle(IPC_RD_NAMES.GET_LAZER_BEATMAP_DETAIL, async (_, request: LazerBeatmapDetailRequest) => {
+        return await SharedManager.lazerReader.get_beatmap_detail(request ?? {});
+    });
+
+    ipcMain.handle(
+        IPC_RD_NAMES.QUERY_LAZER_SCORES_BY_HASHES,
+        async (_, hashes: string[], stableDedupKeys?: string[], returnOsuScore?: boolean) => {
+            return await SharedManager.lazerReader.query_scores_by_hashes(hashes, stableDedupKeys, returnOsuScore);
+        },
+    );
+
+    ipcMain.handle(
+        IPC_RD_NAMES.QUERY_LAZER_SCORES_BY_USER,
+        async (
+            _,
+            userName: string,
+            dateFrom?: number,
+            dateTo?: number,
+            stableDedupKeys?: string[],
+            offset?: number,
+            limit?: number,
+        ) => {
+            return await SharedManager.lazerReader.query_scores_by_user(
+                userName,
+                dateFrom,
+                dateTo,
+                stableDedupKeys,
+                offset,
+                limit,
+            );
+        },
+    );
+
+    ipcMain.handle(IPC_RD_NAMES.QUERY_LAZER_USERS, async () => {
+        return await SharedManager.lazerReader.query_lazer_users();
+    });
+
+    ipcMain.handle(IPC_RD_NAMES.START_LAZER_WATCH, async () => {
+        const win = () => BrowserWindow.getAllWindows()[0]?.webContents;
+        await SharedManager.lazerReader.startWatch((type) => {
+            if (type === "scores_changed") {
+                win()?.send(IPC_RD_NAMES.LAZER_SCORES_CHANGED);
+            }
+        });
+    });
+
+    ipcMain.handle(IPC_RD_NAMES.GET_STABLE_CLIENT_DATA, async () => {
+        if (process.platform !== "win32") return { Connected: false };
+        return SharedManager.stableIpcMonitor.getLatest();
     });
 }

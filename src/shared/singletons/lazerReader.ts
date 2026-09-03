@@ -1,72 +1,154 @@
-import Realm from "realm";
+import type { UtilityProcess } from "electron";
+import { utilityProcess } from "electron";
+import * as path from "path";
+import { LazerBeatmap, LazerBeatmapDetailRequest } from "../../defines/lazer_structs";
 import { IOsuCollection } from "../../defines/types";
-import { readWithOffset } from "../../utils/reader";
+import { createLogger } from "../../utils/logger";
+import { DefaultObjectWithOffset } from "../../utils/reader";
 import SingletonBase from "./base";
 
+const log = createLogger("LazerReader");
+
 export default class LazerReader extends SingletonBase {
-    realm?: Realm;
+    private _utilProc: UtilityProcess | null = null;
+    private _pending = new Map<number, { resolve: (r: unknown) => void; reject: (e: Error) => void }>();
+    private _nextMsgId = 0;
+    private _onNotification: ((type: string) => void) | null = null;
 
-    init(fpath: string) {
-        if (this.realm !== undefined) {
-            // throw new Error("LazerReader has been initialized.");
-            this.realm.close();
-        }
-        this.realm = new Realm({
-            path: fpath,
-            disableFormatUpgrade: false,
-            // openSyncedRealmLocally: true,
-            schema: undefined,
-            schemaVersion: undefined,
-        } satisfies Realm.Configuration & {
-            openSyncedRealmLocally?: boolean;
-        } as any);
+    private _ensure_proc() {
+        if (this._utilProc) return;
+        const procPath = path.join(__dirname, "lazerProcess.js");
+        this._utilProc = utilityProcess.fork(procPath, [], { stdio: "pipe" });
+        this._utilProc.stdout?.on("data", (chunk: Buffer) => {
+            process.stdout.write(chunk);
+        });
+        this._utilProc.stderr?.on("data", (chunk: Buffer) => {
+            process.stderr.write(chunk);
+        });
+        this._utilProc.on("message", (msg: any) => {
+            if (msg.notification) {
+                this._onNotification?.(msg.notification);
+                return;
+            }
+            const p = this._pending.get(msg.id);
+            if (!p) return;
+            this._pending.delete(msg.id);
+            msg.error ? p.reject(new Error(msg.error)) : p.resolve(msg.result);
+        });
+        this._utilProc.on("exit", (code) => {
+            for (const [, p] of this._pending) {
+                p.reject(new Error(`Lazer process exited: ${code}`));
+            }
+            this._pending.clear();
+            this._utilProc = null;
+        });
     }
 
-    get_schemas() {
-        if (this.realm === undefined) {
-            throw new Error("LazerReader has not been initialized.");
-        }
-        return this.realm.schema;
+    private _send<T = unknown>(type: string, data?: object): Promise<T> {
+        this._ensure_proc();
+        const id = this._nextMsgId++;
+        return new Promise<T>((resolve, reject) => {
+            this._pending.set(id, { resolve: resolve as (r: unknown) => void, reject });
+            this._utilProc?.postMessage({ id, type, ...data });
+        });
     }
 
-    get_schema_by_name(name: string) {
-        if (this.realm === undefined) {
-            throw new Error("LazerReader has not been initialized.");
-        }
-        return this.get_schemas().find((s) => s.name === name);
+    async init(fpath: string) {
+        await this._send("init", { path: fpath });
+        log.debug(`LazerReader init: ${fpath}`);
     }
 
-    get_objects(type: string, limit: number = 10, offset: number = 0) {
-        if (this.realm === undefined) {
-            throw new Error("LazerReader has not been initialized.");
-        }
-        const results = this.realm.objects(type);
-
-        return results.slice(offset, offset + limit).map((obj) => obj.toJSON());
+    async startWatch(onNotification: (type: string) => void) {
+        this._onNotification = onNotification;
+        await this._send("start_watch", {});
     }
 
-    get_collections(offset: number = 0, limit: number = 10) {
-        if (this.realm === undefined) {
-            throw new Error("LazerReader has not been initialized.");
-        }
-        const collections = this.realm.objects("BeatmapCollection");
-        const result = readWithOffset(collections, offset, limit);
-        result.data = result.data.map((obj: Realm.Results) => obj.toJSON());
-        return result;
+    async get_schemas() {
+        return this._send("get_schemas");
     }
 
-    set_collections(_collections: IOsuCollection[]) {
-        if (this.realm === undefined) {
-            throw new Error("LazerReader has not been initialized.");
-        }
-        throw new Error("LazerReader's set_collections is not implemented.");
+    async get_schema_by_name(name: string) {
+        return this._send("get_schema_by_name", { name });
     }
 
-    close() {
-        if (this.realm === undefined) {
-            throw new Error("LazerReader has not been initialized.");
-        }
-        this.realm.close();
-        this.realm = undefined;
+    async get_objects(objType: string, limit: number = 10, offset: number = 0) {
+        return this._send("get_objects", { objType, limit, offset });
+    }
+
+    async get_collections(offset: number = 0, limit: number = 10) {
+        return this._send("get_collections", { offset, limit });
+    }
+
+    async get_scores(offset: number = 0, limit: number = 10) {
+        return this._send("get_scores", { offset, limit });
+    }
+
+    async get_beatmaps(offset: number = 0, limit: number = 10) {
+        return this._send("get_beatmaps", { offset, limit });
+    }
+
+    async query_beatmaps(spec: object, offset: number = 0, limit: number = 500) {
+        return this._send<{ data: any[]; total: number; offset: number; next_offset: number; limit: number }>(
+            "query_beatmaps",
+            {
+                spec,
+                offset,
+                limit,
+            },
+        );
+    }
+
+    /**
+     * Dedicated one-map read: full metadata plus exact circle/slider/spinner
+     * counts parsed from the stored `.osu` when it is available. Returns null
+     * only when no Realm beatmap matches the request.
+     */
+    async get_beatmap_detail(request: LazerBeatmapDetailRequest): Promise<LazerBeatmap | null> {
+        return this._send<LazerBeatmap | null>("get_beatmap_detail", {
+            md5Hash: request.md5Hash,
+            beatmapId: request.beatmapId,
+        });
+    }
+
+    async query_scores_by_hashes(hashes: string[], stableDedupKeys?: string[], returnOsuScore = false) {
+        return this._send<{ data: any[]; total: number }>("query_scores_by_hashes", {
+            hashes,
+            stableDedupKeys,
+            returnOsuScore,
+        });
+    }
+
+    async count_beatmaps(spec: object) {
+        return this._send<{ count: number }>("count_beatmaps", { spec });
+    }
+
+    async query_scores_by_user(
+        userName: string,
+        dateFrom?: number,
+        dateTo?: number,
+        stableDedupKeys?: string[],
+        offset: number = 0,
+        limit: number = 10,
+    ) {
+        return this._send<DefaultObjectWithOffset>("query_scores_by_user", {
+            userName,
+            dateFrom,
+            dateTo,
+            stableDedupKeys,
+            offset,
+            limit,
+        });
+    }
+
+    async query_lazer_users() {
+        return this._send<{ data: string[]; total: number }>("query_lazer_users", {});
+    }
+
+    async set_collections(_collections: IOsuCollection[]) {
+        return this._send("set_collections", { collections: _collections });
+    }
+
+    async close() {
+        return this._send("close");
     }
 }
