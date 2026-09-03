@@ -17,27 +17,31 @@ import {
     Box,
     Button,
     Chip,
-    CircularProgress,
     DialogContentText,
     Divider,
     IconButton,
     LinearProgress,
-    Snackbar,
     Stack,
     Tab,
     Tabs,
+    TextField,
     Tooltip,
     Typography,
 } from "@mui/material";
-import React, { useCallback, useEffect, useState } from "react";
+import { observer } from "mobx-react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DownloadTask } from "../../defines/download_types";
 import { useDownloadTasks } from "../../hooks/useDownloadTasks";
+import { InitApi } from "../../utils/api";
+import { GetDLOptionByBuiltin } from "../../utils/download";
+import { getUseLazerModeExperiment } from "../../utils/experiments";
 import { fmtBytes, fmtSpeed } from "../../utils/format";
 import __ from "../../utils/i18n";
 import { I18nStrings } from "../../utils/typed/i18n";
 import g from "../state";
 import { CheckboxListDialog } from "./checkboxListDialog";
 import { ConfirmDialog } from "./common/ConfirmDialog";
+import { PausableCircularProgress } from "./common/PausableCircularProgress";
 import { ProgressDialog } from "./progressDialog";
 
 function StatusChip({ status }: { status: DownloadTask["status"] }) {
@@ -58,8 +62,20 @@ function StatusChip({ status }: { status: DownloadTask["status"] }) {
     return <Chip label={cfg.label} color={cfg.color} size="small" />;
 }
 
-function TaskRow({
+function MissingSourceChip({ source }: { source: DownloadTask["missingSource"] }) {
+    if (!source) return null;
+    const map: Record<"stable" | "lazer" | "common", { label: I18nStrings; color: "warning" | "info" | "error" }> = {
+        stable: { label: I18nStrings.MAIN_DL_MISSING_STABLE, color: "warning" },
+        lazer: { label: I18nStrings.MAIN_DL_MISSING_LAZER, color: "info" },
+        common: { label: I18nStrings.MAIN_DL_MISSING_COMMON, color: "error" },
+    };
+    const cfg = map[source];
+    return <Chip label={__(cfg.label)} color={cfg.color} size="small" />;
+}
+
+const TaskRow = React.memo(function TaskRow({
     task,
+    lazerMode,
     onCancel,
     onPause,
     onResume,
@@ -70,18 +86,20 @@ function TaskRow({
     onDelete,
 }: {
     task: DownloadTask;
+    lazerMode: boolean;
     onCancel: (id: string) => void;
     onPause?: (id: string) => void;
     onResume?: (id: string) => void;
     onRetry: (id: string) => void;
     onReveal: (path: string) => void;
     onCopyLink?: (url: string) => void;
-    onInstall?: (id: string) => Promise<void>;
-    onDelete?: (id: string) => Promise<void>;
+    onInstall?: (task: DownloadTask, clientType: "stable" | "lazer") => Promise<void>;
+    onDelete?: (task: DownloadTask) => Promise<void>;
 }) {
     const [rowLoading, setRowLoading] = useState<"install" | "delete" | null>(null);
     const isDone = task.status === "done";
-    const isError = task.status === "error" || task.status === "cancelled";
+    const isError = task.status === "error";
+    const isCancelled = task.status === "cancelled";
     const isMissing = task.status === "missing";
     const speed = fmtSpeed(task.speedBps);
     const received = task.receivedBytes > 0 ? fmtBytes(task.receivedBytes) : null;
@@ -90,10 +108,23 @@ function TaskRow({
 
     return (
         <Box sx={{ py: 1 }}>
-            <Stack direction="row" alignItems="center" spacing={1}>
+            <Stack
+                direction="row"
+                spacing={1}
+                sx={{
+                    alignItems: "center",
+                }}
+            >
                 <Box sx={{ flexGrow: 1, minWidth: 0 }}>
-                    <Stack direction="row" alignItems="center" spacing={1}>
+                    <Stack
+                        direction="row"
+                        spacing={1}
+                        sx={{
+                            alignItems: "center",
+                        }}
+                    >
                         <StatusChip status={task.status} />
+                        {task.missingSource && <MissingSourceChip source={task.missingSource} />}
                         <Tooltip title={task.url} arrow placement="top">
                             <Typography
                                 variant="body2"
@@ -109,12 +140,22 @@ function TaskRow({
                             </Typography>
                         </Tooltip>
                         {speed && (
-                            <Typography variant="caption" color="text.secondary">
+                            <Typography
+                                variant="caption"
+                                sx={{
+                                    color: "text.secondary",
+                                }}
+                            >
                                 {speed}
                             </Typography>
                         )}
                         {sizeLabel && (
-                            <Typography variant="caption" color="text.secondary">
+                            <Typography
+                                variant="caption"
+                                sx={{
+                                    color: "text.secondary",
+                                }}
+                            >
                                 {sizeLabel}
                             </Typography>
                         )}
@@ -134,8 +175,11 @@ function TaskRow({
                             {task.chunkCount && task.chunkCount > 1 && (
                                 <Typography
                                     variant="caption"
-                                    color="text.secondary"
-                                    sx={{ mt: 0.25, display: "block" }}
+                                    sx={{
+                                        color: "text.secondary",
+                                        mt: 0.25,
+                                        display: "block",
+                                    }}
                                 >
                                     {__(I18nStrings.MAIN_DL_CHUNKS_PROGRESS, {
                                         active: task.activeChunkCount ?? 0,
@@ -154,29 +198,80 @@ function TaskRow({
                     </Tooltip>
                     {isDone && (
                         <>
-                            <Tooltip title={__(I18nStrings.MAIN_DL_TOOLTIP_INSTALL)} arrow>
-                                <span>
-                                    <IconButton
-                                        size="small"
-                                        color="success"
-                                        disabled={!!rowLoading}
-                                        onClick={async () => {
-                                            setRowLoading("install");
-                                            try {
-                                                await onInstall?.(task.id);
-                                            } finally {
-                                                setRowLoading(null);
-                                            }
-                                        }}
-                                    >
-                                        {rowLoading === "install" ? (
-                                            <CircularProgress size={16} color="inherit" />
-                                        ) : (
-                                            <InstallDesktop fontSize="small" />
-                                        )}
-                                    </IconButton>
-                                </span>
-                            </Tooltip>
+                            {lazerMode ? (
+                                <>
+                                    <Tooltip title={__(I18nStrings.MAIN_DL_TOOLTIP_INSTALL_STABLE)} arrow>
+                                        <span>
+                                            <IconButton
+                                                size="small"
+                                                color="success"
+                                                disabled={!!rowLoading}
+                                                onClick={async () => {
+                                                    setRowLoading("install");
+                                                    try {
+                                                        await onInstall?.(task, "stable");
+                                                    } finally {
+                                                        setRowLoading(null);
+                                                    }
+                                                }}
+                                            >
+                                                {rowLoading === "install" ? (
+                                                    <PausableCircularProgress size={16} color="inherit" />
+                                                ) : (
+                                                    <InstallDesktop fontSize="small" />
+                                                )}
+                                            </IconButton>
+                                        </span>
+                                    </Tooltip>
+                                    <Tooltip title={__(I18nStrings.MAIN_DL_TOOLTIP_INSTALL_LAZER)} arrow>
+                                        <span>
+                                            <IconButton
+                                                size="small"
+                                                color="primary"
+                                                disabled={!!rowLoading}
+                                                onClick={async () => {
+                                                    setRowLoading("install");
+                                                    try {
+                                                        await onInstall?.(task, "lazer");
+                                                    } finally {
+                                                        setRowLoading(null);
+                                                    }
+                                                }}
+                                            >
+                                                {rowLoading === "install" ? (
+                                                    <PausableCircularProgress size={16} color="inherit" />
+                                                ) : (
+                                                    <InstallDesktop fontSize="small" />
+                                                )}
+                                            </IconButton>
+                                        </span>
+                                    </Tooltip>
+                                </>
+                            ) : (
+                                <Tooltip title={__(I18nStrings.MAIN_DL_TOOLTIP_INSTALL)} arrow>
+                                    <span>
+                                        <IconButton
+                                            size="small"
+                                            color="success"
+                                            disabled={!!rowLoading}
+                                            onClick={async () => {
+                                                setRowLoading("install");
+                                                try {
+                                                    await onInstall?.(task, "stable");
+                                                } finally {
+                                                    setRowLoading(null);
+                                                }
+                                            }}
+                                        >
+                                            {rowLoading === "install" ? (
+                                                <PausableCircularProgress size={16} color="inherit" />
+                                            ) : (
+                                                <InstallDesktop fontSize="small" />
+                                            )}
+                                        </IconButton>
+                                    </span>
+                                </Tooltip>
+                            )}
                             <Tooltip title={__(I18nStrings.MAIN_DL_TOOLTIP_OPEN_FOLDER)} arrow>
                                 <IconButton
                                     size="small"
@@ -195,14 +290,14 @@ function TaskRow({
                                         onClick={async () => {
                                             setRowLoading("delete");
                                             try {
-                                                await onDelete?.(task.id);
+                                                await onDelete?.(task);
                                             } finally {
                                                 setRowLoading(null);
                                             }
                                         }}
                                     >
                                         {rowLoading === "delete" ? (
-                                            <CircularProgress size={16} color="inherit" />
+                                            <PausableCircularProgress size={16} color="inherit" />
                                         ) : (
                                             <Delete fontSize="small" />
                                         )}
@@ -246,6 +341,31 @@ function TaskRow({
                             </IconButton>
                         </Tooltip>
                     )}
+                    {isCancelled && (
+                        <Tooltip title={__(I18nStrings.MAIN_DL_TOOLTIP_REMOVE_RECORD)} arrow>
+                            <span>
+                                <IconButton
+                                    size="small"
+                                    color="error"
+                                    disabled={!!rowLoading}
+                                    onClick={async () => {
+                                        setRowLoading("delete");
+                                        try {
+                                            await onDelete?.(task);
+                                        } finally {
+                                            setRowLoading(null);
+                                        }
+                                    }}
+                                >
+                                    {rowLoading === "delete" ? (
+                                        <PausableCircularProgress size={16} color="inherit" />
+                                    ) : (
+                                        <Delete fontSize="small" />
+                                    )}
+                                </IconButton>
+                            </span>
+                        </Tooltip>
+                    )}
                     {isMissing && (
                         <>
                             <Tooltip title={__(I18nStrings.MAIN_DL_TOOLTIP_REDOWNLOAD)} arrow>
@@ -262,14 +382,14 @@ function TaskRow({
                                         onClick={async () => {
                                             setRowLoading("delete");
                                             try {
-                                                await onDelete?.(task.id);
+                                                await onDelete?.(task);
                                             } finally {
                                                 setRowLoading(null);
                                             }
                                         }}
                                     >
                                         {rowLoading === "delete" ? (
-                                            <CircularProgress size={16} color="inherit" />
+                                            <PausableCircularProgress size={16} color="inherit" />
                                         ) : (
                                             <Delete fontSize="small" />
                                         )}
@@ -295,24 +415,15 @@ function TaskRow({
             </Stack>
         </Box>
     );
-}
+});
 
-export const DownloadHistoryView: React.FC = () => {
-    const { tasks: syncedTasks, authRequired, clearAuthRequired } = useDownloadTasks();
-    const [tasks, setTasks] = useState<DownloadTask[]>([]);
+export const DownloadHistoryView: React.FC = observer(() => {
+    const { tasks, setTasks, loading, authRequired, clearAuthRequired } = useDownloadTasks();
     const [rateStatus, setRateStatus] = useState<Array<{ hostname: string; count: number; limit: number }>>([]);
-    const [snackbar, setSnackbar] = useState<{
-        open: boolean;
-        message: string;
-        severity: "success" | "warning" | "error";
-    }>({
-        open: false,
-        message: "",
-        severity: "success",
-    });
     const [deleteDialog, setDeleteDialog] = useState<{ open: boolean; taskId?: string; filename?: string }>({
         open: false,
     });
+    const lazerMode = getUseLazerModeExperiment();
 
     type InstallResult = { taskId: string; filename: string; success: boolean; reason?: string };
     const [installAllDialog, setInstallAllDialog] = useState<{
@@ -322,6 +433,7 @@ export const DownloadHistoryView: React.FC = () => {
         targetTasks?: DownloadTask[];
         progress?: { current: number; total: number };
         results?: InstallResult[];
+        clientType?: "stable" | "lazer";
     }>({ phase: null });
     const [cleanupChecked, setCleanupChecked] = useState<Record<string, boolean>>({});
     const [batchDeleteDialog, setBatchDeleteDialog] = useState<{
@@ -342,18 +454,125 @@ export const DownloadHistoryView: React.FC = () => {
     const [deleteDialogLoading, setDeleteDialogLoading] = useState(false);
     const [cleanupLoading, setCleanupLoading] = useState(false);
     const [loginLoading, setLoginLoading] = useState(false);
-    useEffect(() => setTasks(syncedTasks), [syncedTasks]);
-    // Poll rate status every 5 seconds
+    const [setIdInput, setSetIdInput] = useState("");
+    const [beatmapIdInput, setBeatmapIdInput] = useState("");
+    const [manualLoading, setManualLoading] = useState(false);
+
+    const checkClipboard = useCallback(async () => {
+        try {
+            const text = await navigator.clipboard.readText();
+            if (!text) return;
+            const match = text.match(/osu\.ppy\.sh\/beatmapsets\/(\d+)(?:#osu\/(\d+))?/);
+            if (!match) return;
+            const setId = match[1];
+            const beatmapId = match[2];
+            if (setId) {
+                setSetIdInput(setId);
+                setBeatmapIdInput("");
+            } else if (beatmapId) {
+                setBeatmapIdInput(beatmapId);
+                setSetIdInput("");
+            }
+        } catch {}
+    }, []);
+
+    // Active tasks: downloading > paused > queued > held (priority order)
+    const statusOrder: Record<string, number> = { downloading: 0, paused: 1, queued: 2, held: 3 };
+    const active = useMemo(
+        () =>
+            tasks
+                .filter(
+                    (t) =>
+                        t.status === "downloading" ||
+                        t.status === "queued" ||
+                        t.status === "held" ||
+                        t.status === "paused",
+                )
+                .sort((a, b) => statusOrder[a.status] - statusOrder[b.status] || a.addedAt - b.addedAt),
+        [tasks],
+    );
+    const hasDownloading = active.some((t) => t.status === "downloading");
+
     useEffect(() => {
-        const poll = () =>
-            window.olsCore
-                .dlGetRateStatus()
-                .then(setRateStatus)
-                .catch(() => {});
+        checkClipboard();
+        const onFocus = () => checkClipboard();
+        const onVisibility = () => {
+            if (!document.hidden) checkClipboard();
+        };
+        window.addEventListener("focus", onFocus);
+        document.addEventListener("visibilitychange", onVisibility);
+        return () => {
+            window.removeEventListener("focus", onFocus);
+            document.removeEventListener("visibilitychange", onVisibility);
+        };
+    }, [checkClipboard]);
+
+    // Poll rate status only when actually downloading
+    useEffect(() => {
+        if (!hasDownloading) return;
+        const poll = async () => {
+            if (document.hidden) return;
+            try {
+                const next = await window.olsCore.dlGetRateStatus();
+                setRateStatus((prev) => (JSON.stringify(prev) === JSON.stringify(next) ? prev : next));
+            } catch {}
+        };
         poll();
         const id = setInterval(poll, 5000);
         return () => clearInterval(id);
-    }, []);
+    }, [hasDownloading]);
+
+    const handleManualDownload = useCallback(async () => {
+        const setTrimmed = setIdInput.trim();
+        const beatmapTrimmed = beatmapIdInput.trim();
+        if (!setTrimmed && !beatmapTrimmed) {
+            g.setNotify({ message: __(I18nStrings.MAIN_DL_MANUAL_INPUT_INVALID), severity: "error" });
+            return;
+        }
+        if (setTrimmed && beatmapTrimmed) {
+            g.setNotify({ message: __(I18nStrings.MAIN_DL_MANUAL_INPUT_INVALID), severity: "error" });
+            return;
+        }
+        if (setTrimmed && !/^\d+$/.test(setTrimmed)) {
+            g.setNotify({ message: __(I18nStrings.MAIN_DL_MANUAL_INPUT_INVALID), severity: "error" });
+            return;
+        }
+        if (beatmapTrimmed && !/^\d+$/.test(beatmapTrimmed)) {
+            g.setNotify({ message: __(I18nStrings.MAIN_DL_MANUAL_INPUT_INVALID), severity: "error" });
+            return;
+        }
+        setManualLoading(true);
+        try {
+            let beatmapsetId: number;
+            if (setTrimmed) {
+                beatmapsetId = parseInt(setTrimmed, 10);
+            } else {
+                const beatmapId = parseInt(beatmapTrimmed, 10);
+                g.setLoading(true, __(I18nStrings.MAIN_DL_MANUAL_INPUT_RESOLVING));
+                await InitApi();
+                const resp = await window.olsCore.fetchBeatmapById(beatmapId);
+                g.setLoading(false);
+                if (!resp || "error" in resp) {
+                    g.setNotify({ message: __(I18nStrings.MAIN_DL_MANUAL_INPUT_NOT_FOUND), severity: "error" });
+                    return;
+                }
+                beatmapsetId = (resp as any).beatmapset_id;
+                g.setNotify({
+                    message: __(I18nStrings.MAIN_DL_MANUAL_INPUT_RESOLVED, { setId: String(beatmapsetId) }),
+                    severity: "success",
+                });
+            }
+            const opt = GetDLOptionByBuiltin([{ source: "osu-official", beatmapsetId }]);
+            await opt.callback();
+            setSetIdInput("");
+            setBeatmapIdInput("");
+        } catch (e) {
+            g.setLoading(false);
+            g.setNotify({ message: String(e), severity: "error" });
+        } finally {
+            setManualLoading(false);
+        }
+    }, [setIdInput, beatmapIdInput]);
 
     const handleCancel = useCallback((id: string) => {
         window.olsCore.dlCancel(id);
@@ -371,8 +590,14 @@ export const DownloadHistoryView: React.FC = () => {
         window.olsCore.dlResume(id);
     }, []);
 
-    const handleReveal = useCallback((path: string) => {
-        window.olsCore.dlRevealFile(path);
+    const handleReveal = useCallback(async (path: string) => {
+        const result = await window.olsCore.dlRevealFile(path);
+        if (result.success) return;
+        if (result.reason === "not_found") {
+            g.setNotify({ message: __(I18nStrings.MAIN_DL_FILE_MISSING), severity: "warning" });
+        } else {
+            g.setNotify({ message: __(I18nStrings.MAIN_DL_REVEAL_FAILED), severity: "warning" });
+        }
     }, []);
 
     const handleClearHistory = useCallback(() => {
@@ -406,7 +631,7 @@ export const DownloadHistoryView: React.FC = () => {
         if (!selected.length) return;
         window.olsCore.dlClearHistory(selected).then(() => {
             setTasks((prev) => prev.filter((t) => !selected.includes(t.status)));
-            setSnackbar({ open: true, message: __(I18nStrings.MAIN_DL_HISTORY_CLEARED), severity: "success" });
+            g.setNotify({ message: __(I18nStrings.MAIN_DL_HISTORY_CLEARED), severity: "success" });
         });
     }, [clearHistoryDialog.items, clearHistoryChecked]);
 
@@ -436,37 +661,30 @@ export const DownloadHistoryView: React.FC = () => {
 
     const handleCopyLink = useCallback((url: string) => {
         navigator.clipboard.writeText(url);
-        setSnackbar({ open: true, message: __(I18nStrings.MAIN_DL_LINK_COPIED), severity: "success" });
+        g.setNotify({ message: __(I18nStrings.MAIN_DL_LINK_COPIED), severity: "success" });
     }, []);
 
-    const handleInstall = useCallback(
-        async (taskId: string): Promise<void> => {
-            const result = await window.olsCore.dlInstallFile(taskId);
-            if (!result.success) {
-                if (result.reason === "no_stable_path") {
-                    setSnackbar({ open: true, message: __(I18nStrings.MAIN_DL_NO_STABLE_PATH), severity: "warning" });
-                } else {
-                    setSnackbar({
-                        open: true,
-                        message: __(I18nStrings.MAIN_DL_INSTALL_FAILED, { reason: result.reason }),
-                        severity: "error",
-                    });
-                }
-                return;
+    const handleInstall = useCallback(async (task: DownloadTask, clientType: "stable" | "lazer"): Promise<void> => {
+        const result = await window.olsCore.dlInstallFile(task.id, clientType);
+        if (!result.success) {
+            if (result.reason === "stable_not_running") {
+                g.setNotify({ message: __(I18nStrings.MAIN_DL_STABLE_NOT_RUNNING), severity: "warning" });
+            } else if (result.reason === "lazer_not_running") {
+                g.setNotify({ message: __(I18nStrings.MAIN_DL_LAZER_NOT_RUNNING), severity: "warning" });
+            } else {
+                g.setNotify({
+                    message: __(I18nStrings.MAIN_DL_INSTALL_FAILED, { reason: result.reason }),
+                    severity: "error",
+                });
             }
-            setSnackbar({
-                open: true,
-                message: __(I18nStrings.MAIN_DL_INSTALL_SUCCESS, { count: result.installedCount }),
-                severity: "success",
-            });
-            // Show delete confirmation dialog
-            const task = tasks.find((t) => t.id === taskId);
-            if (task) {
-                setDeleteDialog({ open: true, taskId, filename: task.filename });
-            }
-        },
-        [tasks],
-    );
+            return;
+        }
+        g.setNotify({
+            message: __(I18nStrings.MAIN_DL_INSTALL_SUCCESS, { count: result.installedCount }),
+            severity: "success",
+        });
+        setDeleteDialog({ open: true, taskId: task.id, filename: task.filename });
+    }, []);
 
     const handleDeleteConfirm = useCallback(async () => {
         if (!deleteDialog.taskId) return;
@@ -474,10 +692,10 @@ export const DownloadHistoryView: React.FC = () => {
         try {
             const result = await window.olsCore.dlDeleteFile(deleteDialog.taskId);
             if (result.success) {
-                setSnackbar({ open: true, message: __(I18nStrings.MAIN_DL_FILE_DELETED), severity: "success" });
+                g.setNotify({ message: __(I18nStrings.MAIN_DL_FILE_DELETED), severity: "success" });
                 setTasks((prev) => prev.filter((t) => t.id !== deleteDialog.taskId));
             } else {
-                setSnackbar({ open: true, message: __(I18nStrings.MAIN_DL_DELETE_FAILED), severity: "error" });
+                g.setNotify({ message: __(I18nStrings.MAIN_DL_DELETE_FAILED), severity: "error" });
             }
             setDeleteDialog({ open: false });
         } finally {
@@ -489,21 +707,16 @@ export const DownloadHistoryView: React.FC = () => {
         setDeleteDialog({ open: false });
     }, []);
 
-    const handleDelete = useCallback(
-        async (taskId: string): Promise<void> => {
-            const task = tasks.find((t) => t.id === taskId);
-            if (!task) return;
-            if (task.status === "missing") {
-                const result = await window.olsCore.dlDeleteFile(taskId);
-                if (result.success) {
-                    setTasks((prev) => prev.filter((t) => t.id !== taskId));
-                }
-            } else {
-                setDeleteDialog({ open: true, taskId, filename: task.filename });
+    const handleDelete = useCallback(async (task: DownloadTask): Promise<void> => {
+        if (task.status === "missing" || task.status === "cancelled") {
+            const result = await window.olsCore.dlDeleteFile(task.id);
+            if (result.success) {
+                setTasks((prev) => prev.filter((t) => t.id !== task.id));
             }
-        },
-        [tasks],
-    );
+        } else {
+            setDeleteDialog({ open: true, taskId: task.id, filename: task.filename });
+        }
+    }, []);
 
     const handleDeleteAllHistory = useCallback(() => {
         const done = tasks.filter((t) => t.status === "done");
@@ -538,8 +751,7 @@ export const DownloadHistoryView: React.FC = () => {
         }
         setBatchDeleteProgress({ open: false, current: 0, total: 0 });
         setBatchDeleteChecked({});
-        setSnackbar({
-            open: true,
+        g.setNotify({
             message: __(I18nStrings.MAIN_DL_BATCH_DELETED, {
                 success: successCount,
                 failPart:
@@ -556,33 +768,37 @@ export const DownloadHistoryView: React.FC = () => {
         setBatchDeleteChecked({});
     }, []);
 
-    const handleInstallAll = useCallback(() => {
-        const done = tasks.filter((t) => t.status === "done");
-        if (!done.length) return;
-        const types = [
-            ...new Set(
-                done
-                    .map((t) => {
+    const handleInstallAll = useCallback(
+        (clientType: "stable" | "lazer") => {
+            const done = tasks.filter((t) => t.status === "done");
+            if (!done.length) return;
+            const types = [
+                ...new Set(
+                    done
+                        .map((t) => {
+                            const ext = t.filename.split(".").pop()?.toLowerCase();
+                            return ext ?? "";
+                        })
+                        .filter(Boolean),
+                ),
+            ];
+            if (types.length === 1) {
+                setInstallAllDialog({
+                    phase: "progress",
+                    selectedType: types[0],
+                    targetTasks: done.filter((t) => {
                         const ext = t.filename.split(".").pop()?.toLowerCase();
-                        return ext ?? "";
-                    })
-                    .filter(Boolean),
-            ),
-        ];
-        if (types.length === 1) {
-            setInstallAllDialog({
-                phase: "progress",
-                selectedType: types[0],
-                targetTasks: done.filter((t) => {
-                    const ext = t.filename.split(".").pop()?.toLowerCase();
-                    return ext === types[0];
-                }),
-                progress: { current: 0, total: done.length },
-            });
-        } else {
-            setInstallAllDialog({ phase: "type_select", availableTypes: types, targetTasks: done });
-        }
-    }, [tasks]);
+                        return ext === types[0];
+                    }),
+                    progress: { current: 0, total: done.length },
+                    clientType,
+                });
+            } else {
+                setInstallAllDialog({ phase: "type_select", availableTypes: types, targetTasks: done, clientType });
+            }
+        },
+        [tasks],
+    );
 
     const handleInstallAllTypeSelect = useCallback(
         (type: string) => {
@@ -603,19 +819,41 @@ export const DownloadHistoryView: React.FC = () => {
 
     const _installPhase = installAllDialog.phase;
     const _installTargets = installAllDialog.targetTasks;
+    const _installClientType = installAllDialog.clientType;
     useEffect(() => {
-        if (_installPhase !== "progress" || !_installTargets) return;
+        if (_installPhase !== "progress" || !_installTargets || !_installClientType) return;
         const targets = _installTargets;
         const results: InstallResult[] = [];
         let cancelled = false;
         const run = async () => {
+            const check = await window.olsCore.dlCheckClient(_installClientType);
+            if (cancelled) return;
+            if (!check.ok) {
+                if (_installClientType === "lazer") {
+                    g.setNotify({ message: __(I18nStrings.MAIN_DL_LAZER_NOT_RUNNING), severity: "warning" });
+                } else {
+                    g.setNotify({ message: __(I18nStrings.MAIN_DL_STABLE_NOT_RUNNING), severity: "warning" });
+                }
+                setInstallAllDialog({ phase: null });
+                return;
+            }
+
             for (let i = 0; i < targets.length; i++) {
                 if (cancelled) break;
                 const t = targets[i];
-                const r = await window.olsCore.dlInstallFile(t.id);
+                const isLast = i === targets.length - 1;
+                let r: { success: boolean; installedCount?: number; reason?: string };
+                if (_installClientType === "stable") {
+                    const mode = isLast ? "ipc" : "copy";
+                    r = await window.olsCore.dlInstallFile(t.id, "stable", mode);
+                } else {
+                    r = await window.olsCore.dlInstallFile(t.id, _installClientType);
+                }
+                if (cancelled) break;
                 results.push({ taskId: t.id, filename: t.filename, success: r.success, reason: r.reason });
                 setInstallAllDialog((s) => ({ ...s, progress: { current: i + 1, total: targets.length } }));
             }
+            if (cancelled) return;
             const checked: Record<string, boolean> = {};
             results
                 .filter((r) => r.success)
@@ -629,8 +867,7 @@ export const DownloadHistoryView: React.FC = () => {
         return () => {
             cancelled = true;
         };
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [_installPhase, _installTargets]);
+    }, [_installPhase, _installTargets, _installClientType]);
 
     const handleInstallAllCleanup = useCallback(async () => {
         const toDelete = (installAllDialog.results ?? []).filter((r) => r.success && cleanupChecked[r.taskId]);
@@ -651,27 +888,80 @@ export const DownloadHistoryView: React.FC = () => {
 
     const [historyTab, setHistoryTab] = useState<"all" | "done" | "cancelled" | "error">("all");
 
-    // Active tasks: downloading > paused > queued > held (priority order)
-    const statusOrder: Record<string, number> = { downloading: 0, paused: 1, queued: 2, held: 3 };
-    const active = tasks
-        .filter(
-            (t) => t.status === "downloading" || t.status === "queued" || t.status === "held" || t.status === "paused",
-        )
-        .sort((a, b) => statusOrder[a.status] - statusOrder[b.status] || a.addedAt - b.addedAt);
-    const history = tasks
-        .filter(
-            (t) => t.status === "done" || t.status === "error" || t.status === "cancelled" || t.status === "missing",
-        )
-        .sort((a, b) => (b.finishedAt ?? 0) - (a.finishedAt ?? 0) || b.addedAt - a.addedAt);
-    const historyFiltered = historyTab === "all" ? history : history.filter((t) => t.status === historyTab);
-    const historyDoneCount = history.filter((t) => t.status === "done").length;
-    const historyCancelledCount = history.filter((t) => t.status === "cancelled").length;
-    const historyErrorCount = history.filter((t) => t.status === "error").length;
-    const heldCount = tasks.filter((t) => t.status === "held").length;
+    const history = useMemo(
+        () =>
+            tasks
+                .filter(
+                    (t) =>
+                        t.status === "done" ||
+                        t.status === "error" ||
+                        t.status === "cancelled" ||
+                        t.status === "missing",
+                )
+                .sort((a, b) => (b.finishedAt ?? 0) - (a.finishedAt ?? 0) || b.addedAt - a.addedAt),
+        [tasks],
+    );
+    const { historyFiltered, historyDoneCount, historyCancelledCount, historyErrorCount } = useMemo(() => {
+        const filtered = historyTab === "all" ? history : history.filter((t) => t.status === historyTab);
+        return {
+            historyFiltered: filtered,
+            historyDoneCount: history.filter((t) => t.status === "done").length,
+            historyCancelledCount: history.filter((t) => t.status === "cancelled").length,
+            historyErrorCount: history.filter((t) => t.status === "error").length,
+        };
+    }, [history, historyTab]);
+    const heldCount = useMemo(() => tasks.filter((t) => t.status === "held").length, [tasks]);
+
+    // History list windowing: history rows are single-line and uniform, so a fixed
+    // row height lets us mount only the visible slice (300+ records would otherwise
+    // freeze the first paint of this view).
+    const HISTORY_ROW_HEIGHT = 48;
+    const [historyScrollTop, setHistoryScrollTop] = useState(0);
+    const [historyViewportH, setHistoryViewportH] = useState(0);
+    const historyBoxRef = useRef<HTMLDivElement>(null);
+    useEffect(() => {
+        const el = historyBoxRef.current;
+        if (!el) return;
+        const update = () => setHistoryViewportH(el.clientHeight);
+        update();
+        const obs = new ResizeObserver(update);
+        obs.observe(el);
+        return () => obs.disconnect();
+    }, [historyFiltered.length > 0]);
+    const historyRange = useMemo(() => {
+        const total = historyFiltered.length;
+        if (total === 0) return { startIndex: 0, endIndex: 0 };
+        const visibleCount = Math.ceil(historyViewportH / HISTORY_ROW_HEIGHT) + 4;
+        const startIndex = Math.max(0, Math.floor(historyScrollTop / HISTORY_ROW_HEIGHT) - 2);
+        const endIndex = Math.min(total, startIndex + visibleCount);
+        return { startIndex, endIndex };
+    }, [historyFiltered.length, historyViewportH, historyScrollTop]);
+    const visibleHistory = historyFiltered.slice(historyRange.startIndex, historyRange.endIndex);
+
+    // Re-verify file existence while this view is open, so records that were
+    // deleted/moved externally flip to "missing" without needing a remount.
+    useEffect(() => {
+        if (historyDoneCount === 0) return;
+        const poll = async () => {
+            if (document.hidden) return;
+            try {
+                await window.olsCore.dlVerifyFiles();
+            } catch {}
+        };
+        poll();
+        const id = setInterval(poll, 15000);
+        return () => clearInterval(id);
+    }, [historyDoneCount]);
 
     return (
         <Stack spacing={2} sx={{ height: "100%", overflow: "hidden", minHeight: 0 }}>
-            <Stack direction="row" alignItems="center" spacing={1}>
+            <Stack
+                direction="row"
+                spacing={1}
+                sx={{
+                    alignItems: "center",
+                }}
+            >
                 <CloudDownload color="primary" />
                 <Typography variant="h6" sx={{ flexGrow: 1 }}>
                     {__(I18nStrings.MAIN_DL_TITLE)}
@@ -683,7 +973,7 @@ export const DownloadHistoryView: React.FC = () => {
                 </Tooltip>
                 <Button
                     size="small"
-                    startIcon={loginLoading ? <CircularProgress size={16} color="inherit" /> : <Login />}
+                    startIcon={loginLoading ? <PausableCircularProgress size={16} color="inherit" /> : <Login />}
                     variant={authRequired.show ? "contained" : "outlined"}
                     color={authRequired.show ? "error" : "primary"}
                     disabled={loginLoading}
@@ -694,7 +984,57 @@ export const DownloadHistoryView: React.FC = () => {
                         : __(I18nStrings.MAIN_DL_LOGIN_BUTTON)}
                 </Button>
             </Stack>
-
+            <Stack
+                direction="row"
+                spacing={1}
+                sx={{
+                    alignItems: "center",
+                    justifyContent: "flex-end",
+                }}
+            >
+                <Stack direction="row" spacing={1}>
+                    <TextField
+                        size="small"
+                        label={__(I18nStrings.MAIN_DL_MANUAL_INPUT_SET_LABEL)}
+                        placeholder={__(I18nStrings.MAIN_DL_MANUAL_INPUT_SET_PLACEHOLDER)}
+                        value={setIdInput}
+                        onChange={(e) => {
+                            setSetIdInput(e.target.value);
+                            if (e.target.value.trim()) setBeatmapIdInput("");
+                        }}
+                        onKeyDown={(e) => {
+                            if (e.key === "Enter" && !manualLoading) handleManualDownload();
+                        }}
+                        disabled={manualLoading}
+                        sx={{ width: 160 }}
+                    />
+                    <TextField
+                        size="small"
+                        label={__(I18nStrings.MAIN_DL_MANUAL_INPUT_BEATMAP_LABEL)}
+                        placeholder={__(I18nStrings.MAIN_DL_MANUAL_INPUT_BEATMAP_PLACEHOLDER)}
+                        value={beatmapIdInput}
+                        onChange={(e) => {
+                            setBeatmapIdInput(e.target.value);
+                            if (e.target.value.trim()) setSetIdInput("");
+                        }}
+                        onKeyDown={(e) => {
+                            if (e.key === "Enter" && !manualLoading) handleManualDownload();
+                        }}
+                        disabled={manualLoading}
+                        sx={{ width: 160 }}
+                    />
+                    <Button
+                        variant="contained"
+                        startIcon={
+                            manualLoading ? <PausableCircularProgress size={16} color="inherit" /> : <CloudDownload />
+                        }
+                        disabled={manualLoading || (!setIdInput.trim() && !beatmapIdInput.trim())}
+                        onClick={handleManualDownload}
+                    >
+                        {__(I18nStrings.MAIN_DL_MANUAL_INPUT_BUTTON)}
+                    </Button>
+                </Stack>
+            </Stack>
             {rateStatus.length > 0 && (
                 <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap", gap: 0.5 }}>
                     {rateStatus.map((r) => (
@@ -708,18 +1048,28 @@ export const DownloadHistoryView: React.FC = () => {
                     ))}
                 </Stack>
             )}
-
             {authRequired.show && (
                 <Alert severity="warning" sx={{ mb: 1 }}>
                     {__(I18nStrings.MAIN_DL_AUTH_WARNING, { host: authRequired.hostname || "osu.ppy.sh" })}
                 </Alert>
             )}
-
             {active.length > 0 && (
                 <React.Fragment>
-                    <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1 }}>
+                    <Stack
+                        direction="row"
+                        spacing={1}
+                        sx={{
+                            alignItems: "center",
+                            mb: 1,
+                        }}
+                    >
                         <Divider textAlign="left" sx={{ flexGrow: 1 }}>
-                            <Typography variant="caption" color="text.secondary">
+                            <Typography
+                                variant="caption"
+                                sx={{
+                                    color: "text.secondary",
+                                }}
+                            >
                                 {__(I18nStrings.MAIN_DL_ACTIVE_SECTION, {
                                     count: active.length,
                                     heldPart: heldCount > 0 ? ` / ${__(I18nStrings.MAIN_DL_STATUS_HELD)}` : "",
@@ -760,12 +1110,13 @@ export const DownloadHistoryView: React.FC = () => {
                     <Stack
                         spacing={0}
                         divider={<Divider />}
-                        sx={{ flexShrink: 0, maxHeight: "45%", overflowY: "auto", minHeight: 0 }}
+                        sx={{ flex: "1 1 0", minHeight: "25%", maxHeight: "45%", overflowY: "auto" }}
                     >
                         {active.map((t) => (
                             <TaskRow
                                 key={t.id}
                                 task={t}
+                                lazerMode={lazerMode}
                                 onCancel={handleCancel}
                                 onPause={handlePause}
                                 onResume={handleResume}
@@ -779,7 +1130,6 @@ export const DownloadHistoryView: React.FC = () => {
                     </Stack>
                 </React.Fragment>
             )}
-
             {active.length === 0 && (
                 <Box
                     sx={{
@@ -790,15 +1140,32 @@ export const DownloadHistoryView: React.FC = () => {
                         textAlign: "center",
                     }}
                 >
-                    <Typography color="text.secondary" variant="body2">
+                    <Typography
+                        variant="body2"
+                        sx={{
+                            color: "text.secondary",
+                        }}
+                    >
                         {__(I18nStrings.MAIN_DL_NO_ACTIVE)}
                     </Typography>
                 </Box>
             )}
-
-            <Stack direction="row" alignItems="center" spacing={1} sx={{ flexShrink: 0, minHeight: 0 }}>
+            <Stack
+                direction="row"
+                spacing={1}
+                sx={{
+                    alignItems: "center",
+                    flexShrink: 0,
+                    minHeight: 0,
+                }}
+            >
                 <Divider sx={{ flexGrow: 1 }}>
-                    <Typography variant="caption" color="text.secondary">
+                    <Typography
+                        variant="caption"
+                        sx={{
+                            color: "text.secondary",
+                        }}
+                    >
                         {__(I18nStrings.MAIN_DL_HISTORY_SECTION, { count: history.length })}
                     </Typography>
                 </Divider>
@@ -814,18 +1181,42 @@ export const DownloadHistoryView: React.FC = () => {
                         {__(I18nStrings.BTN_DL_DELETE_ALL)}
                     </Button>
                 )}
-                {history.some((t) => t.status === "done") && (
-                    <Button
-                        size="small"
-                        variant="outlined"
-                        color="success"
-                        startIcon={<SystemUpdateAlt fontSize="small" />}
-                        onClick={handleInstallAll}
-                        sx={{ flexShrink: 0 }}
-                    >
-                        {__(I18nStrings.BTN_DL_INSTALL_ALL)}
-                    </Button>
-                )}
+                {history.some((t) => t.status === "done") &&
+                    (lazerMode ? (
+                        <Stack direction="row" spacing={1}>
+                            <Button
+                                size="small"
+                                variant="outlined"
+                                color="success"
+                                startIcon={<SystemUpdateAlt fontSize="small" />}
+                                onClick={() => handleInstallAll("stable")}
+                                sx={{ flexShrink: 0 }}
+                            >
+                                {__(I18nStrings.BTN_DL_INSTALL_ALL)}
+                            </Button>
+                            <Button
+                                size="small"
+                                variant="outlined"
+                                color="primary"
+                                startIcon={<SystemUpdateAlt fontSize="small" />}
+                                onClick={() => handleInstallAll("lazer")}
+                                sx={{ flexShrink: 0 }}
+                            >
+                                {__(I18nStrings.BTN_DL_INSTALL_ALL_LAZER)}
+                            </Button>
+                        </Stack>
+                    ) : (
+                        <Button
+                            size="small"
+                            variant="outlined"
+                            color="success"
+                            startIcon={<SystemUpdateAlt fontSize="small" />}
+                            onClick={() => handleInstallAll("stable")}
+                            sx={{ flexShrink: 0 }}
+                        >
+                            {__(I18nStrings.BTN_DL_INSTALL_ALL)}
+                        </Button>
+                    ))}
                 {history.length > 0 && (
                     <Button
                         size="small"
@@ -838,7 +1229,6 @@ export const DownloadHistoryView: React.FC = () => {
                     </Button>
                 )}
             </Stack>
-
             {history.length > 0 && (
                 <Tabs
                     value={historyTab}
@@ -856,35 +1246,48 @@ export const DownloadHistoryView: React.FC = () => {
                     <Tab label={__(I18nStrings.MAIN_DL_TAB_ERROR, { count: historyErrorCount })} value="error" />
                 </Tabs>
             )}
-
+            {loading && historyFiltered.length === 0 && <LinearProgress sx={{ flexShrink: 0 }} />}
             {historyFiltered.length > 0 && (
-                <Box sx={{ overflowY: "auto", flexGrow: 1, minHeight: 0 }}>
-                    <Stack spacing={0} divider={<Divider />}>
-                        {historyFiltered.map((t) => (
-                            <TaskRow
+                <Box
+                    ref={historyBoxRef}
+                    sx={{ flex: "1 1 0", minHeight: "25%", overflowY: "auto" }}
+                    onScroll={(e) => setHistoryScrollTop(e.currentTarget.scrollTop)}
+                >
+                    <Stack spacing={0}>
+                        <Box sx={{ height: historyRange.startIndex * HISTORY_ROW_HEIGHT, flexShrink: 0 }} />
+                        {visibleHistory.map((t) => (
+                            <Box
                                 key={t.id}
-                                task={t}
-                                onCancel={handleCancel}
-                                onPause={handlePause}
-                                onResume={handleResume}
-                                onRetry={handleRetry}
-                                onReveal={handleReveal}
-                                onCopyLink={handleCopyLink}
-                                onInstall={handleInstall}
-                                onDelete={handleDelete}
-                            />
+                                sx={{
+                                    height: HISTORY_ROW_HEIGHT,
+                                    flexShrink: 0,
+                                    borderBottom: "1px solid",
+                                    borderColor: "divider",
+                                }}
+                            >
+                                <TaskRow
+                                    task={t}
+                                    lazerMode={lazerMode}
+                                    onCancel={handleCancel}
+                                    onPause={handlePause}
+                                    onResume={handleResume}
+                                    onRetry={handleRetry}
+                                    onReveal={handleReveal}
+                                    onCopyLink={handleCopyLink}
+                                    onInstall={handleInstall}
+                                    onDelete={handleDelete}
+                                />
+                            </Box>
                         ))}
+                        <Box
+                            sx={{
+                                height: (historyFiltered.length - historyRange.endIndex) * HISTORY_ROW_HEIGHT,
+                                flexShrink: 0,
+                            }}
+                        />
                     </Stack>
                 </Box>
             )}
-
-            <Snackbar
-                open={snackbar.open}
-                autoHideDuration={4000}
-                onClose={() => setSnackbar((s) => ({ ...s, open: false }))}
-                message={snackbar.message}
-            />
-
             <ConfirmDialog
                 open={deleteDialog.open}
                 title={__(I18nStrings.MAIN_DL_DELETE_CONFIRM_TITLE)}
@@ -898,7 +1301,6 @@ export const DownloadHistoryView: React.FC = () => {
                     {__(I18nStrings.MAIN_DL_DELETE_CONFIRM_BODY, { filename: deleteDialog.filename })}
                 </DialogContentText>
             </ConfirmDialog>
-
             {/* Install All: type selection */}
             <ConfirmDialog
                 open={installAllDialog.phase === "type_select"}
@@ -921,7 +1323,6 @@ export const DownloadHistoryView: React.FC = () => {
                     })}
                 </Stack>
             </ConfirmDialog>
-
             {/* Install All: progress */}
             <ProgressDialog
                 open={installAllDialog.phase === "progress"}
@@ -929,7 +1330,6 @@ export const DownloadHistoryView: React.FC = () => {
                 current={installAllDialog.progress?.current ?? 0}
                 total={installAllDialog.progress?.total ?? 0}
             />
-
             {/* Install All: cleanup confirmation */}
             <CheckboxListDialog
                 open={installAllDialog.phase === "cleanup"}
@@ -958,7 +1358,6 @@ export const DownloadHistoryView: React.FC = () => {
                 confirmDisabled={Object.values(cleanupChecked).every((v) => !v)}
                 confirmLoading={cleanupLoading}
             />
-
             {/* Batch delete history confirmation */}
             <CheckboxListDialog
                 open={batchDeleteDialog.open}
@@ -976,7 +1375,6 @@ export const DownloadHistoryView: React.FC = () => {
                 confirmColor="error"
                 confirmDisabled={Object.values(batchDeleteChecked).every((v) => !v)}
             />
-
             {/* Batch delete: progress */}
             <ProgressDialog
                 open={batchDeleteProgress.open}
@@ -984,7 +1382,6 @@ export const DownloadHistoryView: React.FC = () => {
                 current={batchDeleteProgress.current}
                 total={batchDeleteProgress.total}
             />
-
             {/* Clear history: type selection */}
             <CheckboxListDialog
                 open={clearHistoryDialog.open}
@@ -1004,4 +1401,4 @@ export const DownloadHistoryView: React.FC = () => {
             />
         </Stack>
     );
-};
+});

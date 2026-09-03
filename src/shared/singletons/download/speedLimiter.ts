@@ -1,6 +1,6 @@
 import { DownloadTask } from "../../../defines/download_types";
 
-export function createSpeedLimiter(limitBps: number): { throttle: (bytes: number) => Promise<void> } | null {
+export function create_speed_limiter(limitBps: number): { throttle: (bytes: number) => Promise<void> } | null {
     if (limitBps <= 0) return null;
     const state = { tokens: limitBps, lastRefill: Date.now() };
     return {
@@ -12,13 +12,14 @@ export function createSpeedLimiter(limitBps: number): { throttle: (bytes: number
             if (state.tokens < bytes) {
                 const waitMs = Math.ceil(((bytes - state.tokens) / limitBps) * 1000);
                 await new Promise((r) => setTimeout(r, waitMs));
+                state.tokens = bytes;
             }
-            state.tokens -= Math.min(state.tokens, bytes);
+            state.tokens -= bytes;
         },
     };
 }
 
-export function createProgressTracker(
+export function create_progress_tracker(
     task: DownloadTask,
     totalBytes: number,
     onEmit: (task: DownloadTask) => void,

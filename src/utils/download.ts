@@ -155,10 +155,10 @@ export const GetDLOptionByDirect = (mapIds: number[]) => {
     };
 };
 
-type BuiltinItem =
-    | { source: "pack"; url: string; filename: string }
-    | { source: "osu-official"; beatmapsetId: number }
-    | { source: "mirror"; beatmapsetId: number };
+export type BuiltinItem =
+    | { source: "pack"; url: string; filename: string; missingSource?: "stable" | "lazer" | "common" }
+    | { source: "osu-official"; beatmapsetId: number; missingSource?: "stable" | "lazer" | "common" }
+    | { source: "mirror"; beatmapsetId: number; missingSource?: "stable" | "lazer" | "common" };
 
 export const GetDLOptionByBuiltin = (items: BuiltinItem[]) => {
     return {
@@ -168,7 +168,12 @@ export const GetDLOptionByBuiltin = (items: BuiltinItem[]) => {
                 const OSU_DL_BASE = "https://osu.ppy.sh/beatmapsets";
                 const reqs: EnqueueRequest[] = items.map((item) => {
                     if (item.source === "pack") {
-                        return { source: "pack" as const, url: item.url, filename: item.filename };
+                        return {
+                            source: "pack" as const,
+                            url: item.url,
+                            filename: item.filename,
+                            missingSource: item.missingSource,
+                        };
                     }
                     const setId = item.beatmapsetId;
                     const url = `${OSU_DL_BASE}/${setId}/download`;
@@ -177,6 +182,7 @@ export const GetDLOptionByBuiltin = (items: BuiltinItem[]) => {
                         url,
                         filename: `${setId}.osz`,
                         beatmapsetId: setId,
+                        missingSource: item.missingSource,
                     };
                 });
 

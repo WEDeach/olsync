@@ -13,7 +13,7 @@ interface Props {
 }
 
 export const DownloadIndicator: React.FC<Props> = ({ visible, onOpenHistory }) => {
-    const { tasks, newTaskIds, authRequired, clearNewTaskIds } = useDownloadTasks();
+    const { tasks, newTaskIds, authRequired, clearNewTaskIds } = useDownloadTasks({ loadAll: false });
     const [open, setOpen] = useState(false);
     const onOpenHistoryRef = useRef(onOpenHistory);
     onOpenHistoryRef.current = onOpenHistory;

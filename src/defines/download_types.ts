@@ -12,6 +12,7 @@ export interface DownloadTask {
     url: string;
     filename: string;
     beatmapsetId?: number;
+    missingSource?: "stable" | "lazer" | "common";
     savePath: string;
     status: DLStatus;
     progress: number;
@@ -30,6 +31,7 @@ export interface EnqueueRequest {
     url: string;
     filename: string;
     beatmapsetId?: number;
+    missingSource?: "stable" | "lazer" | "common";
 }
 
 export interface CachedDownload {
@@ -39,6 +41,7 @@ export interface CachedDownload {
     savePath: string;
     downloadedAt: number;
     beatmapsetId?: number | null;
+    missingSource?: "stable" | "lazer" | "common" | null;
     source: DLSource;
     status?: DLStatus;
     error?: string | null;
