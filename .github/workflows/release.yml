@@ -7,14 +7,14 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Version to release, e.g. 1.2.0. CI creates and pushes the v<version> tag; the tag-push trigger then builds and drafts the release."
+        description: "Version to release, e.g. 1.2.0. CI creates/pushes the v<version> tag and builds + drafts the release in this same run."
         required: true
 
 permissions:
   contents: write
 
 concurrency:
-  group: release-${{ github.ref_name }}
+  group: release-${{ github.event_name == 'workflow_dispatch' && 'dispatch' || github.ref_name }}
   cancel-in-progress: true
 
 env:
@@ -37,33 +37,47 @@ jobs:
           node-version: '20'
           cache: 'npm'
 
-      # workflow_dispatch only: create and push the tag, then stop. The tag-push
-      # trigger below performs the actual build + draft release.
-      - name: Create tag from workflow dispatch
-        if: github.event_name == 'workflow_dispatch'
+      # Resolve the target tag/version for both triggers. Note: a tag pushed
+      # with the repo GITHUB_TOKEN does NOT fire a `push` event (GitHub
+      # suppresses events triggered by the token), so the dispatch run must do
+      # the whole build itself — never rely on a follow-up run.
+      - name: Resolve version
+        id: version
         shell: bash
         run: |
-          VER="${{ github.event.inputs.version }}"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VER="${{ github.event.inputs.version }}"
+          else
+            VER="${GITHUB_REF_NAME#v}"
+          fi
           if ! [[ "$VER" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.-]+)?$ ]]; then
             echo "::error::Invalid version '$VER' (expected semver like 1.2.0)"
             exit 1
           fi
-          if git rev-parse -q --verify "refs/tags/v${VER}" >/dev/null 2>&1; then
-            echo "::error::Tag v${VER} already exists."
+          echo "tag=v${VER}" >> "$GITHUB_OUTPUT"
+          echo "ver=${VER}" >> "$GITHUB_OUTPUT"
+
+      # workflow_dispatch only: create and push the tag (side effect; the build
+      # continues in this same run).
+      - name: Create tag from workflow dispatch
+        if: github.event_name == 'workflow_dispatch'
+        shell: bash
+        run: |
+          TAG="${{ steps.version.outputs.tag }}"
+          if git rev-parse -q --verify "refs/tags/${TAG}" >/dev/null 2>&1; then
+            echo "::error::Tag ${TAG} already exists."
             exit 1
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git tag "v${VER}"
-          git push "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "v${VER}"
-          echo "Tag v${VER} created — the release build runs from the tag-push trigger."
+          git tag "${TAG}"
+          git push "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "${TAG}"
+          echo "Tag ${TAG} created."
 
       - name: Install dependencies
-        if: github.event_name == 'push'
         run: npm ci
 
       - name: Restore signing key
-        if: github.event_name == 'push'
         shell: bash
         env:
           RELEASE_SIGNING_KEY: ${{ secrets.RELEASE_SIGNING_KEY }}
@@ -77,26 +91,23 @@ jobs:
           echo "Signing key restored to keys/private.pem"
 
       - name: Quality gates
-        if: github.event_name == 'push'
         run: |
           npm run lint
           npx tsc --noEmit
           npx vitest run --passWithNoTests
 
       - name: Sync package.json version
-        if: github.event_name == 'push'
         shell: bash
         run: |
-          VER="${GITHUB_REF_NAME#v}"
+          VER="${{ steps.version.outputs.ver }}"
           npm version "${VER}" --no-git-tag-version --allow-same-version
           echo "Package version: $(node -p "require('./package.json').version")"
 
       - name: Check existing release and find previous published release
         id: prev
-        if: github.event_name == 'push'
         shell: bash
         run: |
-          TAG="${GITHUB_REF_NAME}"
+          TAG="${{ steps.version.outputs.tag }}"
           if gh release view "${TAG}" --json isDraft --jq .isDraft >/dev/null 2>&1; then
             DRAFT="$(gh release view "${TAG}" --json isDraft --jq .isDraft)"
             if [ "$DRAFT" = "false" ]; then
@@ -114,7 +125,6 @@ jobs:
       # build (every file at its relative path, including manifest.json).
       - name: Download previous release build (diff base)
         id: prev-download
-        if: github.event_name == 'push'
         shell: bash
         run: |
           PREV_TAG="${{ steps.prev.outputs.prev_tag }}"
@@ -141,10 +151,9 @@ jobs:
           fi
 
       - name: Generate release notes
-        if: github.event_name == 'push'
         shell: bash
         run: |
-          TAG="${GITHUB_REF_NAME}"
+          TAG="${{ steps.version.outputs.tag }}"
           PREV_TAG="${{ steps.prev.outputs.prev_tag }}"
           if [ -n "$PREV_TAG" ] && git rev-parse -q --verify "${PREV_TAG}^{commit}" >/dev/null 2>&1; then
             git log --oneline --no-merges "${PREV_TAG}..HEAD" > release-notes.md || true
@@ -154,12 +163,11 @@ jobs:
           fi
 
       - name: Build and stage release assets
-        if: github.event_name == 'push'
         shell: bash
         env:
           PREV_BUILD_DIR: ${{ steps.prev-download.outputs.prev_build_dir }}
         run: |
-          VER="${GITHUB_REF_NAME#v}"
+          VER="${{ steps.version.outputs.ver }}"
           ARGS=(--version "${VER}" --no-copy-legacy --force)
           if [ -n "$PREV_BUILD_DIR" ]; then
             ARGS+=(--prev-build-dir "${PREV_BUILD_DIR}")
@@ -169,11 +177,10 @@ jobs:
           npm run publish:release -- "${ARGS[@]}"
 
       - name: Create or update draft release
-        if: github.event_name == 'push'
         shell: bash
         run: |
-          TAG="${GITHUB_REF_NAME}"
-          VER="${TAG#v}"
+          TAG="${{ steps.version.outputs.tag }}"
+          VER="${{ steps.version.outputs.ver }}"
           ASSETS=(release/dist/${VER}/github/*)
           if [ "${{ steps.prev.outputs.existing_draft }}" = "true" ]; then
             gh release upload "${TAG}" "${ASSETS[@]}" --clobber
