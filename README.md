@@ -17,20 +17,24 @@
   * 基於 osu! API v2 取得圖譜包
     * 僅獲取特定類型圖譜包 / 指定時間內 / 特定遊戲模式
     * 基於本地成績資料進行差異下載，可快速篩選未載譜面
+  ![圖譜包下載](docs/ss/e-beatmap_pack-main.png)
 
 * 下載管理器 (Download Manager)
   * 內建下載佇列，支援分塊下載與斷點續傳
   * 內部登入與速率限制
+  ![內建下載器](docs/ss/e-downloader-main.png)
 
 * 選圖器 (Map Picker)
   * 可透過篩選及比重設定來隨機選圖 (僅讀取本地地圖集)
   * 成績列表顯示 PP 及各分項數值（aim / speed / accuracy），基於 `rosu-pp-js` 本地計算
+  ![選圖器](docs/ss/e-picker-main.png)
 
 * 統計 (Statistics)
   * 基於本地成績資料分析遊玩歷史
   * 以圖表呈現每日遊玩次數、分數、命中率及評價分布趨勢
   * 支援多用戶切換，並自動記憶上次瀏覽的用戶
   * 可依日期範圍篩選遊玩紀錄
+  ![成績分析](docs/ss/e-tracker-main.png)
 
 * 多語系 (i18n)
   * 繁體中文 (zh-TW)
@@ -81,6 +85,12 @@ npm run dist:win
 npm run gen-keys              # 首次產生 RSA 金鑰
 npm run dist:win:signed       # 建置並簽署 manifest
 ```
+
+### 自動更新 (GitHub Releases)
+
+更新流程由主程序 (`src/entrypoint/js/updater`) 完全掌控，渲染層僅能觸發/監聽狀態，無法指定下載來源或路徑。
+
+共用邏輯（canonical JSON、SHA-256、RSA 簽名、路徑白名單、增量補丁等）集中於 `src/updater-core`，並同時提供給主程序與 `scripts/generate-release.ts` 使用。安裝階段會透過 `updaterWorker.js` 以獨立的 Node/Electron 程序執行，主程序在啟動輔助程序後安全退出，避免 app.asar 被鎖定。
 
 ## 系統需求
 
