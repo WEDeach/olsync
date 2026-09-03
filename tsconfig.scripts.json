@@ -1,0 +1,15 @@
+{
+    "extends": "./tsconfig.json",
+    "compilerOptions": {
+        "module": "ESNext",
+        "moduleResolution": "bundler",
+        "noEmit": true,
+        "target": "ES2022"
+    },
+    "include": [
+        "src/updater-core",
+        "src/original-fs.d.ts",
+        "scripts/generate-release.ts",
+        "scripts/updater-server.ts"
+    ]
+}

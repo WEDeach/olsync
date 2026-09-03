@@ -1,5 +1,4 @@
 import * as path from "path";
-import * as fs from "fs";
 import { fileURLToPath } from "url";
 import webpack from "webpack";
 import type { Configuration } from "webpack";
@@ -8,35 +7,14 @@ const { DefinePlugin } = webpack;
 const __dirname=path.dirname(fileURLToPath(import.meta.url));
 const rootPath=path.resolve(__dirname,"..");
 
-function resolvePath(...segments: string[]) {
-    return path.resolve(rootPath,...segments);
-}
-
-const entry: { [key: string]: string[] }={};
-const entrypointsPath="src/entrypoint/js";
-const supportedExts=new Set(['.ts','.tsx']);
-fs.readdirSync(resolvePath(entrypointsPath),{ withFileTypes: true }).forEach((item) => {
-    if(item.isFile()) {
-        const filename=item.name;
-        const ext=path.extname(filename);
-
-        if(supportedExts.has(ext)) {
-            const entryName=path.basename(filename,ext);
-
-            if(entry[entryName]==null) {
-                entry[entryName]=[];
-            }
-            entry[entryName].push(resolvePath(entrypointsPath,filename));
-        }
-    }
-});
-
 const config: Configuration={
     mode: process.env.NODE_ENV==='production'? 'production':'development',
     devtool: process.env.NODE_ENV==='production'? false:'source-map',
     entry: {
         main: './src/entrypoint/js/main.ts',
         stableProcess: './src/entrypoint/js/stable.process.ts',
+        lazerProcess: './src/entrypoint/js/lazer.process.ts',
+        updaterWorker: './src/entrypoint/js/updater/updateWorker.ts',
     },
     target: "electron-main",
     module: {
@@ -62,6 +40,14 @@ const config: Configuration={
         'original-fs',
         'realm',
         'rosu-pp-js',
+        'better-sqlite3',
+        'unbzip2-stream',
+        'yauzl',
+        'buffer',
+        'stream',
+        'string_decoder',
+        'timers',
+        'net',
     ],
     node: {
         __dirname: false,
@@ -79,7 +65,7 @@ const config: Configuration={
         }),
     ],
     resolve: {
-        extensions: ['.ts','.tsx'],
+        extensions: ['.ts','.tsx','.js'],
     },
 };
 

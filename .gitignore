@@ -6,6 +6,7 @@ yarn-debug.log*
 yarn-error.log*
 lerna-debug.log*
 .*dev-instruction
+references
 
 # Diagnostic reports (https://nodejs.org/api/report.html)
 report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
@@ -82,6 +83,7 @@ out
 # Nuxt.js build / generate output
 .nuxt
 dist
+bin/win
 
 # Gatsby files
 .cache/
@@ -139,7 +141,6 @@ dist
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 /backupData
-/.github
 /data
 /release
 /tests

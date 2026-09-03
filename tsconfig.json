@@ -27,10 +27,14 @@
         "allowSyntheticDefaultImports": true,
         "noUnusedLocals": true,
         "noImplicitReturns": true,
-        "noFallthroughCasesInSwitch": true
+        "noFallthroughCasesInSwitch": true,
+        "skipLibCheck": true
     },
     "include": [
-        "src"
+        "src",
+        "tests/beatmapFilterUtils.test.ts",
+        "scripts/generate-release.ts",
+        "scripts/publish-release.ts"
     ],
     "exclude": [
         "node_modules",
