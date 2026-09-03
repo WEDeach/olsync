@@ -140,6 +140,9 @@ export const saveJson = async (name: string, data: object) => {
 };
 
 export const readJson = async (name: string) => {
+    if (!fs.existsSync(name)) {
+        return null;
+    }
     try {
         const content = await fs.promises.readFile(name, "utf8");
         return JSON.parse(content);
@@ -149,10 +152,20 @@ export const readJson = async (name: string) => {
     }
 };
 
+function resolveServiceFilePath(svc: ServiceCode, sid: SpaceId | null, name: string): string {
+    const root = path.resolve(pRoot, svc, sid || "");
+    const resolved = path.resolve(root, name);
+    const relative = path.relative(root, resolved);
+    if (!relative || relative.startsWith("..") || path.isAbsolute(relative)) {
+        throw new Error(`Path escapes service root: ${name}`);
+    }
+    return resolved;
+}
+
 export const saveJsonV2 = async (svc: ServiceCode, sid: SpaceId | null, name: string, data: any) => {
     try {
         const d = dumps(data);
-        const p = path.join(pRoot, svc, sid || "", name);
+        const p = resolveServiceFilePath(svc, sid, name);
         await fs.promises.mkdir(path.dirname(p), { recursive: true });
         await fs.promises.writeFile(p, d, "utf8");
         log.child("saveJsonV2").info(`Saved: ${p}`);
@@ -164,7 +177,7 @@ export const saveJsonV2 = async (svc: ServiceCode, sid: SpaceId | null, name: st
 
 export const readJsonV2 = async <T = unknown>(svc: ServiceCode, sid: SpaceId | null, name: string) => {
     try {
-        const p = path.join(pRoot, svc, sid || "", name);
+        const p = resolveServiceFilePath(svc, sid, name);
         if (fs.existsSync(p)) {
             const d = await fs.promises.readFile(p, "utf8");
             return loads(d) as T;

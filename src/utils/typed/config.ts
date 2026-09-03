@@ -41,6 +41,7 @@ export enum ConfigKey {
     BPKS_DL_GMODE = "bpks:dl:gmode",
     BPKS_DL_DATE_RANGE = "bpks:dl:date_range",
     BPKS_DL_MODE = "bpks:dl:mode",
+    BPKS_DL_DETECTION_SCOPE = "bpks:dl:detection_scope",
 
     /* UPDATE */
     UPDATE_BASE_URL = "update:base_url",
@@ -54,8 +55,14 @@ export enum ConfigKey {
     /* Beatmap Picker */
     PICKER_ACTIVE_PROFILE = "picker:active_profile",
 
+    /* Online DB */
+    ONLINE_DB_LAST_UPDATE = "online_db:last_update",
+
     /* Tracker */
     TRACKER_LAST_USER = "tracker:last_user",
+    TRACKER_DATE_MODE = "tracker:date_mode",
+    TRACKER_CUSTOM_START = "tracker:custom_start",
+    TRACKER_CUSTOM_END = "tracker:custom_end",
 
     /* UI */
     UI_AUDIO_VOLUME = "ui:audio_volume",
@@ -71,6 +78,9 @@ export enum ConfigKey {
     EXPERIMENT_PACK_RULESET_BY_NM = "experiment:pack_ruleset_by_nm",
     EXPERIMENT_USE_API_MAP_ATTR = "experiment:use_api_map_attr",
     EXPERIMENT_SPEEDTEST_DNS_PROXY = "experiment:speedtest_dns_proxy",
+    EXPERIMENT_INCLUDE_ONLINE_DB = "experiment:include_online_db",
+    EXPERIMENT_USE_LAZER_MODE = "experiment:use_lazer_mode",
+    EXPERIMENT_CLASSIC_SCORE = "experiment:classic_score",
 }
 
 export interface SyncState {

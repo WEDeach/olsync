@@ -22,12 +22,24 @@ export function formatTimeAgo(timestamp: number): string {
     return dayjs(timestamp).fromNow();
 }
 
-export function useNow(intervalMs = 1000): number {
+export function useNow(intervalMs: number | null = 1000): number {
     const [now, setNow] = useState(() => Date.now());
     useEffect(() => {
+        if (intervalMs === null) return;
         const id = setInterval(() => setNow(Date.now()), intervalMs);
         return () => clearInterval(id);
     }, [intervalMs]);
+    return now;
+}
+
+export function useNowAdaptive(latestTimestamp: number | null): number {
+    const [now, setNow] = useState(() => Date.now());
+    const highFreq = latestTimestamp !== null && now - latestTimestamp < 60_000;
+    useEffect(() => {
+        if (latestTimestamp === null) return;
+        const id = setInterval(() => setNow(Date.now()), highFreq ? 1000 : 30_000);
+        return () => clearInterval(id);
+    }, [latestTimestamp, highFreq]);
     return now;
 }
 
