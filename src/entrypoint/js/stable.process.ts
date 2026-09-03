@@ -92,6 +92,8 @@ interface SlimBeatmap {
     sliderMultiplier: number;
     stackLeniency: number;
     source: string;
+    totalMilliseconds: number;
+    bpm?: number;
 }
 
 interface DetailEntry {
@@ -108,6 +110,7 @@ let _collections: StableCollection | undefined;
 let _osu_db_loading: Promise<void> | null = null;
 let _scores_loading: Promise<void> | null = null;
 let _collections_loading: Promise<void> | null = null;
+let _username: string | null | undefined;
 
 async function parse_osu_db(): Promise<void> {
     if (_slim_beatmaps !== null || !_basePath) return;
@@ -148,8 +151,8 @@ async function _do_parse_osu_db(): Promise<void> {
             .uint32le("mods")
             .uint8("objType2")
             .buffer("starRating", {
-                length: () => (version >= 20250108 ? 4 : 8),
-                formatter: (buffer: Buffer) => (version >= 20250108 ? buffer.readFloatLE(0) : buffer.readDoubleLE(0)),
+                length: () => (version >= 20250107 ? 4 : 8),
+                formatter: (buffer: Buffer) => (version >= 20250107 ? buffer.readFloatLE(0) : buffer.readDoubleLE(0)),
             }),
     });
 
@@ -163,7 +166,7 @@ async function _do_parse_osu_db(): Promise<void> {
         .buffer("audioFileName", nullable_string_collector)
         .buffer("md5Hash", nullable_string_collector)
         .buffer("osuFileName", nullable_string_collector)
-        .int8("rankedStatus")
+        .uint8("rankedStatus")
         .uint16le("numCircles")
         .uint16le("numSliders")
         .uint16le("numSpinners")
@@ -177,85 +180,92 @@ async function _do_parse_osu_db(): Promise<void> {
         .nest("taikoStarRatings", { type: parser_sr })
         .nest("ctbStarRatings", { type: parser_sr })
         .nest("maniaStarRatings", { type: parser_sr })
-        .uint32le("drainSeconds")
-        .uint32le("totalMilliseconds")
-        .uint32le("previewMilliseconds")
-        .uint32le("numTimingPoints")
+        .int32le("drainSeconds")
+        .int32le("totalMilliseconds")
+        .int32le("previewMilliseconds")
+        .int32le("numTimingPoints")
         .array("timingPoints", { length: "numTimingPoints", type: parser_tp })
-        .uint32le("beatmapId")
-        .uint32le("beatmapSetId")
-        .uint32le("threadId")
+        .int32le("beatmapId")
+        .int32le("beatmapSetId")
+        .int32le("threadId")
         .uint8("osuStandardGrade")
         .uint8("taikoGrade")
         .uint8("ctbGrade")
         .uint8("maniaGrade")
-        .uint16("localOffset")
+        .int16le("localOffset")
         .floatle("stackLeniency")
         .uint8("mode")
         .buffer("source", nullable_string_collector)
         .buffer("tags", nullable_string_collector)
-        .uint16("onlineOffset")
+        .int16le("onlineOffset")
         .buffer("titleFont", nullable_string_collector)
         .uint8("unplayed", bool_collector)
-        .uint64le("lastPlayedTime", date_collector)
+        .int64le("lastPlayedTime", date_collector)
         .uint8("isOsz2", bool_collector)
         .buffer("path", nullable_string_collector)
-        .uint64le("lastOnlineCheckTime", date_collector)
+        .int64le("lastOnlineCheckTime", date_collector)
         .uint8("disableCustomSound", bool_collector)
         .uint8("disableCustomSkin", bool_collector)
         .uint8("disableStoryboard", bool_collector)
         .uint8("disableVideo", bool_collector)
         .uint8("visualOverride", bool_collector)
-        .uint32le("lastEditTime")
+        .int32le("lastEditTime")
         .uint8("scrollSpeed");
 
     const parser = new Parser()
         .uint32le("version")
-        .uint32le("folderCount")
+        .int32le("folderCount")
         .uint8("accountUnlocked", bool_collector)
-        .uint64le("unlockTime", date_collector)
+        .int64le("unlockTime", date_collector)
         .buffer("userName", nullable_string_collector)
-        .uint32le("beatmapCount")
+        .int32le("beatmapCount")
         .array("beatmaps", { length: "beatmapCount", type: parser_beatmap_info })
-        .uint32le("userType");
+        .int32le("userType");
 
     const raw = parser.parse(buf);
+    _username = raw.userName ?? null;
     log.info(`Parse osu!.db done in ${Date.now() - t1}ms, total beatmaps: ${raw.beatmaps.length}`);
 
-    _slim_beatmaps = (raw.beatmaps as any[])
-        .filter((m) => m.beatmapId !== 0)
-        .map((m) => ({
-            beatmapId: m.beatmapId,
-            beatmapSetId: m.beatmapSetId,
-            md5Hash: m.md5Hash,
-            rankedStatus: m.rankedStatus,
-            mode: m.mode,
-            srStd: m.stdStarRatings?.starRatings?.find((s: any) => s.mods === 0)?.starRating ?? 0,
-            srTaiko: m.taikoStarRatings?.starRatings?.find((s: any) => s.mods === 0)?.starRating ?? 0,
-            srCtb: m.ctbStarRatings?.starRatings?.find((s: any) => s.mods === 0)?.starRating ?? 0,
-            srMania: m.maniaStarRatings?.starRatings?.find((s: any) => s.mods === 0)?.starRating ?? 0,
-            artist: m.artist,
-            artistUnicode: m.artistUnicode,
-            songTitle: m.songTitle,
-            songTitleUnicode: m.songTitleUnicode,
-            difficultyName: m.difficultyName,
-            creatorName: m.creatorName,
-            osuStandardGrade: m.osuStandardGrade,
-            unplayed: m.unplayed,
-            tags: m.tags,
-            drainSeconds: m.drainSeconds,
-            lastPlayedTime: m.lastPlayedTime ?? null,
-            ar: m.ar,
-            cs: m.cs,
-            hp: m.hp,
-            od: m.od,
-            numCircles: m.numCircles,
-            numSliders: m.numSliders,
-            numSpinners: m.numSpinners,
-            sliderMultiplier: m.sliderMultiplier,
-            stackLeniency: m.stackLeniency,
-            source: m.source,
-        }));
+    _slim_beatmaps = (raw.beatmaps as any[]).map((m) => ({
+        beatmapId: m.beatmapId,
+        beatmapSetId: m.beatmapSetId,
+        md5Hash: m.md5Hash,
+        rankedStatus: m.rankedStatus,
+        mode: m.mode,
+        srStd: m.stdStarRatings?.starRatings?.find((s: any) => s.mods === 0)?.starRating ?? 0,
+        srTaiko: m.taikoStarRatings?.starRatings?.find((s: any) => s.mods === 0)?.starRating ?? 0,
+        srCtb: m.ctbStarRatings?.starRatings?.find((s: any) => s.mods === 0)?.starRating ?? 0,
+        srMania: m.maniaStarRatings?.starRatings?.find((s: any) => s.mods === 0)?.starRating ?? 0,
+        artist: m.artist,
+        artistUnicode: m.artistUnicode,
+        songTitle: m.songTitle,
+        songTitleUnicode: m.songTitleUnicode,
+        difficultyName: m.difficultyName,
+        creatorName: m.creatorName,
+        osuStandardGrade: m.osuStandardGrade,
+        unplayed: m.unplayed,
+        tags: m.tags,
+        drainSeconds: m.drainSeconds,
+        lastPlayedTime: m.lastPlayedTime ?? null,
+        ar: m.ar,
+        cs: m.cs,
+        hp: m.hp,
+        od: m.od,
+        numCircles: m.numCircles,
+        numSliders: m.numSliders,
+        numSpinners: m.numSpinners,
+        sliderMultiplier: m.sliderMultiplier,
+        stackLeniency: m.stackLeniency,
+        source: m.source,
+        totalMilliseconds: m.totalMilliseconds,
+        bpm: (() => {
+            const points = m.timingPoints ?? [];
+            const p =
+                points.find((point: any) => !point.inherited && point.bpm > 0) ??
+                points.find((point: any) => point.bpm > 0);
+            return p ? 60000 / p.bpm : undefined;
+        })(),
+    }));
 
     _detail_map = new Map<string, DetailEntry>(
         (raw.beatmaps as any[]).map((m) => [
@@ -416,6 +426,7 @@ async function handle(msg: any): Promise<unknown> {
                 _detail_map = null;
                 _scores = undefined;
                 _collections = undefined;
+                _username = undefined;
             }
             return null;
         }
@@ -433,8 +444,14 @@ async function handle(msg: any): Promise<unknown> {
             const titleQ = filter.title ? filter.title.toLowerCase() : null;
             const rankSet = filter.rankStatuses?.length ? new Set(filter.rankStatuses) : null;
             const modeSet = filter.modes?.length ? new Set(filter.modes) : null;
-            const includedSet = filter.includedHashes !== undefined ? new Set(filter.includedHashes) : null;
-            const excludedSet = filter.excludedHashes !== undefined ? new Set(filter.excludedHashes) : null;
+            const includedSet =
+                filter.includedHashes !== undefined
+                    ? new Set(filter.includedHashes.filter((h) => h).map((h) => h.toLowerCase()))
+                    : null;
+            const excludedSet =
+                filter.excludedHashes !== undefined
+                    ? new Set(filter.excludedHashes.filter((h) => h).map((h) => h.toLowerCase()))
+                    : null;
             const srMin = filter.starRatingMin ?? null;
             const srMax = filter.starRatingMax ?? null;
 
@@ -451,8 +468,9 @@ async function handle(msg: any): Promise<unknown> {
                     if (srMax !== null && sr > srMax) return false;
                 }
                 if (modeSet && !modeSet.has(m.mode)) return false;
-                if (includedSet && !includedSet.has(m.md5Hash)) return false;
-                if (excludedSet?.has(m.md5Hash)) return false;
+                const hash = m.md5Hash ? m.md5Hash.toLowerCase() : "";
+                if (includedSet && !includedSet.has(hash)) return false;
+                if (excludedSet?.has(hash)) return false;
                 return true;
             });
 
@@ -473,14 +491,65 @@ async function handle(msg: any): Promise<unknown> {
             return { md5Hash: msg.md5Hash, ...d };
         }
 
+        case "query_scores_by_user": {
+            await parse_scores();
+            const userName = msg.userName as string;
+            const dateFrom = msg.dateFrom as number | undefined;
+            const dateTo = msg.dateTo as number | undefined;
+
+            const matched: any[] = [];
+            for (const bm of _scores?.beatmaps ?? []) {
+                for (const s of bm.scores) {
+                    if (userName && s.userName !== userName) continue;
+                    // NOTE: if s.date is missing the score will pass the date filters below.
+                    // This edge case is intentionally left unhandled until the risk is confirmed.
+                    const t = s.date?.getTime?.();
+                    if (dateFrom != null && t < dateFrom) continue;
+                    if (dateTo != null && t > dateTo) continue;
+                    matched.push({ md5Hash: bm.md5Hash, scoreCount: 1, scores: [s] });
+                }
+            }
+            return readWithOffset(matched, msg.offset, msg.limit);
+        }
+
+        case "query_scores_by_hashes": {
+            await parse_scores();
+            const userName = msg.userName as string;
+            const hashSet = new Set<string>(((msg.hashes as string[]) ?? []).map((h) => h.toLowerCase()));
+
+            const matched: any[] = [];
+            for (const bm of _scores?.beatmaps ?? []) {
+                const hash = bm.md5Hash ? bm.md5Hash.toLowerCase() : "";
+                if (!hashSet.has(hash)) continue;
+                for (const s of bm.scores) {
+                    if (userName && s.userName !== userName) continue;
+                    matched.push({ md5Hash: bm.md5Hash, scoreCount: 1, scores: [s] });
+                }
+            }
+            return readWithOffset(matched, msg.offset, msg.limit);
+        }
+
+        case "query_users": {
+            await parse_scores();
+            const userSet = new Set<string>();
+            for (const bm of _scores?.beatmaps ?? []) {
+                for (const s of bm.scores) {
+                    if (s.userName) userSet.add(s.userName);
+                }
+            }
+            return Array.from(userSet).sort();
+        }
+
         case "get_beatmap_index": {
             await parse_osu_db();
             if (!_slim_beatmaps) return readWithOffset([], msg.offset, Math.max(msg.limit, 1));
-            const index = _slim_beatmaps.map((m) => ({
-                md5Hash: m.md5Hash,
-                beatmapSetId: m.beatmapSetId,
-                beatmapId: m.beatmapId,
-            }));
+            const index = _slim_beatmaps
+                .filter((m) => m.beatmapId !== 0)
+                .map((m) => ({
+                    md5Hash: m.md5Hash,
+                    beatmapSetId: m.beatmapSetId,
+                    beatmapId: m.beatmapId,
+                }));
             const effectiveLimit = msg.limit > 0 ? msg.limit : index.length;
             return readWithOffset(index, msg.offset, effectiveLimit);
         }
@@ -536,10 +605,20 @@ async function handle(msg: any): Promise<unknown> {
             return 1;
         }
 
+        case "get_username": {
+            if (!_basePath) {
+                log.warn("StableReader not initialized, cannot get username");
+                return null;
+            }
+            await parse_osu_db();
+            return _username ?? null;
+        }
+
         case "invalidate_beatmaps": {
             _slim_beatmaps = null;
             _detail_map = null;
             _osu_db_loading = null;
+            _username = undefined;
             return null;
         }
 

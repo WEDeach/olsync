@@ -133,6 +133,7 @@ export interface StableBeatmapIndex {
 export interface PPCalcArgs {
     md5Hash: string;
     mods: number;
+    modsData?: { acronym: string; settings?: Record<string, unknown> }[];
     combo?: number;
     n300?: number;
     n100?: number;
@@ -145,6 +146,7 @@ export interface PPCalcArgs {
     nCircles?: number;
     nSliders?: number;
     ruleset?: number;
+    lazer?: boolean;
 }
 
 export interface PPCalcResult {
@@ -158,3 +160,59 @@ export interface PPCalcResult {
     maxSpeed?: number;
     maxAcc?: number;
 }
+
+export enum StableIpcMode {
+    Menu = 0,
+    Edit = 1,
+    Play = 2,
+    Exit = 3,
+    SelectEdit = 4,
+    SelectPlay = 5,
+    SelectDrawings = 6,
+    Rank = 7,
+    Update = 8,
+    Busy = 9,
+    Unknown = 10,
+    Lobby = 11,
+    MatchSetup = 12,
+    SelectMulti = 13,
+    RankingVs = 14,
+    OnlineSelection = 15,
+    OptionsOffsetWizard = 16,
+    RankingTagCoop = 17,
+    RankingTeam = 18,
+    BeatmapImport = 19,
+    PackageUpdater = 20,
+    Benchmark = 21,
+    Tourney = 22,
+    Charts = 23,
+}
+
+export interface LastPlayingStatus {
+    BeatmapId: number;
+    BeatmapChecksum: string;
+    IsChecked: boolean;
+}
+
+export interface StableIpcClientData {
+    Connected: boolean;
+    Mode?: StableIpcMode;
+    BeatmapId?: number;
+    BeatmapChecksum?: string;
+    Score?: number;
+    AudioTime?: number;
+    ReplayTime?: number;
+    SpectatingID?: number;
+    MenuTime?: number;
+    AudioPlaying?: boolean;
+    DimLevel?: number;
+    Buffering?: boolean;
+    SkipCalculations?: boolean;
+    LReplayFrame?: number;
+    LReplayMode?: boolean;
+    LReplayStreaming?: boolean;
+    LPlayerLoaded?: boolean;
+    LReplayToEnd?: boolean;
+}
+
+export type StableClientData = StableIpcClientData;
