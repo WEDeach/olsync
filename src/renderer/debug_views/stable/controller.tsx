@@ -11,10 +11,10 @@ const log = createLogger("DViewStable");
 interface State {
     path?: string;
     path_patch?: string;
-    s_schema_keys?: IPropertyWithName[];
-    s_schema_rows?: DefaultObject[];
-    s_schema_rows_loaded?: boolean;
-    s_schema_rows_page?: number;
+    s_schema_keys: IPropertyWithName[];
+    s_schema_rows: DefaultObject[];
+    s_schema_rows_loaded: boolean;
+    s_schema_rows_page: number;
     s_schema_name?: string;
 }
 
@@ -22,7 +22,12 @@ export default class Controller {
     state: State;
 
     constructor() {
-        this.state = {};
+        this.state = {
+            s_schema_rows: [] as DefaultObject[],
+            s_schema_keys: [] as IPropertyWithName[],
+            s_schema_rows_loaded: true,
+            s_schema_rows_page: 0,
+        };
 
         g.initConfig();
 
@@ -38,15 +43,15 @@ export default class Controller {
     }
 
     get SSchemaKeys() {
-        return this.state.s_schema_keys ?? [];
+        return this.state.s_schema_keys;
     }
 
     get SSchemaRows() {
-        return this.state.s_schema_rows ?? [];
+        return this.state.s_schema_rows;
     }
 
     get SSchemaRowsLoaded() {
-        return this.state.s_schema_rows_loaded ?? true;
+        return this.state.s_schema_rows_loaded;
     }
 
     get SSchemaName() {
@@ -54,7 +59,7 @@ export default class Controller {
     }
 
     get SSchemaRowsPage() {
-        return this.state.s_schema_rows_page ?? 0;
+        return this.state.s_schema_rows_page;
     }
 
     handleSelectFile = async () => {
@@ -64,14 +69,14 @@ export default class Controller {
     };
 
     onBtnPathPatchClicked = async () => {
-        const result = await window.olsCore.exec("osustable.File.osz");
+        const result = await window.olsCore.getOsuStableInstallPath("osz");
         runInAction(() => {
             this.state.path_patch = result;
         });
     };
 
     onBtnPathPatchV2Clicked = async () => {
-        const result = await window.olsCore.exec("osu!");
+        const result = await window.olsCore.getOsuStableInstallPath("default");
         runInAction(() => {
             this.state.path_patch = result;
         });

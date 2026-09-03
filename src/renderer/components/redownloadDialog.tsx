@@ -51,7 +51,13 @@ export const RedownloadDialog: React.FC<Props> = ({ open, filenames, onConfirm, 
             confirmLabel={__(I18nStrings.BTN_DL_REDOWNLOAD, { count: selected.size })}
             confirmDisabled={selected.size === 0}
         >
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            <Typography
+                variant="body2"
+                sx={{
+                    color: "text.secondary",
+                    mb: 2,
+                }}
+            >
                 {__(I18nStrings.MAIN_DL_REDOWNLOAD_DESC)}
             </Typography>
             <FormControlLabel

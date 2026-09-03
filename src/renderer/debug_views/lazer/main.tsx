@@ -1,6 +1,7 @@
-import { Backdrop, Button, CircularProgress, Container, Grid, Stack, TextField, Typography } from "@mui/material";
+import { Backdrop, Button, Container, Grid, Stack, TextField, Typography } from "@mui/material";
 import { observer } from "mobx-react";
 import React from "react";
+import { PausableCircularProgress } from "../../components/common/PausableCircularProgress";
 import { DataViewer } from "../../components/dataViewer";
 import Controller from "./controller";
 
@@ -77,7 +78,7 @@ export default class Main extends React.Component {
                         sx={(theme) => ({ color: "#fff", zIndex: theme.zIndex.drawer + 1 })}
                         open={!this.controller.SSchemaRowsLoaded}
                     >
-                        <CircularProgress color="inherit" />
+                        <PausableCircularProgress color="inherit" />
                     </Backdrop>
                 </Stack>
             </Container>

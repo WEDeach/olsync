@@ -2,13 +2,9 @@ import { Search } from "@mui/icons-material";
 import { Box, Button, ButtonGroup, Stack, ToggleButton, ToggleButtonGroup, Tooltip, Typography } from "@mui/material";
 import { Observer } from "mobx-react";
 import React, { useEffect, useState } from "react";
-import {
-    RankedStatus,
-    RespBeatmapLookup,
-    RespUserMostPlayedBeatmap,
-    RespUserMostPlayedBeatmaps,
-} from "../../api/v2/types/api_resp";
+import { RespBeatmapLookup, RespUserMostPlayedBeatmap, RespUserMostPlayedBeatmaps } from "../../api/v2/types/api_resp";
 import { OsuLanguages } from "../../defines/types";
+import { apply_beatmap_filter, create_api_beatmap_accessor } from "../../shared/utils/beatmapFilterUtils";
 import { getApiDownloadLink, getApiPreDelayMs, InitApi } from "../../utils/api";
 import { GetDLOptionByDirect, GetDLOptionByFDM, GetDLOptionByRows } from "../../utils/download";
 import __ from "../../utils/i18n";
@@ -17,7 +13,7 @@ import { sleep } from "../../utils/time";
 import { ConfigKey } from "../../utils/typed/config";
 import { I18nStrings } from "../../utils/typed/i18n";
 import g from "../state";
-import { BeatmapFilterView, FilterType, SubFilterType } from "./beatmapFilter";
+import { BeatmapFilterView, FilterType, SubFilterType, TFilterSetting } from "./beatmapFilter";
 import { DataViewer } from "./dataViewer";
 import { IPropertyWithName } from "./table";
 
@@ -122,49 +118,13 @@ export const BeatmapRestorerView: React.FC<IBeatmapRestorerViewProps> = ({
         }
     };
 
-    const ApplyFilter = (map: RespUserMostPlayedBeatmap, filters: Partial<Record<FilterType, any>>): boolean => {
-        if (filters) {
-            if (filters[FilterType.Title] && filters[FilterType.Title].length > 0) {
-                const title = filters[FilterType.Title].toLowerCase();
-                if (
-                    !map.beatmapset.title.toLowerCase().includes(title) &&
-                    !map.beatmapset.title_unicode.toLowerCase().includes(title)
-                )
-                    return false;
-            }
-            if (filters[FilterType.RankState]) {
-                const state = filters[FilterType.RankState] as Array<Omit<RankedStatus, "all">>;
-                if (!state.includes("all") && !state.includes(map.beatmapset.status)) return false;
-            }
-            if (filters[FilterType.PlayCount]) {
-                const pcfs = subFilterSettings[FilterType.PlayCount] ?? SubFilterType.Greater;
-                const pc = Number(filters[FilterType.PlayCount]) || 0;
-                if (
-                    !(pcfs === SubFilterType.Greater
-                        ? map.count >= pc
-                        : pcfs === SubFilterType.Equal
-                          ? map.count === pc
-                          : map.count <= pc)
-                )
-                    return false;
-            }
-            if (filters[FilterType.Language]) {
-                const las = filters[FilterType.Language] as Array<number | "all">;
-                if (!(las.includes("all") || las.includes(map.beatmapset.language_id))) return false;
-            }
-            if (filters[FilterType.StarRating]) {
-                const sr = filters[FilterType.StarRating];
-                const [min = 0, max = 15] = Array.isArray(sr) && sr.length === 2 ? sr : [0, 15];
-                if (
-                    !(
-                        (min === 0 || map.beatmap.difficulty_rating >= min) &&
-                        (max === 15 || map.beatmap.difficulty_rating <= max)
-                    )
-                )
-                    return false;
-            }
-        }
-        return true;
+    const ApplyFilter = (map: RespUserMostPlayedBeatmap, filters: TFilterSetting): boolean => {
+        return apply_beatmap_filter(create_api_beatmap_accessor(map), filters, {
+            playerTagBeatmapIds: null,
+            includedHashes: null,
+            excludedHashes: null,
+            subFilter: subFilterSettings as Partial<Record<FilterType, SubFilterType>>,
+        });
     };
 
     const FetchedMaps = (): TBeatmapWithSelected[] => {
@@ -175,6 +135,7 @@ export const BeatmapRestorerView: React.FC<IBeatmapRestorerViewProps> = ({
                     beatmap_id: map.id,
                     count: 0,
                     beatmap: map,
+
                     is_selected: {
                         value: !excludedMapIds.has(map.beatmapset_id),
                         callback: () => handleSelectChanged(map.beatmapset_id, excludedMapIds.has(map.beatmapset_id)),
@@ -486,7 +447,13 @@ export const BeatmapRestorerView: React.FC<IBeatmapRestorerViewProps> = ({
                             ]}
                             allowedLanguages={OnlineBeatmapLangs()}
                         />
-                        <Stack direction={"row"} spacing={1} justifyContent={"end"}>
+                        <Stack
+                            direction={"row"}
+                            spacing={1}
+                            sx={{
+                                justifyContent: "end",
+                            }}
+                        >
                             <Tooltip
                                 title={stablePath.length === 0 ? __(I18nStrings.MAIN_RESTORER_PATH_REQUIRED) : ""}
                                 arrow
@@ -526,9 +493,15 @@ export const BeatmapRestorerView: React.FC<IBeatmapRestorerViewProps> = ({
                                 </span>
                             </Tooltip>
                         </Stack>
-                        <Stack direction={"row"} spacing={1} justifyContent={"space-between"}>
+                        <Stack
+                            direction={"row"}
+                            spacing={1}
+                            sx={{
+                                justifyContent: "space-between",
+                            }}
+                        >
                             <ToggleButtonGroup
-                                color="info"
+                                color="primary"
                                 value={restoreType}
                                 exclusive
                                 onChange={(_, v) => v !== null && setRestoreType(v)}
@@ -536,7 +509,7 @@ export const BeatmapRestorerView: React.FC<IBeatmapRestorerViewProps> = ({
                                 <ToggleButton value={"local"}>{__(I18nStrings.BTN_SRS_GROUP_LOCAL)}</ToggleButton>
                                 <ToggleButton value={"online"}>{__(I18nStrings.BTN_SRS_GROUP_ONLINE)}</ToggleButton>
                             </ToggleButtonGroup>
-                            <ButtonGroup color="info">
+                            <ButtonGroup color="primary">
                                 <Button variant="outlined" startIcon={<Search />} onClick={() => setShowFilter(true)}>
                                     {__(I18nStrings.BTN_SRS_SEARCH)}
                                 </Button>

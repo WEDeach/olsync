@@ -29,8 +29,14 @@ export const ApiSettings: React.FC<IApiSettingsProps> = () => {
                 const clientSecret = g.cacheVal.str_client_secret ?? "";
 
                 return (
-                    <Stack direction={"row"} spacing={1} flexGrow={1}>
-                        <FormControl variant="outlined" sx={{ flexGrow: 1 }}>
+                    <Stack
+                        direction={"row"}
+                        spacing={1}
+                        sx={{
+                            flexGrow: 1,
+                        }}
+                    >
+                        <FormControl variant="outlined" size="small" sx={{ flexGrow: 1 }}>
                             <InputLabel>Client Id</InputLabel>
                             <OutlinedInput
                                 label="Client Id"
@@ -48,7 +54,7 @@ export const ApiSettings: React.FC<IApiSettingsProps> = () => {
                                 }}
                             />
                         </FormControl>
-                        <FormControl variant="outlined" sx={{ flexGrow: 1 }}>
+                        <FormControl variant="outlined" size="small" sx={{ flexGrow: 1 }}>
                             <InputLabel>Client Secret</InputLabel>
                             <OutlinedInput
                                 label="Client Secret"

@@ -32,6 +32,7 @@ interface Props {
     highlightKey?: string | null;
     onVisibleKeysChange?: (keys: string[]) => void;
     getRowKey?: (row: DefaultObject, index: number) => any;
+    getRowClassName?: (row: DefaultObject, index: number) => string | undefined;
 }
 
 export interface CheckBoxWithCallback {
@@ -40,7 +41,7 @@ export interface CheckBoxWithCallback {
 }
 
 export interface IPropertyWithName {
-    name: string | null;
+    name: React.ReactNode | null;
     type: PropertyTypeName | "checkbox" | "picture" | "audio";
     key?: string;
     displayName?: string;
@@ -67,6 +68,7 @@ export const Table = observer(
         highlightKey,
         onVisibleKeysChange,
         getRowKey,
+        getRowClassName,
     }: Props) => {
         const { height, width } = dimensions;
 
@@ -119,6 +121,8 @@ export const Table = observer(
                 let comp: number;
                 if (typeof aVal === "boolean" && typeof bVal === "boolean") {
                     comp = (bVal ? 1 : 0) - (aVal ? 1 : 0);
+                } else if (typeof aVal === "number" && typeof bVal === "number") {
+                    comp = aVal - bVal;
                 } else {
                     const aStr = aVal == null ? "" : String(aVal);
                     const bStr = bVal == null ? "" : String(bVal);
@@ -188,7 +192,7 @@ export const Table = observer(
                                 );
                                 return (
                                     <TableCell
-                                        key={property.name}
+                                        key={property.key ?? String(property.name)}
                                         sx={{
                                             backgroundColor: "background.paper",
                                             fontWeight: 500,
@@ -235,9 +239,11 @@ export const Table = observer(
                             const actualIndex = visibleRange.startIndex + index;
                             const rowKey = getRowKey ? getRowKey(row, actualIndex) : actualIndex;
                             const isHighlighted = highlightKey !== undefined && rowKey === highlightKey;
+                            const rowClassName = getRowClassName ? getRowClassName(row, actualIndex) : undefined;
                             return (
                                 <TableRow
                                     key={rowKey}
+                                    className={rowClassName}
                                     hover
                                     onClick={onRowClick ? () => onRowClick(row, actualIndex) : undefined}
                                     onMouseEnter={() => onRowHover?.(rowKey as string)}
@@ -250,13 +256,13 @@ export const Table = observer(
                                             outline: "2px solid",
                                             outlineColor: "primary.light",
                                             outlineOffset: "-2px",
-                                            bgcolor: "rgba(25, 118, 210, 0.15)",
+                                            bgcolor: "action.selected",
                                         }),
                                     }}
                                 >
                                     {heads.map((property) => (
                                         <TableCell
-                                            key={property.name}
+                                            key={property.key ?? String(property.name)}
                                             sx={{
                                                 width: property.width,
                                                 textAlign: property.align,
@@ -291,7 +297,7 @@ const renderCellContent = (row: any, property: IPropertyWithName) => {
     }
 
     let r: any = `{t:${property.type}}`;
-    const key = property.key ?? property.name ?? "";
+    const key = property.key ?? (typeof property.name === "string" ? property.name : "");
     const append_key = property.append_keys?.map((k) => row[k]).join(" ") ?? null;
     const render_key = (r: any) => (append_key ? `${r} ${append_key}` : r);
 
@@ -363,7 +369,7 @@ const renderCellContent = (row: any, property: IPropertyWithName) => {
                     border: "none",
                     padding: 0,
                     cursor: "pointer",
-                    color: "#1976d2",
+                    color: "var(--mui-palette-primary-main)",
                     textDecoration: "underline",
                     font: "inherit",
                 }}

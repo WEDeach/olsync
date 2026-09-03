@@ -1,4 +1,5 @@
-import { Button, Stack, TextField } from "@mui/material";
+import { HelpOutlined } from "@mui/icons-material";
+import { Button, IconButton, InputAdornment, Stack, TextField, Tooltip } from "@mui/material";
 import { Observer } from "mobx-react";
 import React from "react";
 import __ from "../../utils/i18n";
@@ -40,16 +41,39 @@ export const OsuPathSettings: React.FC<IOsuPathSettingsProps> = ({ showStable = 
                 const stablePath = g.config?.[ConfigKey.PATH_STABLE_DIR] ?? "";
 
                 return (
-                    <Stack direction={"column"} spacing={2} flexGrow={1}>
+                    <Stack
+                        direction={"column"}
+                        spacing={2}
+                        sx={{
+                            flexGrow: 1,
+                        }}
+                    >
                         {showLazer && (
                             <Stack direction={"row"} spacing={1}>
                                 <TextField
                                     label="LazerPath"
                                     variant="outlined"
+                                    size="small"
                                     value={lazerPath}
                                     sx={{ flexGrow: 1 }}
                                     onChange={(event: React.ChangeEvent<HTMLInputElement>) => {
                                         onOsuPathChanged(undefined, event.target.value);
+                                    }}
+                                    slotProps={{
+                                        input: {
+                                            endAdornment: (
+                                                <InputAdornment position="end">
+                                                    <Tooltip title={__(I18nStrings.MAIN_SETTINGS_PATH_LAZER_HELP)}>
+                                                        <IconButton
+                                                            size="small"
+                                                            onClick={() => g.setOnboarding(true, "path_lazer")}
+                                                        >
+                                                            <HelpOutlined fontSize="small" />
+                                                        </IconButton>
+                                                    </Tooltip>
+                                                </InputAdornment>
+                                            ),
+                                        },
                                     }}
                                 />
                                 <Button variant="contained" onClick={onBtnLazerPathClicked}>
@@ -62,6 +86,7 @@ export const OsuPathSettings: React.FC<IOsuPathSettingsProps> = ({ showStable = 
                                 <TextField
                                     label="OsuPath"
                                     variant="outlined"
+                                    size="small"
                                     value={stablePath}
                                     sx={{ flexGrow: 1 }}
                                     onChange={(event: React.ChangeEvent<HTMLInputElement>) => {

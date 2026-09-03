@@ -65,7 +65,7 @@ export const CheckboxListDialog: React.FC<CheckboxListDialogProps> = ({
                             <ListItemText
                                 primary={item.primary}
                                 secondary={item.secondary}
-                                primaryTypographyProps={{ color: "text.disabled" }}
+                                slotProps={{ primary: { color: "text.disabled" } }}
                             />
                         ) : (
                             <FormControlLabel

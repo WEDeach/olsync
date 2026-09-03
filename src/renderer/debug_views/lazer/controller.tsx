@@ -30,7 +30,7 @@ export default class Controller {
     }
 
     get Path() {
-        return g.config?.["path"] ?? "";
+        return g.config?.path ?? "";
     }
 
     get STables() {

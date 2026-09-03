@@ -17,8 +17,14 @@ import React, { useState } from "react";
 import { BeatmapPack, RespBeatmapPack } from "../../api/v2/types/api_resp";
 import { OsuModes } from "../../defines/types";
 import { getApiDownloadLink, getApiPreDelayMs } from "../../utils/api";
-import { GetDLOptionByBuiltin, GetDLOptionByDirect, GetDLOptionByFDM, GetDLOptionByRows } from "../../utils/download";
-import { getPackRulesetByNmExperiment } from "../../utils/experiments";
+import {
+    BuiltinItem,
+    GetDLOptionByBuiltin,
+    GetDLOptionByDirect,
+    GetDLOptionByFDM,
+    GetDLOptionByRows,
+} from "../../utils/download";
+import { getPackRulesetByNmExperiment, getUseLazerModeExperiment } from "../../utils/experiments";
 import __ from "../../utils/i18n";
 import { createLogger } from "../../utils/logger";
 import { OsuData } from "../../utils/osu";
@@ -27,6 +33,7 @@ import { ConfigKey } from "../../utils/typed/config";
 import { I18nStrings } from "../../utils/typed/i18n";
 import g from "../state";
 import { DataViewer } from "./dataViewer";
+import { PackRulesetByBnToggle } from "./packRulesetByBnToggle";
 import { IPropertyWithName } from "./table";
 
 export interface IBeatmapPackDownloadViewProps {}
@@ -55,24 +62,30 @@ const getDateRangeOptions = () => [
     { key: "all" as DateRangeType, label: __(I18nStrings.MAIN_BPKS_DL_DATE_RANGE_ALL), days: null },
 ];
 
+export type DetectionScope = "all" | "stable" | "lazer";
+
 const BeatmapPackDownloadOptions: React.FC<{
     selectedTypes: string[];
     gameModes: string[];
     selectedDateRange: DateRangeType;
     downloadMode: "full" | "diff";
+    detectionScope: DetectionScope;
     onTypeChange: (types: string | string[]) => void;
     onGameModeChange: (types: string | string[]) => void;
     onDateRangeChange: (range: DateRangeType) => void;
     onModeChange: (mode: "full" | "diff") => void;
+    onScopeChange: (scope: DetectionScope) => void;
 }> = ({
     selectedTypes,
     gameModes,
     selectedDateRange,
     downloadMode,
+    detectionScope,
     onTypeChange,
     onGameModeChange,
     onDateRangeChange,
     onModeChange: onDLModeChange,
+    onScopeChange,
 }) => {
     const typeOptions = getTypeOptions();
     const dateRangeOptions = getDateRangeOptions();
@@ -149,6 +162,41 @@ const BeatmapPackDownloadOptions: React.FC<{
                     <FormControlLabel value="diff" control={<Radio />} label={__(I18nStrings.MAIN_BPKS_DL_MODE_DIFF)} />
                 </RadioGroup>
             </Box>
+
+            {downloadMode === "diff" && (
+                <Box>
+                    <Typography variant="h6" gutterBottom>
+                        {__(I18nStrings.MAIN_BPKS_DL_SCOPE_LABEL)}
+                    </Typography>
+                    <RadioGroup
+                        value={detectionScope}
+                        onChange={(e) => onScopeChange(e.target.value as DetectionScope)}
+                    >
+                        <FormControlLabel
+                            value="all"
+                            control={<Radio />}
+                            label={__(I18nStrings.MAIN_BPKS_DL_SCOPE_ALL)}
+                        />
+                        <FormControlLabel
+                            value="stable"
+                            control={<Radio />}
+                            label={__(I18nStrings.MAIN_BPKS_DL_SCOPE_STABLE)}
+                        />
+                        <FormControlLabel
+                            value="lazer"
+                            control={<Radio />}
+                            label={__(I18nStrings.MAIN_BPKS_DL_SCOPE_LAZER)}
+                        />
+                    </RadioGroup>
+                </Box>
+            )}
+
+            <Box>
+                <Typography variant="h6" gutterBottom>
+                    {__(I18nStrings.MAIN_SETTINGS_OTHERS)}
+                </Typography>
+                <PackRulesetByBnToggle />
+            </Box>
         </Stack>
     );
 };
@@ -158,6 +206,9 @@ export const BeatmapPackDownloadView: React.FC<IBeatmapPackDownloadViewProps> = 
     const [fetchedPackInfos, setFetchedPackInfos] = useState<RespBeatmapPack[]>([]);
     const [excludedPackTags, setExcludedPackTags] = useState<Set<string>>(new Set());
     const [excludedPackMapIds, setExcludedPackMapIds] = useState<Set<number>>(new Set());
+    const [missingSourceLabels, setMissingSourceLabels] = useState<Map<number, "stable" | "lazer" | "common">>(
+        new Map(),
+    );
 
     const handleTypeChange = async (type: string | string[]) => {
         let types = typeof type === "string" ? [type] : type;
@@ -204,22 +255,29 @@ export const BeatmapPackDownloadView: React.FC<IBeatmapPackDownloadViewProps> = 
         await g.saveConfig(ConfigKey.BPKS_DL_MODE, mode);
     };
 
+    const handleScopeChange = async (scope: DetectionScope) => {
+        await g.saveConfig(ConfigKey.BPKS_DL_DETECTION_SCOPE, scope);
+    };
+
     const handleOpenDialog = () => {
         const render = () => {
             const savedTypes = (g.config?.[ConfigKey.BPKS_DL_TYPE] ?? ["standard"]) as string[];
             const gameModes = g.config?.[ConfigKey.BPKS_DL_GMODE] ?? (["all"] as string[]);
             const savedDateRange = (g.config?.[ConfigKey.BPKS_DL_DATE_RANGE] ?? "7d") as DateRangeType;
             const savedMode = (g.config?.[ConfigKey.BPKS_DL_MODE] ?? "full") as "full" | "diff";
+            const savedScope = (g.config?.[ConfigKey.BPKS_DL_DETECTION_SCOPE] ?? "all") as DetectionScope;
             return (
                 <BeatmapPackDownloadOptions
                     selectedTypes={savedTypes}
                     gameModes={gameModes}
                     selectedDateRange={savedDateRange}
                     downloadMode={savedMode}
+                    detectionScope={savedScope}
                     onTypeChange={handleTypeChange}
                     onGameModeChange={handleGameModeChange}
                     onDateRangeChange={handleDateRangeChange}
                     onModeChange={handleModeChange}
+                    onScopeChange={handleScopeChange}
                 />
             );
         };
@@ -263,8 +321,10 @@ export const BeatmapPackDownloadView: React.FC<IBeatmapPackDownloadViewProps> = 
         const types = (g.config?.[ConfigKey.BPKS_DL_TYPE] ?? ["standard"]) as string[];
         const dateRange = (g.config?.[ConfigKey.BPKS_DL_DATE_RANGE] ?? "7d") as DateRangeType;
         const downloadMode = (g.config?.[ConfigKey.BPKS_DL_MODE] ?? "full") as "full" | "diff";
+        const detectionScope = (g.config?.[ConfigKey.BPKS_DL_DETECTION_SCOPE] ?? "all") as DetectionScope;
         const gameModes = g.config?.[ConfigKey.BPKS_DL_GMODE] ?? (["all"] as string[]);
         const osuPath = g.config?.[ConfigKey.PATH_STABLE_DIR] ?? "";
+        const lazerPath = g.config?.[ConfigKey.PATH_LAZER_REALM] ?? "";
 
         if (types.length === 0) {
             g.setNotify({
@@ -280,12 +340,30 @@ export const BeatmapPackDownloadView: React.FC<IBeatmapPackDownloadViewProps> = 
             }
         }
 
-        if (downloadMode === "diff" && osuPath.length === 0) {
-            g.setNotify({
-                message: __(I18nStrings.MAIN_BPKS_DL_OSU_PATH_REQUIRED),
-                severity: "warning",
-            });
-            return;
+        if (downloadMode === "diff") {
+            if (detectionScope !== "lazer" && osuPath.length === 0) {
+                g.setNotify({
+                    message: __(I18nStrings.MAIN_BPKS_DL_OSU_PATH_REQUIRED),
+                    severity: "warning",
+                });
+                return;
+            }
+            if (detectionScope !== "stable") {
+                if (lazerPath.length === 0) {
+                    g.setNotify({
+                        message: __(I18nStrings.MAIN_BPKS_DL_LAZER_PATH_REQUIRED),
+                        severity: "warning",
+                    });
+                    return;
+                }
+                if (!getUseLazerModeExperiment()) {
+                    g.setNotify({
+                        message: __(I18nStrings.MAIN_BPKS_DL_LAZER_NOT_ENABLED),
+                        severity: "warning",
+                    });
+                    return;
+                }
+            }
         }
 
         handleCloseDialog();
@@ -393,15 +471,40 @@ export const BeatmapPackDownloadView: React.FC<IBeatmapPackDownloadViewProps> = 
 
                 if (downloadMode === "diff") {
                     g.setLoading(true, __(I18nStrings.MAIN_SRS_READING_LOCAL));
-                    const local = await OsuData.getBeatmapIndex();
-                    const mapIds = new Set(local.map((v) => v.beatmapSetId));
-                    setExcludedPackMapIds(
-                        new Set(
-                            processedPackInfos
-                                .flatMap((v) => v.beatmapsets.map((m) => m.id))
-                                .filter((v) => mapIds.has(v)),
-                        ),
-                    );
+                    const allMapIds = [...new Set(processedPackInfos.flatMap((v) => v.beatmapsets.map((m) => m.id)))];
+                    const checkStable = detectionScope !== "lazer";
+                    const checkLazer = detectionScope !== "stable";
+                    const stableSetIds = checkStable
+                        ? new Set((await OsuData.getBeatmapIndex()).map((v) => v.beatmapSetId))
+                        : new Set<number>();
+                    const lazerSetIds = checkLazer
+                        ? await OsuData.queryLazerBeatmapSetIds(allMapIds)
+                        : new Set<number>();
+                    const presentIds = new Set<number>();
+                    const labels = new Map<number, "stable" | "lazer" | "common">();
+                    for (const id of allMapIds) {
+                        const inStable = stableSetIds.has(id);
+                        const inLazer = lazerSetIds.has(id);
+                        const present =
+                            detectionScope === "all"
+                                ? inStable && inLazer
+                                : detectionScope === "stable"
+                                  ? inStable
+                                  : inLazer;
+                        if (present) {
+                            presentIds.add(id);
+                            continue;
+                        }
+                        if (detectionScope === "all") {
+                            labels.set(id, !inStable && !inLazer ? "common" : !inStable ? "stable" : "lazer");
+                        } else if (detectionScope === "stable") {
+                            labels.set(id, "stable");
+                        } else {
+                            labels.set(id, "lazer");
+                        }
+                    }
+                    setExcludedPackMapIds(presentIds);
+                    setMissingSourceLabels(labels);
                     g.setLoading(false);
                 }
             }
@@ -453,8 +556,44 @@ export const BeatmapPackDownloadView: React.FC<IBeatmapPackDownloadViewProps> = 
     };
 
     const handleStartDownload = () => {
-        const selectedPacks = fetchedPacks.filter((pack) => !excludedPackTags.has(pack.tag));
+        const savedMode = (g.config?.[ConfigKey.BPKS_DL_MODE] ?? "full") as "full" | "diff";
+        const savedScope = (g.config?.[ConfigKey.BPKS_DL_DETECTION_SCOPE] ?? "all") as DetectionScope;
 
+        if (savedMode === "diff") {
+            const maps = fetchedPackInfos.flatMap((pack) => pack.beatmapsets);
+            const mapIds = new Set(maps.map((v) => v.id));
+            const flitedMapId = [...mapIds].filter((id) => !excludedPackMapIds.has(id));
+            if (flitedMapId.length === 0) {
+                g.setNotify({
+                    message: __(I18nStrings.MAIN_BPKS_SELECT_AT_LEAST_ONE),
+                    severity: "warning",
+                });
+                return;
+            }
+            const dlFetcherDiff = async () =>
+                flitedMapId.map((map_id) => getApiDownloadLink().replace(":id", map_id.toString()));
+            const builtinItems: BuiltinItem[] = flitedMapId.map((id) => ({
+                source: "osu-official" as const,
+                beatmapsetId: id,
+                missingSource: missingSourceLabels.get(id),
+            }));
+            const downloadOptions = [
+                GetDLOptionByRows(dlFetcherDiff),
+                GetDLOptionByFDM(dlFetcherDiff),
+                GetDLOptionByBuiltin(builtinItems),
+            ];
+            if (savedScope !== "lazer") {
+                downloadOptions.push(GetDLOptionByDirect(flitedMapId));
+            }
+            g.setDialog(true, {
+                title: __(I18nStrings.MAIN_BPKS_DL_OPTIONS_TITLE),
+                content: __(I18nStrings.MAIN_BPKS_DL_OPTIONS_DESC),
+                actions: downloadOptions,
+            });
+            return;
+        }
+
+        const selectedPacks = fetchedPacks.filter((pack) => !excludedPackTags.has(pack.tag));
         if (selectedPacks.length === 0) {
             g.setNotify({
                 message: __(I18nStrings.MAIN_BPKS_SELECT_AT_LEAST_ONE),
@@ -462,32 +601,17 @@ export const BeatmapPackDownloadView: React.FC<IBeatmapPackDownloadViewProps> = 
             });
             return;
         }
-        const savedMode = (g.config?.[ConfigKey.BPKS_DL_MODE] ?? "full") as "full" | "diff";
-        const dlFetcher = async () =>
-            fetchedPacks.filter((pack) => !excludedPackTags.has(pack.tag)).map((pack) => pack.url);
-        let downloadOptions = [GetDLOptionByRows(dlFetcher), GetDLOptionByFDM(dlFetcher)];
-        if (savedMode === "diff") {
-            const maps = fetchedPackInfos.flatMap((pack) => pack.beatmapsets);
-            const mapIds = new Set(maps.map((v) => v.id));
-            const flitedMapId = [...mapIds].filter((id) => !excludedPackMapIds.has(id));
-            const dlFetcherDiff = async () =>
-                flitedMapId.map((map_id) => getApiDownloadLink().replace(":id", map_id.toString()));
-            downloadOptions = [
-                GetDLOptionByRows(dlFetcherDiff),
-                GetDLOptionByFDM(dlFetcherDiff),
-                GetDLOptionByDirect(flitedMapId),
-                GetDLOptionByBuiltin(flitedMapId.map((id) => ({ source: "osu-official" as const, beatmapsetId: id }))),
-            ];
-        } else {
-            const packUrls = fetchedPacks
-                .filter((p) => !excludedPackTags.has(p.tag))
-                .map((p) => ({ source: "pack" as const, url: p.url, filename: p.tag + ".zip" }));
-            downloadOptions = [
-                GetDLOptionByRows(dlFetcher),
-                GetDLOptionByFDM(dlFetcher),
-                GetDLOptionByBuiltin(packUrls),
-            ];
-        }
+        const dlFetcher = async () => selectedPacks.map((pack) => pack.url);
+        const packUrls: BuiltinItem[] = selectedPacks.map((p) => ({
+            source: "pack" as const,
+            url: p.url,
+            filename: `${p.tag}.zip`,
+        }));
+        const downloadOptions = [
+            GetDLOptionByRows(dlFetcher),
+            GetDLOptionByFDM(dlFetcher),
+            GetDLOptionByBuiltin(packUrls),
+        ];
         g.setDialog(true, {
             title: __(I18nStrings.MAIN_BPKS_DL_OPTIONS_TITLE),
             content: __(I18nStrings.MAIN_BPKS_DL_OPTIONS_DESC),
@@ -497,7 +621,10 @@ export const BeatmapPackDownloadView: React.FC<IBeatmapPackDownloadViewProps> = 
 
     const handleResetSelection = () => {
         setFetchedPacks([]);
+        setFetchedPackInfos([]);
         setExcludedPackTags(new Set());
+        setExcludedPackMapIds(new Set());
+        setMissingSourceLabels(new Map());
     };
 
     return (
@@ -523,6 +650,12 @@ export const BeatmapPackDownloadView: React.FC<IBeatmapPackDownloadViewProps> = 
                 let resSize = fetchedPacks.length;
                 let tarSize = resSize - excludedPackTags.size;
                 let extNameHead = {};
+                const missingLabelMap = {
+                    stable: I18nStrings.MAIN_DL_MISSING_STABLE,
+                    lazer: I18nStrings.MAIN_DL_MISSING_LAZER,
+                    common: I18nStrings.MAIN_DL_MISSING_COMMON,
+                };
+
                 if (savedMode === "diff") {
                     const maps = fetchedPackInfos.flatMap((pack) => pack.beatmapsets);
                     const mapIds = new Set(maps.map((v) => v.id));
@@ -531,20 +664,24 @@ export const BeatmapPackDownloadView: React.FC<IBeatmapPackDownloadViewProps> = 
                     allSelected = resSize > 0 && excludedPackMapIds.size === 0;
 
                     packRows = fetchedPackInfos.flatMap((pack) => {
-                        return pack.beatmapsets.map((beatmapset) => ({
-                            tag: pack.tag,
-                            name: beatmapset.title,
-                            author: pack.author,
-                            ruleset_id: pack.ruleset_id,
-                            date: new Date(beatmapset.last_updated).toLocaleDateString(),
-                            is_selected: {
-                                value: !excludedPackMapIds.has(beatmapset.id),
-                                callback: () =>
-                                    handlePackMapSelection(beatmapset.id, excludedPackMapIds.has(beatmapset.id)),
-                            },
-                            "#link": `https://osu.ppy.sh/s/${beatmapset.id}`,
-                            "#shell_link": `osu://s/${beatmapset.id}`,
-                        }));
+                        return pack.beatmapsets.map((beatmapset) => {
+                            const missingSource = missingSourceLabels.get(beatmapset.id);
+                            return {
+                                tag: pack.tag,
+                                name: beatmapset.title,
+                                author: pack.author,
+                                ruleset_id: pack.ruleset_id,
+                                date: new Date(beatmapset.last_updated).toLocaleDateString(),
+                                is_selected: {
+                                    value: !excludedPackMapIds.has(beatmapset.id),
+                                    callback: () =>
+                                        handlePackMapSelection(beatmapset.id, excludedPackMapIds.has(beatmapset.id)),
+                                },
+                                missing_source_label: missingSource ? __(missingLabelMap[missingSource]) : "",
+                                "#link": `https://osu.ppy.sh/s/${beatmapset.id}`,
+                                "#shell_link": `osu://s/${beatmapset.id}`,
+                            };
+                        });
                     });
                     extNameHead = {
                         link: "link",
@@ -568,6 +705,13 @@ export const BeatmapPackDownloadView: React.FC<IBeatmapPackDownloadViewProps> = 
                     { name: __(I18nStrings.MAIN_AUTHOR), type: "string", key: "author" },
                     { name: __(I18nStrings.MAIN_DATE), type: "string", key: "date" },
                 ];
+                if (savedMode === "diff") {
+                    heads.push({
+                        name: __(I18nStrings.MAIN_BPKS_DL_MISSING_LABEL),
+                        type: "string",
+                        key: "missing_source_label",
+                    });
+                }
 
                 return (
                     <Stack spacing={2}>

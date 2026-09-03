@@ -75,7 +75,12 @@ const CompareList: React.FC<ICompareListProps> = ({ source, target }) => {
                                 primary={
                                     <Box sx={{ display: "flex", gap: 2 }}>
                                         <Box>
-                                            <Typography variant="body2" color="text.secondary">
+                                            <Typography
+                                                variant="body2"
+                                                sx={{
+                                                    color: "text.secondary",
+                                                }}
+                                            >
                                                 {__(I18nStrings.MAIN_COMPARE_ORIGINAL)}
                                             </Typography>
                                             <Typography
@@ -91,7 +96,12 @@ const CompareList: React.FC<ICompareListProps> = ({ source, target }) => {
                                             </Typography>
                                         </Box>
                                         <Box>
-                                            <Typography variant="body2" color="text.secondary">
+                                            <Typography
+                                                variant="body2"
+                                                sx={{
+                                                    color: "text.secondary",
+                                                }}
+                                            >
                                                 {__(I18nStrings.MAIN_COMPARE_TARGET)}
                                             </Typography>
                                             <Typography
@@ -110,7 +120,12 @@ const CompareList: React.FC<ICompareListProps> = ({ source, target }) => {
                                 }
                                 secondary={
                                     statusLabel[row.status] && (
-                                        <Typography variant="caption" color="text.secondary">
+                                        <Typography
+                                            variant="caption"
+                                            sx={{
+                                                color: "text.secondary",
+                                            }}
+                                        >
                                             {statusLabel[row.status]}
                                         </Typography>
                                     )

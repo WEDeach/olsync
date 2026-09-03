@@ -21,47 +21,25 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { TrackerDailyStat, TrackerUserSummary } from "../../defines/tracker_types";
 import { IOsuCollection } from "../../defines/types";
 import __ from "../../utils/i18n";
-import { OsuBeatmap, OsuData, OsuScore } from "../../utils/osu";
+import { LogError } from "../../utils/log";
+import {
+    buildBeatmapLookup,
+    calcGrade,
+    calculateAccuracy,
+    FlatScore,
+    flattenScoreMap,
+    GRADE_COLORS,
+    GRADE_ORDER,
+    getNativeStarRating,
+    OsuBeatmap,
+    OsuData,
+    OsuScore,
+} from "../../utils/osu";
 import { ConfigKey } from "../../utils/typed/config";
 import { I18nStrings } from "../../utils/typed/i18n";
 import g from "../state";
 import { BeatmapResultDrawer, makeScorePPKey, ScoreRecordRow, ScoreRecordTable } from "./beatmapPicker";
 
-interface HitCounts {
-    count300: number;
-    count100: number;
-    count50: number;
-    countMiss: number;
-}
-
-function calcAccuracy(s: HitCounts): number {
-    const total = s.count300 + s.count100 + s.count50 + s.countMiss;
-    if (total === 0) return 0;
-    return ((s.count300 * 300 + s.count100 * 100 + s.count50 * 50) / (total * 300)) * 100;
-}
-
-function calcGrade(s: HitCounts): string {
-    const total = s.count300 + s.count100 + s.count50 + s.countMiss;
-    if (total === 0) return "D";
-    const r300 = s.count300 / total;
-    const r50 = s.count50 / total;
-    if (r300 === 1) return "SS";
-    if (r300 > 0.9 && r50 <= 0.01 && s.countMiss === 0) return "S";
-    if ((r300 > 0.8 && s.countMiss === 0) || r300 > 0.9) return "A";
-    if ((r300 > 0.7 && s.countMiss === 0) || r300 > 0.8) return "B";
-    if (r300 > 0.6) return "C";
-    return "D";
-}
-
-const GRADE_ORDER = ["SS", "S", "A", "B", "C", "D"];
-const GRADE_COLORS: Record<string, string> = {
-    SS: "#cd1b9c",
-    S: "#16b5c2",
-    A: "#83d430",
-    B: "#e2b03e",
-    C: "#e9784e",
-    D: "#dd474d",
-};
 interface EChartProps {
     title: string;
     option: object;
@@ -86,24 +64,9 @@ const EChart: React.FC<EChartProps> = ({ title, option, height = 300, onDataZoom
 
 type DateMode = "1d" | "7d" | "30d" | "custom";
 
-interface FlatScore {
-    md5Hash: string;
-    userName: string;
-    date: Date;
-    count300: number;
-    count100: number;
-    count50: number;
-    countMiss: number;
-    totalScore: number;
-    maxCombo: number;
-    mods: number;
-    ruleset: number;
-    beatmap: OsuBeatmap | undefined;
-}
-
 function buildUserSummary(userName: string, scores: FlatScore[]): TrackerUserSummary {
     const dailyMap = new Map<string, TrackerDailyStat>();
-    const totalGrades: Record<string, number> = { SS: 0, S: 0, A: 0, B: 0, C: 0, D: 0 };
+    const totalGrades: Record<string, number> = { SS: 0, SSH: 0, S: 0, SH: 0, A: 0, B: 0, C: 0, D: 0 };
 
     for (const s of scores) {
         const day = dayjs(s.date).format("YYYY-MM-DD");
@@ -118,13 +81,13 @@ function buildUserSummary(userName: string, scores: FlatScore[]): TrackerUserSum
                 count100: 0,
                 count50: 0,
                 countMiss: 0,
-                gradeCount: { SS: 0, S: 0, A: 0, B: 0, C: 0, D: 0 },
+                gradeCount: { SS: 0, SSH: 0, S: 0, SH: 0, A: 0, B: 0, C: 0, D: 0 },
             };
             dailyMap.set(day, stat);
         }
         stat.playCount++;
         stat.totalScore += s.totalScore;
-        stat.totalAccSum += calcAccuracy(s);
+        stat.totalAccSum += calculateAccuracy(s, "percent");
         stat.count300 += s.count300;
         stat.count100 += s.count100;
         stat.count50 += s.count50;
@@ -143,15 +106,23 @@ export const TrackerView: React.FC = () => {
     const [analyzing, setAnalyzing] = useState(false);
     const [stablePathMissing, setStablePathMissing] = useState(false);
 
-    const [allScoresByUser, setAllScoresByUser] = useState<Map<string, FlatScore[]>>(new Map());
+    const [recordsByUser, setRecordsByUser] = useState<Map<string, FlatScore[]>>(new Map());
+    const recordsRangeKeyRef = useRef<string>("");
+    const [recordsLoading, setRecordsLoading] = useState(false);
     const collectionsRef = useRef<IOsuCollection[]>([]);
     const [selectedMap, setSelectedMap] = useState<OsuBeatmap | null>(null);
     const scoresByHashRef = useRef<Map<string, OsuScore[]>>(new Map());
+    const [, bumpScoreMapVersion] = useState(0);
 
     const [allUsers, setAllUsers] = useState<string[]>([]);
     const [selectedUser, setSelectedUser] = useState("");
     const isInitialUserSet = useRef(true);
     const [summaryByUser, setSummaryByUser] = useState<Map<string, TrackerUserSummary>>(new Map());
+
+    const summaryByUserRef = useRef(summaryByUser);
+    summaryByUserRef.current = summaryByUser;
+
+    const [isTrackerConfigLoaded, setIsTrackerConfigLoaded] = useState(false);
 
     const [zoomStart, setZoomStart] = useState(0);
     const [zoomEnd, setZoomEnd] = useState(100);
@@ -195,14 +166,71 @@ export const TrackerView: React.FC = () => {
     const [customStart, setCustomStart] = useState(dayjs().subtract(30, "day").format("YYYY-MM-DD"));
     const [customEnd, setCustomEnd] = useState(dayjs().format("YYYY-MM-DD"));
 
+    const dateRange = useMemo<[dayjs.Dayjs, dayjs.Dayjs]>(() => {
+        const end = dayjs().endOf("day");
+        if (dateMode === "1d") return [dayjs().startOf("day"), end];
+        if (dateMode === "7d") return [dayjs().subtract(6, "day").startOf("day"), end];
+        if (dateMode === "30d") return [dayjs().subtract(29, "day").startOf("day"), end];
+        return [dayjs(customStart).startOf("day"), dayjs(customEnd).endOf("day")];
+    }, [dateMode, customStart, customEnd]);
+
+    const dateRangeRef = useRef(dateRange);
+    dateRangeRef.current = dateRange;
+
+    useEffect(() => {
+        if (g.config === undefined) return;
+        if (isTrackerConfigLoaded) return;
+        setIsTrackerConfigLoaded(true);
+        const savedMode = g.config[ConfigKey.TRACKER_DATE_MODE];
+        if (savedMode === "1d" || savedMode === "7d" || savedMode === "30d" || savedMode === "custom") {
+            setDateMode(savedMode);
+        }
+        const savedStart = g.config[ConfigKey.TRACKER_CUSTOM_START] as string | undefined;
+        if (savedStart && dayjs(savedStart).isValid()) {
+            setCustomStart(savedStart);
+        }
+        const savedEnd = g.config[ConfigKey.TRACKER_CUSTOM_END] as string | undefined;
+        if (savedEnd && dayjs(savedEnd).isValid()) {
+            setCustomEnd(savedEnd);
+        }
+    }, [g.config, isTrackerConfigLoaded]);
+
+    useEffect(() => {
+        if (g.config === undefined || !isTrackerConfigLoaded) return;
+        if (g.config[ConfigKey.TRACKER_DATE_MODE] === dateMode) return;
+        void g.saveConfig(ConfigKey.TRACKER_DATE_MODE, dateMode);
+    }, [dateMode, isTrackerConfigLoaded]);
+
+    useEffect(() => {
+        if (g.config === undefined || !isTrackerConfigLoaded) return;
+        if (g.config[ConfigKey.TRACKER_CUSTOM_START] === customStart) return;
+        void g.saveConfig(ConfigKey.TRACKER_CUSTOM_START, customStart);
+    }, [customStart, isTrackerConfigLoaded]);
+
+    useEffect(() => {
+        if (g.config === undefined || !isTrackerConfigLoaded) return;
+        if (g.config[ConfigKey.TRACKER_CUSTOM_END] === customEnd) return;
+        void g.saveConfig(ConfigKey.TRACKER_CUSTOM_END, customEnd);
+    }, [customEnd, isTrackerConfigLoaded]);
+
     const handleAnalyze = useCallback(async (scoresByUser: Map<string, FlatScore[]>, users: string[]) => {
         setAnalyzing(true);
         try {
             const newEntries: [string, TrackerUserSummary][] = [];
+            const zoomSnapshot = new Map(summaryByUserRef.current);
             for (const user of users) {
+                const existing = zoomSnapshot.get(user);
                 const summary = buildUserSummary(user, scoresByUser.get(user) ?? []);
-                await window.olsCore.saveTrackerUserSummary(summary);
-                newEntries.push([user, summary]);
+                if (existing) {
+                    summary.zoomStart = existing.zoomStart;
+                    summary.zoomEnd = existing.zoomEnd;
+                }
+                try {
+                    await window.olsCore.saveTrackerUserSummary(summary);
+                    newEntries.push([user, summary]);
+                } catch (err) {
+                    LogError(err);
+                }
             }
             setSummaryByUser((prev) => new Map([...prev, ...newEntries]));
         } finally {
@@ -212,7 +240,101 @@ export const TrackerView: React.FC = () => {
 
     const isLoadingRef = useRef(false);
 
-    const loadData = useCallback(async () => {
+    const ensureAllScoresForMap = useCallback(
+        async (map: OsuBeatmap) => {
+            if (!selectedUser) return;
+            const hashes = [map.md5Hash, map._contentHash].filter((hash): hash is string => !!hash);
+            const mapScores = await OsuData.getScoresForMap(selectedUser, hashes);
+            const merged = new Map(scoresByHashRef.current);
+            let changed = false;
+            mapScores.forEach((scores, hash) => {
+                merged.set(hash, scores);
+                changed = true;
+            });
+            if (!changed) return;
+            scoresByHashRef.current = merged;
+            bumpScoreMapVersion((v) => v + 1);
+        },
+        [selectedUser],
+    );
+
+    const isLoadingRecordsRef = useRef(false);
+    const pendingRangeKeyRef = useRef<string>("");
+    const selectedUserRef = useRef(selectedUser);
+    selectedUserRef.current = selectedUser;
+
+    const loadRecordsForCurrentSelection = useCallback(
+        async (user: string, range: [dayjs.Dayjs, dayjs.Dayjs]) => {
+            if (!user) return;
+            const rangeKey = `${user}:${range[0].valueOf()}-${range[1].valueOf()}`;
+            if (recordsRangeKeyRef.current === rangeKey) return;
+            if (isLoadingRecordsRef.current) {
+                pendingRangeKeyRef.current = rangeKey;
+                return;
+            }
+            isLoadingRecordsRef.current = true;
+            pendingRangeKeyRef.current = "";
+            setRecordsLoading(true);
+            try {
+                const scoresMap = await OsuData.getScoresByUser(user, [range[0].toDate(), range[1].toDate()]);
+                const hashes = [...scoresMap.keys()];
+                const beatmaps = await OsuData.getBeatmapsByHashes(hashes);
+                const beatmapByHash = buildBeatmapLookup(beatmaps);
+                const flat = flattenScoreMap(scoresMap, beatmapByHash);
+                flat.sort((a, b) => b.date.getTime() - a.date.getTime());
+                const next = new Map<string, FlatScore[]>();
+                next.set(user, flat);
+                setRecordsByUser(next);
+                recordsRangeKeyRef.current = rangeKey;
+                bumpScoreMapVersion((v) => v + 1);
+            } finally {
+                setRecordsLoading(false);
+                isLoadingRecordsRef.current = false;
+                if (isLoadingRef.current) {
+                    setLoading(false);
+                    isLoadingRef.current = false;
+                }
+                const pendingKey = pendingRangeKeyRef.current;
+                pendingRangeKeyRef.current = "";
+                if (pendingKey && selectedUserRef.current) {
+                    loadRecordsForCurrentSelectionRef
+                        .current(selectedUserRef.current, dateRangeRef.current)
+                        .catch(LogError);
+                }
+            }
+        },
+        [setRecordsLoading, setRecordsByUser, bumpScoreMapVersion],
+    );
+
+    const loadRecordsForCurrentSelectionRef = useRef(loadRecordsForCurrentSelection);
+    loadRecordsForCurrentSelectionRef.current = loadRecordsForCurrentSelection;
+
+    const loadAllScoresAndAnalyze = useCallback(
+        async (users: string[]) => {
+            setAnalyzing(true);
+            try {
+                const [beatmaps, scoresMap] = await Promise.all([OsuData.getBeatmaps(), OsuData.getAllScoresMerged()]);
+                const beatmapByHash = buildBeatmapLookup(beatmaps);
+                const allFlat = flattenScoreMap(scoresMap, beatmapByHash);
+                const byUser = new Map<string, FlatScore[]>();
+                for (const s of allFlat) {
+                    let arr = byUser.get(s.userName);
+                    if (!arr) {
+                        arr = [];
+                        byUser.set(s.userName, arr);
+                    }
+                    arr.push(s);
+                }
+                await handleAnalyze(byUser, users);
+            } finally {
+                setAnalyzing(false);
+            }
+        },
+        [handleAnalyze],
+    );
+
+    const loadSummaryAndUsers = useCallback(async () => {
+        if (g.config === undefined) return;
         if (isLoadingRef.current) return;
         isLoadingRef.current = true;
         setLoading(true);
@@ -221,55 +343,35 @@ export const TrackerView: React.FC = () => {
             if (!stablePath) {
                 setStablePathMissing(true);
                 const summaries = await window.olsCore.listTrackerUserSummaries();
-                if (summaries.length > 0) {
-                    const cacheMap = new Map<string, TrackerUserSummary>();
-                    for (const s of summaries) {
-                        cacheMap.set(s.userName, s);
-                    }
-                    const lastUser = g.config?.[ConfigKey.TRACKER_LAST_USER] as string | undefined;
-                    const initialUser = lastUser && cacheMap.has(lastUser) ? lastUser : summaries[0].userName;
-                    const initialCache = cacheMap.get(initialUser);
-                    if (initialCache) {
-                        setSummaryByUser(cacheMap);
-                        setAllUsers(summaries.map((s) => s.userName));
-                        isInitialUserSet.current = true;
-                        setSelectedUser(initialUser);
-                        setZoomStart(initialCache.zoomStart ?? 0);
-                        setZoomEnd(initialCache.zoomEnd ?? 100);
-                    }
+                if (summaries.length === 0) {
+                    setLoading(false);
+                    isLoadingRef.current = false;
+                    return;
                 }
-                setLoading(false);
+                const cacheMap = new Map<string, TrackerUserSummary>();
+                for (const s of summaries) {
+                    cacheMap.set(s.userName, s);
+                }
+                const lastUser = g.config?.[ConfigKey.TRACKER_LAST_USER] as string | undefined;
+                const initialUser = lastUser && cacheMap.has(lastUser) ? lastUser : summaries[0].userName;
+                const initialCache = cacheMap.get(initialUser);
+                isInitialUserSet.current = true;
+                setSelectedUser(initialUser);
+                if (initialCache) {
+                    setSummaryByUser(cacheMap);
+                    setAllUsers(summaries.map((s) => s.userName));
+                    setZoomStart(initialCache.zoomStart ?? 0);
+                    setZoomEnd(initialCache.zoomEnd ?? 100);
+                }
                 return;
             }
             setStablePathMissing(false);
-            const [beatmaps, scoresMap, cols] = await Promise.all([
-                OsuData.getBeatmaps(),
-                OsuData.getScores(),
-                OsuData.getCollections(),
-            ]);
-            const beatmapByHash = new Map<string, OsuBeatmap>(beatmaps.map((b) => [b.md5Hash, b]));
-            const flat: FlatScore[] = [];
-            const userSet = new Set<string>();
-            scoresMap.forEach((scores, md5Hash) => {
-                for (const s of scores) {
-                    flat.push({
-                        md5Hash,
-                        userName: s.userName,
-                        date: s.date,
-                        count300: s.count300,
-                        count100: s.count100,
-                        count50: s.count50,
-                        countMiss: s.countMiss,
-                        totalScore: s.totalScore,
-                        maxCombo: s.maxCombo,
-                        mods: s.mods,
-                        ruleset: s.ruleset,
-                        beatmap: beatmapByHash.get(md5Hash),
-                    });
-                    if (s.userName) userSet.add(s.userName);
-                }
-            });
-            const users = Array.from(userSet).sort();
+            const [cols, users] = await Promise.all([OsuData.getCollections(), OsuData.getStableUsers()]);
+            if (users.length === 0) {
+                setLoading(false);
+                isLoadingRef.current = false;
+                return;
+            }
             const lastUser = g.config?.[ConfigKey.TRACKER_LAST_USER] as string | undefined;
             const initialUser = lastUser && users.includes(lastUser) ? lastUser : (users[0] ?? "");
             const cacheMap = new Map<string, TrackerUserSummary>();
@@ -279,116 +381,45 @@ export const TrackerView: React.FC = () => {
                     cacheMap.set(initialUser, cache as TrackerUserSummary);
                 }
             }
-            const byUser = new Map<string, FlatScore[]>();
-            for (const s of flat) {
-                let arr = byUser.get(s.userName);
-                if (!arr) {
-                    arr = [];
-                    byUser.set(s.userName, arr);
-                }
-                arr.push(s);
-            }
-            setAllScoresByUser(byUser);
             setAllUsers(users);
             isInitialUserSet.current = true;
             setSelectedUser(initialUser);
             collectionsRef.current = cols;
-            scoresByHashRef.current = scoresMap;
             setSummaryByUser(cacheMap);
             const initialCache = cacheMap.get(initialUser);
             setZoomStart(initialCache?.zoomStart ?? 0);
             setZoomEnd(initialCache?.zoomEnd ?? 100);
-            setLoading(false);
             if (cacheMap.size === 0 && users.length > 0) {
-                handleAnalyze(byUser, users);
+                await loadAllScoresAndAnalyze(users);
             }
-        } catch {
+        } catch (err) {
+            LogError(err);
             setLoading(false);
-        } finally {
             isLoadingRef.current = false;
         }
-    }, [handleAnalyze]);
+    }, [loadAllScoresAndAnalyze]);
 
-    const isRefreshingRef = useRef(false);
-    const allScoresByUserRef = useRef<Map<string, FlatScore[]>>(new Map());
     useEffect(() => {
-        allScoresByUserRef.current = allScoresByUser;
-    }, [allScoresByUser]);
+        loadSummaryAndUsers();
+    }, [loadSummaryAndUsers, g.config]);
 
-    const refreshScores = useCallback(async () => {
-        if (isRefreshingRef.current) return;
-        isRefreshingRef.current = true;
-        try {
-            const scoresMap = await OsuData.getScores();
-            const existingBeatmapByHash = new Map<string, OsuBeatmap | undefined>();
-            for (const scores of allScoresByUserRef.current.values()) {
-                for (const s of scores) existingBeatmapByHash.set(s.md5Hash, s.beatmap);
-            }
-            const flat: FlatScore[] = [];
-            const userSet = new Set<string>();
-            scoresMap.forEach((scores, md5Hash) => {
-                for (const s of scores) {
-                    flat.push({
-                        md5Hash,
-                        userName: s.userName,
-                        date: s.date,
-                        count300: s.count300,
-                        count100: s.count100,
-                        count50: s.count50,
-                        countMiss: s.countMiss,
-                        totalScore: s.totalScore,
-                        maxCombo: s.maxCombo,
-                        mods: s.mods,
-                        ruleset: s.ruleset,
-                        beatmap: existingBeatmapByHash.get(md5Hash),
-                    });
-                    if (s.userName) userSet.add(s.userName);
+    const refreshDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    useEffect(() => {
+        const unsubscribe = OsuData.subscribe("scores", () => {
+            if (refreshDebounceRef.current) clearTimeout(refreshDebounceRef.current);
+            refreshDebounceRef.current = setTimeout(() => {
+                recordsRangeKeyRef.current = "";
+                scoresByHashRef.current = new Map();
+                if (selectedUser) {
+                    loadRecordsForCurrentSelectionRef.current(selectedUser, dateRangeRef.current).catch(LogError);
                 }
-            });
-            const users = Array.from(userSet).sort();
-            const byUser2 = new Map<string, FlatScore[]>();
-            for (const s of flat) {
-                let arr = byUser2.get(s.userName);
-                if (!arr) {
-                    arr = [];
-                    byUser2.set(s.userName, arr);
-                }
-                arr.push(s);
-            }
-            setAllScoresByUser(byUser2);
-            setAllUsers(users);
-            scoresByHashRef.current = scoresMap;
-        } finally {
-            isRefreshingRef.current = false;
-        }
-    }, []);
-
-    useEffect(() => {
-        loadData();
-    }, [loadData]);
-
-    useEffect(() => {
-        return OsuData.subscribe("scores", refreshScores);
-    }, [refreshScores]);
-
-    const refreshBeatmaps = useCallback(async () => {
-        const beatmaps = await OsuData.getBeatmaps();
-        const beatmapByHash = new Map<string, OsuBeatmap>(beatmaps.map((b) => [b.md5Hash, b]));
-        setAllScoresByUser((prev) => {
-            const next = new Map<string, FlatScore[]>();
-            for (const [user, scores] of prev) {
-                next.set(
-                    user,
-                    scores.map((s) => ({ ...s, beatmap: beatmapByHash.get(s.md5Hash) })),
-                );
-            }
-            return next;
+            }, 2000);
         });
-    }, []);
-
-    useEffect(() => {
-        return OsuData.subscribe("beatmaps", refreshBeatmaps);
-    }, [refreshBeatmaps]);
+        return () => {
+            if (refreshDebounceRef.current) clearTimeout(refreshDebounceRef.current);
+            unsubscribe();
+        };
+    }, [selectedUser]);
 
     const userSummary = summaryByUser.get(selectedUser);
 
@@ -409,16 +440,24 @@ export const TrackerView: React.FC = () => {
     }, [selectedUser]);
 
     useEffect(() => {
-        if (!selectedUser || summaryByUser.has(selectedUser) || allScoresByUser.size === 0) return;
+        if (!selectedUser || summaryByUserRef.current.has(selectedUser)) return;
         (async () => {
-            const cache = await window.olsCore.getTrackerUserSummary(selectedUser);
-            if (cache && !("error" in (cache as object))) {
-                setSummaryByUser((prev) => new Map([...prev, [selectedUser, cache as TrackerUserSummary]]));
-            } else {
-                handleAnalyze(allScoresByUser, [selectedUser]);
+            try {
+                const cache = await window.olsCore.getTrackerUserSummary(selectedUser);
+                if (cache && !("error" in (cache as object))) {
+                    setSummaryByUser((prev) => new Map([...prev, [selectedUser, cache as TrackerUserSummary]]));
+                }
+            } catch (err) {
+                LogError(err);
             }
         })();
-    }, [selectedUser, summaryByUser, allScoresByUser, handleAnalyze]);
+    }, [selectedUser]);
+
+    useEffect(() => {
+        if (selectedUser) {
+            loadRecordsForCurrentSelectionRef.current(selectedUser, dateRangeRef.current).catch(LogError);
+        }
+    }, [selectedUser, dateRange]);
 
     const saveZoomRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -513,7 +552,7 @@ export const TrackerView: React.FC = () => {
     }, [userSummary, visibleDailyStats]);
 
     const rankChartOption = useMemo(() => {
-        const grades: Record<string, number> = { SS: 0, S: 0, A: 0, B: 0, C: 0, D: 0 };
+        const grades: Record<string, number> = { SS: 0, SSH: 0, S: 0, SH: 0, A: 0, B: 0, C: 0, D: 0 };
         for (const s of visibleDailyStats) {
             for (const [g, c] of Object.entries(s.gradeCount)) {
                 grades[g] = (grades[g] ?? 0) + (c as number);
@@ -591,23 +630,9 @@ export const TrackerView: React.FC = () => {
         };
     }, [userSummary, visibleDailyStats]);
 
-    const dateRange = useMemo<[dayjs.Dayjs, dayjs.Dayjs]>(() => {
-        const end = dayjs().endOf("day");
-        if (dateMode === "1d") return [dayjs().startOf("day"), end];
-        if (dateMode === "7d") return [dayjs().subtract(6, "day").startOf("day"), end];
-        if (dateMode === "30d") return [dayjs().subtract(29, "day").startOf("day"), end];
-        return [dayjs(customStart).startOf("day"), dayjs(customEnd).endOf("day")];
-    }, [dateMode, customStart, customEnd]);
-
     const filteredRecords = useMemo(() => {
-        const userScores = allScoresByUser.get(selectedUser) ?? [];
-        return userScores
-            .filter((s) => {
-                const d = dayjs(s.date);
-                return !d.isBefore(dateRange[0]) && !d.isAfter(dateRange[1]);
-            })
-            .sort((a, b) => b.date.getTime() - a.date.getTime());
-    }, [allScoresByUser, selectedUser, dateRange]);
+        return recordsByUser.get(selectedUser) ?? [];
+    }, [recordsByUser, selectedUser]);
 
     const filteredRecordsRef = useRef(filteredRecords);
     useEffect(() => {
@@ -633,6 +658,7 @@ export const TrackerView: React.FC = () => {
                 .calcPP({
                     md5Hash: s.md5Hash,
                     mods: s.mods,
+                    modsData: s._lazerMods,
                     combo: s.maxCombo,
                     n300: s.count300,
                     n100: s.count100,
@@ -645,6 +671,7 @@ export const TrackerView: React.FC = () => {
                     nCircles: s.beatmap.numCircles,
                     nSliders: s.beatmap.numSliders,
                     ruleset: s.ruleset,
+                    lazer: s._lazer,
                 })
                 .then((result) => {
                     if (result && !("error" in result)) {
@@ -659,12 +686,16 @@ export const TrackerView: React.FC = () => {
     }, []);
 
     const osuPath = g.config?.[ConfigKey.PATH_STABLE_DIR] ?? "";
-    const getDisplaySR = (bm: OsuBeatmap) =>
-        bm.mode === 1 ? bm.srTaiko : bm.mode === 2 ? bm.srCtb : bm.mode === 3 ? bm.srMania : bm.srStd;
 
     if (loading) {
         return (
-            <Stack alignItems="center" justifyContent="center" sx={{ py: 8 }}>
+            <Stack
+                sx={{
+                    alignItems: "center",
+                    justifyContent: "center",
+                    py: 8,
+                }}
+            >
                 <Typography variant="body2">{__(I18nStrings.MAIN_TRACKER_LOADING)}</Typography>
             </Stack>
         );
@@ -672,7 +703,13 @@ export const TrackerView: React.FC = () => {
 
     if (allUsers.length === 0) {
         return (
-            <Stack alignItems="center" justifyContent="center" sx={{ py: 8 }}>
+            <Stack
+                sx={{
+                    alignItems: "center",
+                    justifyContent: "center",
+                    py: 8,
+                }}
+            >
                 <Observer>
                     {() => {
                         const sp = g.config?.[ConfigKey.PATH_STABLE_DIR] ?? "";
@@ -684,8 +721,13 @@ export const TrackerView: React.FC = () => {
                             );
                         }
                         return (
-                            <Typography variant="body2" color="text.secondary">
-                                {__(I18nStrings.MAIN_TRACKER_NO_DATA)}
+                            <Typography
+                                variant="body2"
+                                sx={{
+                                    color: "text.secondary",
+                                }}
+                            >
+                                {__(I18nStrings.MAIN_TRACKER_NO_DATA_EMPTY)}
                             </Typography>
                         );
                     }}
@@ -697,7 +739,7 @@ export const TrackerView: React.FC = () => {
     const sliderVisible = chartsVisible && !tableVisible;
 
     return (
-        <Stack spacing={2} sx={{ pb: sliderVisible ? 8 : 0 }}>
+        <Stack spacing={2}>
             {stablePathMissing && (
                 <Observer>
                     {() =>
@@ -708,47 +750,68 @@ export const TrackerView: React.FC = () => {
                 </Observer>
             )}
             {/* 成績分析 (all-time, from cache) */}
-            <Stack direction="row" spacing={1} alignItems="center">
+            <Stack
+                direction="row"
+                spacing={1}
+                sx={{
+                    alignItems: "center",
+                }}
+            >
                 <Typography variant="subtitle1">{__(I18nStrings.MAIN_TRACKER_SECTION_ANALYSIS)}</Typography>
                 <Box sx={{ flexGrow: 1 }} />
                 {userSummary && (
-                    <Typography variant="caption" color="text.secondary">
+                    <Typography
+                        variant="caption"
+                        sx={{
+                            color: "text.secondary",
+                        }}
+                    >
                         {__(I18nStrings.MAIN_TRACKER_UPDATED_AT)}{" "}
                         {dayjs(userSummary.updatedAt).format("YYYY-MM-DD HH:mm")}
                     </Typography>
                 )}
-                {allUsers.length > 1 ? (
-                    <Select
-                        size="small"
-                        sx={{ height: 30 }}
-                        value={selectedUser}
-                        onChange={(e) => {
-                            isInitialUserSet.current = false;
-                            setSelectedUser(e.target.value as string);
+                <Stack direction="row" spacing={1}>
+                    {allUsers.length > 1 ? (
+                        <Select
+                            size="small"
+                            value={selectedUser}
+                            onChange={(e) => {
+                                isInitialUserSet.current = false;
+                                setSelectedUser(e.target.value as string);
+                            }}
+                        >
+                            {allUsers.map((u) => (
+                                <MenuItem key={u} value={u}>
+                                    {u}
+                                </MenuItem>
+                            ))}
+                        </Select>
+                    ) : (
+                        <Chip label={selectedUser} size="small" variant="outlined" sx={{ alignSelf: "center" }} />
+                    )}
+                    <Button
+                        variant="outlined"
+                        disabled={analyzing || stablePathMissing}
+                        onClick={() => loadAllScoresAndAnalyze(allUsers)}
+                    >
+                        {analyzing ? __(I18nStrings.MAIN_TRACKER_ANALYZING) : __(I18nStrings.BTN_TRACKER_REANALYZE)}
+                    </Button>
+                </Stack>
+            </Stack>
+            {!userSummary && analyzing ? (
+                <Stack
+                    sx={{
+                        alignItems: "center",
+                        justifyContent: "center",
+                        py: 4,
+                    }}
+                >
+                    <Typography
+                        variant="body2"
+                        sx={{
+                            color: "text.secondary",
                         }}
                     >
-                        {allUsers.map((u) => (
-                            <MenuItem key={u} value={u}>
-                                {u}
-                            </MenuItem>
-                        ))}
-                    </Select>
-                ) : (
-                    <Chip label={selectedUser} size="small" variant="outlined" />
-                )}
-                <Button
-                    size="small"
-                    variant="outlined"
-                    disabled={analyzing || stablePathMissing}
-                    onClick={() => handleAnalyze(allScoresByUser, allUsers)}
-                >
-                    {analyzing ? __(I18nStrings.MAIN_TRACKER_ANALYZING) : __(I18nStrings.BTN_TRACKER_REANALYZE)}
-                </Button>
-            </Stack>
-
-            {!userSummary && analyzing ? (
-                <Stack alignItems="center" justifyContent="center" sx={{ py: 4 }}>
-                    <Typography variant="body2" color="text.secondary">
                         {__(I18nStrings.MAIN_TRACKER_ANALYZING)}
                     </Typography>
                 </Stack>
@@ -781,17 +844,35 @@ export const TrackerView: React.FC = () => {
                     </Stack>
                 </Box>
             )}
-
             <Divider />
-
             {/* 遊玩紀錄 (live data, date filtered) */}
-            <Stack ref={tableSectionCallback} direction="row" spacing={1} alignItems="center" flexWrap="wrap">
+            <Stack
+                ref={tableSectionCallback}
+                direction="row"
+                spacing={1}
+                sx={{
+                    alignItems: "center",
+                    flexWrap: "wrap",
+                }}
+            >
                 <Typography variant="subtitle1">{__(I18nStrings.MAIN_TRACKER_SECTION_RECORDS)}</Typography>
                 <Box sx={{ flexGrow: 1 }} />
-                <Typography variant="body2" color="text.secondary">
+                <Typography
+                    variant="body2"
+                    sx={{
+                        color: "text.secondary",
+                    }}
+                >
                     {__(I18nStrings.MAIN_TRACKER_RECORDS_COUNT, { count: filteredRecords.length })}
+                    {recordsLoading && " ..."}
                 </Typography>
-                <ToggleButtonGroup size="small" exclusive value={dateMode} onChange={(_, v) => v && setDateMode(v)}>
+                <ToggleButtonGroup
+                    size="small"
+                    exclusive
+                    value={dateMode}
+                    disabled={recordsLoading}
+                    onChange={(_, v) => v && setDateMode(v)}
+                >
                     <ToggleButton value="1d">{__(I18nStrings.MAIN_TRACKER_DATE_TODAY)}</ToggleButton>
                     <ToggleButton value="7d">{__(I18nStrings.MAIN_TRACKER_DATE_7D)}</ToggleButton>
                     <ToggleButton value="30d">{__(I18nStrings.MAIN_TRACKER_DATE_30D)}</ToggleButton>
@@ -803,6 +884,7 @@ export const TrackerView: React.FC = () => {
                             size="small"
                             type="date"
                             value={customStart}
+                            disabled={recordsLoading}
                             onChange={(e) => setCustomStart(e.target.value)}
                             slotProps={{ htmlInput: { max: customEnd } }}
                         />
@@ -811,13 +893,13 @@ export const TrackerView: React.FC = () => {
                             size="small"
                             type="date"
                             value={customEnd}
+                            disabled={recordsLoading}
                             onChange={(e) => setCustomEnd(e.target.value)}
                             slotProps={{ htmlInput: { min: customStart } }}
                         />
                     </>
                 )}
             </Stack>
-
             <ScoreRecordTable
                 scores={filteredRecords.slice(0, 500).map(
                     (s): ScoreRecordRow => ({
@@ -834,6 +916,13 @@ export const TrackerView: React.FC = () => {
                         beatmapLabel: s.beatmap
                             ? `${s.beatmap.artist} - ${s.beatmap.songTitle} [${s.beatmap.difficultyName}]`
                             : undefined,
+                        _accuracy: s._accuracy,
+                        _pp: s._pp,
+                        _lazer: s._lazer,
+                        _lazerMods: s._lazerMods,
+                        _grade: s._grade,
+                        _legacyTotalScore: s._legacyTotalScore,
+                        _maxObjectCount: s._maxObjectCount,
                     }),
                 )}
                 ppMap={scorePPs}
@@ -845,22 +934,20 @@ export const TrackerView: React.FC = () => {
                     if (flat?.beatmap) setSelectedMap(flat.beatmap);
                 }}
             />
-
             <BeatmapResultDrawer
                 map={selectedMap}
-                displaySR={selectedMap ? getDisplaySR(selectedMap) : 0}
+                displaySR={selectedMap ? getNativeStarRating(selectedMap) : 0}
                 osuPath={osuPath}
                 collections={collectionsRef.current}
                 scoresByHash={scoresByHashRef.current}
+                onScoresNeeded={ensureAllScoresForMap}
                 onClose={() => setSelectedMap(null)}
             />
             {sliderVisible && (
                 <Box
                     sx={{
-                        position: "fixed",
+                        position: "sticky",
                         bottom: 0,
-                        left: 0,
-                        right: 0,
                         zIndex: 100,
                         bgcolor: "background.paper",
                         px: 4,

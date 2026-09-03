@@ -149,11 +149,9 @@ export const AudioPlayer = observer(({ url, volume, muted, onVolumeChange, onMut
             }}
         >
             <audio ref={audioRef} src={url} />
-
             <IconButton onClick={togglePlay} size="small" color="primary">
                 {isPlaying ? <PauseIcon fontSize="small" /> : <PlayArrowIcon fontSize="small" />}
             </IconButton>
-
             <Box sx={{ flex: 1, minWidth: 0 }}>
                 <Slider
                     size="small"
@@ -170,15 +168,24 @@ export const AudioPlayer = observer(({ url, volume, muted, onVolumeChange, onMut
                         marginBottom: "-0.5rem",
                     }}
                 >
-                    <Typography variant="caption" color="text.secondary">
+                    <Typography
+                        variant="caption"
+                        sx={{
+                            color: "text.secondary",
+                        }}
+                    >
                         {formatTime(currentTime)}
                     </Typography>
-                    <Typography variant="caption" color="text.secondary">
+                    <Typography
+                        variant="caption"
+                        sx={{
+                            color: "text.secondary",
+                        }}
+                    >
                         {formatTime(duration)}
                     </Typography>
                 </Box>
             </Box>
-
             <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
                 <IconButton onClick={toggleMute} size="small" color={effectiveMuted ? "default" : "primary"}>
                     {effectiveMuted ? <VolumeOffIcon fontSize="small" /> : <VolumeUpIcon fontSize="small" />}

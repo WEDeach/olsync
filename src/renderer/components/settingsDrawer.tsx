@@ -1,12 +1,13 @@
-import { FolderOpen, Info, Settings } from "@mui/icons-material";
+import { CloudDownload, FolderOpen, HelpOutlined, Settings } from "@mui/icons-material";
 import {
+    Box,
+    Button,
     Divider,
     Drawer,
     FormControl,
     FormControlLabel,
     IconButton,
     InputLabel,
-    Link,
     MenuItem,
     Select,
     Stack,
@@ -14,14 +15,16 @@ import {
     TextField,
     Tooltip,
     Typography,
+    useColorScheme,
 } from "@mui/material";
 import { Observer } from "mobx-react";
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { getApiDownloadLink, getApiPreDelayMs } from "../../utils/api";
 import { GetDelayMs } from "../../utils/download";
 import {
+    getClassicScoreExperiment,
     getDbMd5CheckExperiment,
-    getPackRulesetByNmExperiment,
+    getUseLazerModeExperiment,
     getYinMoChanceExperiment,
 } from "../../utils/experiments";
 import __ from "../../utils/i18n";
@@ -29,29 +32,125 @@ import { ConfigKey } from "../../utils/typed/config";
 import { I18nStrings } from "../../utils/typed/i18n";
 import g from "../state";
 import { ApiSettings } from "./apiSettings";
+import { PausableCircularProgress } from "./common/PausableCircularProgress";
+import { InfoLinkTooltip } from "./infoLinkTooltip";
 import { OsuPathSettings } from "./osuPathSettings";
+import { PackRulesetByBnToggle } from "./packRulesetByBnToggle";
 
 const DRAWER_WIDTH = "90vw";
 
 export const SettingsDrawer: React.FC = () => {
     const [open, setOpen] = useState(false);
+    const [spin, setSpin] = useState<"cw" | "ccw" | null>(null);
+    const [spinKey, setSpinKey] = useState(0);
     const [langs, setLangs] = useState<Record<string, string>>({});
+    const [odStatus, setOdStatus] = useState<{ loaded: boolean; tagCount: number; lastUpdate: number } | null>(null);
+    const [odDownloading, setOdDownloading] = useState(false);
+    const [odMsg, setOdMsg] = useState<string>("");
+    const { mode, setMode } = useColorScheme();
+
+    const refreshOdStatus = useCallback(async () => {
+        const s = await window.olsCore.getOnlineDbStatus();
+        if (s && !(s as any).error) setOdStatus(s as any);
+    }, []);
 
     useEffect(() => {
         window.olsCore.fetchLangs().then(setLangs);
+        refreshOdStatus();
     }, []);
+
+    const handleUpdateOnlineDb = useCallback(async () => {
+        const check = await window.olsCore.checkOnlineDbUpdate();
+        if (!check || (check as any).error) return;
+        if (!(check as any).needsUpdate) {
+            const confirmed = window.confirm(
+                `${__(I18nStrings.MAIN_SETTINGS_ONLINE_DB_CONFIRM_TITLE)}\n${__(I18nStrings.MAIN_SETTINGS_ONLINE_DB_CONFIRM_BODY)}`,
+            );
+            if (!confirmed) return;
+        }
+        setOdDownloading(true);
+        setOdMsg(__(I18nStrings.MAIN_SETTINGS_ONLINE_DB_DOWNLOADING));
+        const result = await window.olsCore.downloadOnlineDb();
+        setOdDownloading(false);
+        if ((result as any).success) {
+            setOdMsg(
+                __(I18nStrings.MAIN_SETTINGS_ONLINE_DB_SUCCESS).replace(
+                    ":count",
+                    String((result as any).tagCount ?? 0),
+                ),
+            );
+        } else {
+            setOdMsg(
+                __(I18nStrings.MAIN_SETTINGS_ONLINE_DB_FAILED).replace(":error", String((result as any).error ?? "")),
+            );
+        }
+        await refreshOdStatus();
+    }, [refreshOdStatus]);
 
     return (
         <>
-            <IconButton onClick={() => setOpen(true)}>
-                <Settings />
+            <IconButton
+                onClick={() => {
+                    setSpinKey((k) => k + 1);
+                    setSpin("cw");
+                    setOpen(true);
+                }}
+                sx={{
+                    position: "relative",
+                    width: 56,
+                    height: 40,
+                    borderRadius: 0,
+                    overflow: "visible",
+                    color: "text.secondary",
+                    bgcolor: "transparent",
+                    "&:hover": {
+                        bgcolor: "action.hover",
+                        "& .rail-icon": { transform: "scale(1.1)" },
+                    },
+                    "&:active": { transform: "scale(0.94)" },
+                    transition:
+                        "background-color 150ms cubic-bezier(0.4, 0, 0.2, 1), transform 100ms cubic-bezier(0.4, 0, 0.2, 1)",
+                    animation: "rail-item-in 260ms cubic-bezier(0.2, 0, 0, 1) 210ms backwards",
+                    "@keyframes rail-item-in": {
+                        from: { opacity: 0, transform: "translateX(-10px)" },
+                        to: { opacity: 1, transform: "translateX(0)" },
+                    },
+                }}
+            >
+                <Box
+                    key={spinKey}
+                    className="rail-icon"
+                    sx={{
+                        display: "flex",
+                        transition: "transform 150ms cubic-bezier(0.4, 0, 0.2, 1)",
+                        ...(spin !== null && {
+                            animation:
+                                spin === "cw"
+                                    ? "gear-spin-cw 0.55s cubic-bezier(0.4, 0, 0.2, 1)"
+                                    : "gear-spin-ccw 0.55s cubic-bezier(0.4, 0, 0.2, 1)",
+                        }),
+                        "@keyframes gear-spin-cw": {
+                            from: { transform: "rotate(0deg)" },
+                            to: { transform: "rotate(360deg)" },
+                        },
+                        "@keyframes gear-spin-ccw": {
+                            from: { transform: "rotate(0deg)" },
+                            to: { transform: "rotate(-360deg)" },
+                        },
+                    }}
+                >
+                    <Settings />
+                </Box>
             </IconButton>
             <Drawer
                 anchor="right"
                 open={open}
-                onClose={() => setOpen(false)}
+                onClose={() => {
+                    setSpinKey((k) => k + 1);
+                    setSpin("ccw");
+                    setOpen(false);
+                }}
                 slotProps={{
-                    transition: { direction: "left" },
                     paper: {
                         sx: {
                             width: DRAWER_WIDTH,
@@ -72,21 +171,54 @@ export const SettingsDrawer: React.FC = () => {
                             <Stack spacing={2}>
                                 <Typography variant="h6">{__(I18nStrings.MAIN_SETTINGS_TITLE)}</Typography>
                                 <Divider textAlign="left">
+                                    <Typography variant="subtitle2">
+                                        {__(I18nStrings.MAIN_SETTINGS_APPEARANCE)}
+                                    </Typography>
+                                </Divider>
+                                <TextField
+                                    select
+                                    fullWidth
+                                    label={__(I18nStrings.MAIN_SETTINGS_THEME_MODE)}
+                                    variant="outlined"
+                                    size="small"
+                                    value={mode ?? "system"}
+                                    onChange={(e) => setMode(e.target.value as "light" | "dark" | "system")}
+                                >
+                                    <MenuItem value="system">{__(I18nStrings.MAIN_SETTINGS_THEME_SYSTEM)}</MenuItem>
+                                    <MenuItem value="light">{__(I18nStrings.MAIN_SETTINGS_THEME_LIGHT)}</MenuItem>
+                                    <MenuItem value="dark">{__(I18nStrings.MAIN_SETTINGS_THEME_DARK)}</MenuItem>
+                                </TextField>
+                                <Divider textAlign="left">
                                     <Typography variant="subtitle2">{__(I18nStrings.MAIN_SETTINGS_PATH)}</Typography>
                                 </Divider>
                                 <OsuPathSettings showStable={true} showLazer={true} />
-
                                 <Divider textAlign="left">
-                                    <Typography variant="subtitle2">{__(I18nStrings.MAIN_SETTINGS_API)}</Typography>
+                                    <Box
+                                        component="span"
+                                        sx={{
+                                            display: "inline-flex",
+                                            alignItems: "center",
+                                            gap: 1,
+                                        }}
+                                    >
+                                        <Typography component="span" variant="subtitle2">
+                                            {__(I18nStrings.MAIN_SETTINGS_API)}
+                                        </Typography>
+                                        <Tooltip title={__(I18nStrings.MAIN_SETTINGS_API_HELP)}>
+                                            <IconButton size="small" onClick={() => g.setOnboarding(true, "oauth2")}>
+                                                <HelpOutlined fontSize="small" />
+                                            </IconButton>
+                                        </Tooltip>
+                                    </Box>
                                 </Divider>
                                 <ApiSettings />
-
                                 <Divider textAlign="left">
                                     <Typography variant="subtitle2">
                                         {__(I18nStrings.MAIN_SETTINGS_DOWNLOAD)}
                                     </Typography>
                                 </Divider>
                                 <TextField
+                                    fullWidth
                                     label={__(I18nStrings.MAIN_SETTINGS_DLINK)}
                                     variant="outlined"
                                     size="small"
@@ -113,13 +245,13 @@ export const SettingsDrawer: React.FC = () => {
                                         onChange={(e) => g.saveConfig(ConfigKey.DL_DELAY_MS, Number(e.target.value))}
                                     />
                                 </Stack>
-
                                 <Divider textAlign="left">
                                     <Typography variant="subtitle2">
                                         {__(I18nStrings.MAIN_SETTINGS_DL_SECTION)}
                                     </Typography>
                                 </Divider>
                                 <TextField
+                                    fullWidth
                                     label={__(I18nStrings.MAIN_SETTINGS_DL_SAVE_DIR)}
                                     variant="outlined"
                                     size="small"
@@ -219,6 +351,7 @@ export const SettingsDrawer: React.FC = () => {
                                     />
                                 </Stack>
                                 <TextField
+                                    fullWidth
                                     label={__(I18nStrings.MAIN_SETTINGS_DL_MIRROR_URL)}
                                     variant="outlined"
                                     size="small"
@@ -227,6 +360,7 @@ export const SettingsDrawer: React.FC = () => {
                                     onChange={(e) => g.saveConfig(ConfigKey.DL_MIRROR_URL, e.target.value)}
                                 />
                                 <TextField
+                                    fullWidth
                                     label={__(I18nStrings.MAIN_SETTINGS_DL_MIRROR_WORKERS)}
                                     variant="outlined"
                                     size="small"
@@ -242,33 +376,94 @@ export const SettingsDrawer: React.FC = () => {
                                         />
                                     }
                                     label={
-                                        <Stack direction="row" alignItems="center" spacing={1} useFlexGap>
+                                        <Stack
+                                            direction="row"
+                                            spacing={1}
+                                            useFlexGap
+                                            sx={{
+                                                alignItems: "center",
+                                            }}
+                                        >
                                             {__(I18nStrings.MAIN_SETTINGS_DL_SPEEDTEST_DNS)}
-                                            <Tooltip
-                                                title={
-                                                    <React.Fragment>
-                                                        {__(I18nStrings.MAIN_SETTINGS_DL_SPEEDTEST_DNS_DESC)}
-                                                        <Link
-                                                            href="https://yinmo.deachsword.com/blog/2023-08-osu-speed-up-beatmap-downloads"
-                                                            target="_blank"
-                                                            rel="noreferrer"
-                                                        >
-                                                            {__(I18nStrings.MAIN_SETTINGS_DL_SPEEDTEST_DNS_LINK)}
-                                                        </Link>
-                                                    </React.Fragment>
-                                                }
-                                                describeChild
-                                                arrow
-                                            >
-                                                <Info fontSize="small" />
-                                            </Tooltip>
+                                            <InfoLinkTooltip
+                                                title={__(I18nStrings.MAIN_SETTINGS_DL_SPEEDTEST_DNS_DESC)}
+                                                linkText={__(I18nStrings.MAIN_SETTINGS_DL_SPEEDTEST_DNS_LINK)}
+                                                href="https://yinmo.deachsword.com/blog/2023-08-osu-speed-up-beatmap-downloads"
+                                            />
                                         </Stack>
                                     }
                                     onChange={(_, checked) =>
                                         g.saveConfig(ConfigKey.EXPERIMENT_SPEEDTEST_DNS_PROXY, Boolean(checked))
                                     }
                                 />
-
+                                <Divider textAlign="left">
+                                    <Typography variant="subtitle2">
+                                        {__(I18nStrings.MAIN_SETTINGS_ONLINE_DB_SECTION)}
+                                    </Typography>
+                                </Divider>
+                                <Stack
+                                    direction="row"
+                                    spacing={2}
+                                    sx={{
+                                        alignItems: "center",
+                                    }}
+                                >
+                                    <Button
+                                        variant="outlined"
+                                        size="small"
+                                        startIcon={
+                                            odDownloading ? (
+                                                <PausableCircularProgress size={14} />
+                                            ) : (
+                                                <CloudDownload fontSize="small" />
+                                            )
+                                        }
+                                        disabled={odDownloading}
+                                        onClick={handleUpdateOnlineDb}
+                                    >
+                                        {__(I18nStrings.MAIN_SETTINGS_ONLINE_DB_UPDATE)}
+                                    </Button>
+                                    <Stack direction="column" spacing={0}>
+                                        <Typography
+                                            variant="caption"
+                                            sx={{
+                                                color: "text.secondary",
+                                            }}
+                                        >
+                                            {__(I18nStrings.MAIN_SETTINGS_ONLINE_DB_LAST_UPDATE)}:{" "}
+                                            {odStatus?.lastUpdate
+                                                ? new Date(odStatus.lastUpdate).toLocaleDateString()
+                                                : __(I18nStrings.MAIN_SETTINGS_ONLINE_DB_NEVER)}
+                                        </Typography>
+                                        {odStatus?.loaded && (
+                                            <Typography
+                                                variant="caption"
+                                                sx={{
+                                                    color: "text.secondary",
+                                                }}
+                                            >
+                                                {__(I18nStrings.MAIN_SETTINGS_ONLINE_DB_TAGS).replace(
+                                                    ":count",
+                                                    String(odStatus.tagCount),
+                                                )}
+                                            </Typography>
+                                        )}
+                                        {odMsg && (
+                                            <Typography
+                                                variant="caption"
+                                                color={
+                                                    odMsg.startsWith(
+                                                        __(I18nStrings.MAIN_SETTINGS_ONLINE_DB_FAILED).split(":")[0],
+                                                    )
+                                                        ? "error"
+                                                        : "success.main"
+                                                }
+                                            >
+                                                {odMsg}
+                                            </Typography>
+                                        )}
+                                    </Stack>
+                                </Stack>
                                 <Divider textAlign="left">
                                     <Typography variant="subtitle2">{__(I18nStrings.MAIN_SETTINGS_OTHERS)}</Typography>
                                 </Divider>
@@ -287,21 +482,33 @@ export const SettingsDrawer: React.FC = () => {
                                             g.saveConfig(ConfigKey.EXPERIMENT_DB_MD5_CHECK, Boolean(checked))
                                         }
                                     />
+                                    <PackRulesetByBnToggle />
                                     <FormControlLabel
-                                        control={<Switch checked={getPackRulesetByNmExperiment()} />}
-                                        label={__(I18nStrings.MAIN_SETTINGS_PACK_RULESET_BY_NM)}
+                                        control={<Switch checked={getUseLazerModeExperiment()} />}
+                                        label={__(I18nStrings.MAIN_SETTINGS_USE_LAZER_MODE)}
                                         onChange={(_, checked) =>
-                                            g.saveConfig(ConfigKey.EXPERIMENT_PACK_RULESET_BY_NM, Boolean(checked))
+                                            g.saveConfig(ConfigKey.EXPERIMENT_USE_LAZER_MODE, Boolean(checked))
+                                        }
+                                    />
+                                    <FormControlLabel
+                                        control={
+                                            <Switch
+                                                checked={getClassicScoreExperiment()}
+                                                disabled={!getUseLazerModeExperiment()}
+                                            />
+                                        }
+                                        label={__(I18nStrings.MAIN_SETTINGS_CLASSIC_SCORE)}
+                                        onChange={(_, checked) =>
+                                            g.saveConfig(ConfigKey.EXPERIMENT_CLASSIC_SCORE, Boolean(checked))
                                         }
                                     />
                                 </Stack>
-
                                 <Divider textAlign="left">
                                     <Typography variant="subtitle2">
                                         {__(I18nStrings.MAIN_SETTINGS_LANGUAGE)}
                                     </Typography>
                                 </Divider>
-                                <FormControl size="small">
+                                <FormControl size="small" fullWidth>
                                     <InputLabel>{__(I18nStrings.MAIN_SETTINGS_LANGUAGE)}</InputLabel>
                                     <Select
                                         label={__(I18nStrings.MAIN_SETTINGS_LANGUAGE)}
@@ -309,7 +516,7 @@ export const SettingsDrawer: React.FC = () => {
                                         onChange={(e) => {
                                             const val = e.target.value as string;
                                             g.saveConfig(ConfigKey.I18N_LANG, val);
-                                            window.olsCore.send("set-i18n-lang", val);
+                                            void window.olsCore.setI18nLang(val);
                                         }}
                                     >
                                         {Object.keys(langs).length === 0 ? (
