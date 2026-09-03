@@ -14,15 +14,17 @@ import React from "react";
 import { IOsuCollection } from "../../defines/types";
 import __ from "../../utils/i18n";
 import { I18nStrings } from "../../utils/typed/i18n";
-import { BeatmapFilterView, FilterType, TFilterSetting } from "./beatmapFilter";
+import { BeatmapFilterView, FilterType, TFilterSetting, TSubFilterSetting } from "./beatmapFilter";
 
 interface IBeatmapPickerFilterPanelProps {
     collections: IOsuCollection[];
     activeSection?: "filter" | "collection";
     generalFilter: TFilterSetting;
+    generalSubFilter: TSubFilterSetting;
     includedCollections: string[];
     excludedCollections: string[];
     onGeneralFilterChanged: (settings: TFilterSetting) => void;
+    onGeneralSubFilterChanged: (settings: TSubFilterSetting) => void;
     onIncludedCollectionsChanged: (cols: string[]) => void;
     onExcludedCollectionsChanged: (cols: string[]) => void;
 }
@@ -31,9 +33,11 @@ export const BeatmapPickerFilterPanel: React.FC<IBeatmapPickerFilterPanelProps> 
     collections,
     activeSection,
     generalFilter,
+    generalSubFilter,
     includedCollections,
     excludedCollections,
     onGeneralFilterChanged,
+    onGeneralSubFilterChanged,
     onIncludedCollectionsChanged,
     onExcludedCollectionsChanged,
 }) => {
@@ -52,7 +56,13 @@ export const BeatmapPickerFilterPanel: React.FC<IBeatmapPickerFilterPanelProps> 
         <Stack spacing={2} sx={{ p: 1 }}>
             {showFilter && (
                 <>
-                    <Typography variant="subtitle2" color="text.secondary" textAlign="center">
+                    <Typography
+                        variant="subtitle2"
+                        sx={{
+                            color: "text.secondary",
+                            textAlign: "center",
+                        }}
+                    >
                         {__(I18nStrings.MAIN_PICKER_FILTER_TITLE)}
                     </Typography>
                     <Divider />
@@ -64,18 +74,26 @@ export const BeatmapPickerFilterPanel: React.FC<IBeatmapPickerFilterPanelProps> 
                             FilterType.RankStateLocal,
                             FilterType.StarRating,
                             FilterType.Mode,
+                            FilterType.PlayerTags,
                         ]}
                         initialSettings={generalFilter}
+                        initialSubFilter={generalSubFilter}
                         onClose={() => {}}
                         onFilterChanged={onGeneralFilterChanged}
-                        onSubFilterChanged={() => {}}
+                        onSubFilterChanged={onGeneralSubFilterChanged}
                     />
                 </>
             )}
             {showCollection && (
                 <>
                     {showFilter && <Divider />}
-                    <Typography variant="subtitle2" color="text.secondary" textAlign="center">
+                    <Typography
+                        variant="subtitle2"
+                        sx={{
+                            color: "text.secondary",
+                            textAlign: "center",
+                        }}
+                    >
                         {__(I18nStrings.MAIN_PICKER_FILTER_COLLECTION_TITLE)}
                     </Typography>
                     <FormControl size="small" fullWidth>

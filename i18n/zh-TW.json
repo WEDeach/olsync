@@ -2,7 +2,7 @@
     "__LANG__": "中文(繁體)",
     "main": {
         "dl": {
-            "select": "請選擇下載方式, 或者選擇<b>文本下載</b>, 你可以一次獲取下載連結<br><br>默認下載網址為osu官方網站, 在這種情況下你需要登入帳號才能夠下載!<br>你當前使用的下載連結為: <b>:url</b><br><br>你可以修改config中的<b>api:dlink</b>來自訂下載網址以供你直接下載!",
+            "select": "請選擇下載方式, 或者選擇文本下載, 你可以一次獲取下載連結\n\n默認下載網址為osu官方網站, 在這種情況下你需要登入帳號才能夠下載!\n你當前使用的下載連結為: :url\n\n你可以修改config中的api:dlink來自訂下載網址以供你直接下載!",
             "fetching": "正在獲取下載連結...",
             "nodata": "沒有任何資料...",
             "to_clipboard": "已複製 :count 個下載鏈接到剪貼簿",
@@ -21,6 +21,8 @@
             "tooltip": {
                 "copy_link": "複製連結",
                 "install": "安裝到 osu!",
+                "install_stable": "安裝到 stable",
+                "install_lazer": "安裝到 lazer",
                 "open_folder": "開啟所在資料夾",
                 "delete_file": "刪除檔案",
                 "pause": "暫停",
@@ -43,13 +45,22 @@
             "login_incomplete": "登入未完成，請重新嘗試",
             "link_copied": "連結已複製到剪貼簿",
             "no_stable_path": "請先設定 osu!stable 路徑",
+            "lazer_not_running": "osu!lazer 未執行，請先啟動客戶端",
+            "stable_not_running": "osu!stable 未執行，請先啟動客戶端",
             "install_failed": "安裝失敗: :reason",
             "install_success": "已安裝 :count 個圖譜",
             "file_deleted": "檔案已刪除",
             "delete_failed": "刪除檔案失敗",
+            "file_missing": "檔案不存在（可能已被移動或刪除）",
+            "reveal_failed": "無法開啟所在資料夾",
             "batch_deleted": "已刪除 :success 個檔案:failPart",
             "enqueued_notify": "已加入 :count 個下載任務:skipPart",
             "builtin_label": "內建下載器",
+            "missing": {
+                "stable": "Stable 缺失",
+                "lazer": "Lazer 缺失",
+                "common": "兩者皆缺失"
+            },
             "delete_confirm_title": "刪除檔案？",
             "delete_confirm_label": "刪除",
             "delete_confirm_body": "確定要刪除 :filename 嗎？",
@@ -82,12 +93,25 @@
                 "done_tooltip": ":count 個下載已完成，點擊查看",
                 "active_tooltip": "下載中 :downloading 個，排隊 :queued 個，等待登入 :held 個"
             },
+            "manual_input_set_label": "圖譜集 ID",
+            "manual_input_set_placeholder": "例如 123456",
+            "manual_input_beatmap_label": "圖譜 ID",
+            "manual_input_beatmap_placeholder": "例如 789",
+            "manual_input_button": "下載",
+            "manual_input_invalid": "請輸入有效的正整數 ID",
+            "manual_input_resolving": "正在解析圖譜 ID 為圖譜集...",
+            "manual_input_resolved": "已解析為圖譜集 #:setId",
+            "manual_input_not_found": "找不到該圖譜 ID",
+            "deep_link_confirm_title": "從 osu:// 連結下載",
+            "deep_link_confirm_body": "下載圖譜集 #:id？",
             "tab": {
                 "all": "全部 (:count)",
                 "done": "已完成 (:count)",
                 "cancelled": "取消 (:count)",
                 "error": "錯誤 (:count)"
-            }
+            },
+            "aborted": "下載已中止：:success 成功、:failed 失敗（共 :total）",
+            "success": "已成功開啟 :count 個下載連結"
         },
         "api": {
             "client": {
@@ -114,7 +138,9 @@
                 "reading": "讀取線上紀錄...",
                 "success": "讀取線上紀錄成功!",
                 "nodata": "線上紀錄沒有任何資料!",
-                "aborted": "已停止讀取線上紀錄..."
+                "aborted": "已停止讀取線上紀錄...",
+                "states": "線上狀態",
+                "alert": "線上提醒"
             },
             "reading": {
                 "failed": "無法讀取資料: :reason",
@@ -159,10 +185,24 @@
                     "all": "所有模式",
                     "label": "遊戲模式"
                 },
+                "scope": {
+                    "label": "偵測範圍",
+                    "all": "全部（Stable + Lazer）",
+                    "stable": "僅 Stable",
+                    "lazer": "僅 Lazer"
+                },
+                "missing": {
+                    "label": "缺失來源",
+                    "stable": "缺失於 Stable",
+                    "lazer": "缺失於 Lazer",
+                    "common": "兩者皆缺失"
+                },
                 "no_type_selected": "請至少選擇一個圖譜包類型!",
                 "start": "開始處理圖譜包...",
                 "fetching": "正在獲取圖譜包資料 (類型: :type)...",
-                "init_api": "正在初始化 API..."
+                "osu_path_required": "需先設定 osu! Stable 路徑",
+                "lazer_path_required": "需先設定 osu! Lazer 路徑",
+                "lazer_not_enabled": "必須先啟用 Lazer 模式實驗性功能"
             },
             "date_range": {
                 "confirm": "若日期範圍為不限時間, 這將會獲取所有圖譜包, 此操作可能會花費很多時間, 是否繼續?"
@@ -186,13 +226,20 @@
             },
             "info": {
                 "files": "需要更新 :count 個檔案",
+                "kind": "更新類型: :kind",
                 "size": "下載大小: :size MB"
             },
             "download_failed_no_error": "下載失敗但沒有具體錯誤訊息",
-            "unknown_error": "未知錯誤"
+            "unknown_error": "未知錯誤",
+            "release_notes": "更新內容"
         },
         "settings": {
             "title": "設定",
+            "appearance": "外觀",
+            "theme_mode": "介面主題",
+            "theme_system": "跟隨系統",
+            "theme_light": "淺色",
+            "theme_dark": "深色",
             "path": "路徑設定",
             "api": "API 設定",
             "download": "下載設定",
@@ -204,8 +251,14 @@
             "others": "其他設定",
             "use_yinmo_chance": "使用 YinMoChance 來計算機率結果",
             "check_file_by_md5": "使用MD5校驗檢查檔案變更",
-            "pack_ruleset_by_nm": "使用NM摘要檢查圖包Mod",
+            "pack_ruleset_by_nm": "使用BN摘要檢查圖包Mod",
+            "pack_ruleset_by_bn_desc_pre": "每個BN各負責不同的主要模式, 當開啟此開關時將根據這些資訊來進一步篩選圖譜, 你可以在",
+            "pack_ruleset_by_bn_desc_link": "這裡",
+            "pack_ruleset_by_bn_desc_post": "更進一步的了解BN的運作原理",
             "use_api_map_attr": "使用 API 取得圖譜屬性計算 PP (實驗性)",
+            "include_online_db": "篩選時包含線上資料庫 (實驗性)",
+            "use_lazer_mode": "使用 Lazer 模式 (實驗性)",
+            "classic_score": "Classic 計分顯示 (實驗性)",
             "language": "語系",
             "no_i18n": "No any i18n files",
             "dl_section": "下載器",
@@ -223,12 +276,25 @@
             "dl_mirror_workers": "Mirror 最大同時下載數（建議 1）",
             "dl_speedtest_dns": "使用 Speedtest DNS Proxy",
             "dl_speedtest_dns_desc": "透過變更DNS設定來獲取更低的下載延遲, 詳細可參考 ",
-            "dl_speedtest_dns_link": "此文章"
+            "dl_speedtest_dns_link": "此文章",
+            "online_db": {
+                "section": "線上資料庫",
+                "update": "更新線上資料庫",
+                "last_update": "上次更新",
+                "never": "從未",
+                "tags": "共 :count 個標籤",
+                "downloading": "正在下載...",
+                "success": "更新完成，共 :count 個標籤",
+                "failed": "下載失敗：:error",
+                "confirm_title": "確認更新",
+                "confirm_body": "資料庫已在 30 天內更新，是否重新下載？"
+            },
+            "api_help": "如何取得 API 憑證",
+            "path_lazer_help": "如何設定 Lazer 路徑"
         },
         "name": "名稱",
         "author": "作者",
         "date": "日期",
-        "version": "版本",
         "ruleset": "模式",
         "picker": {
             "filter": {
@@ -251,9 +317,14 @@
                 "not_submitted": "本機",
                 "pending_wip_graveyard": "未排名",
                 "title_label": "標題",
+                "player_tags": "玩家標籤",
+                "player_tags_placeholder": "搜尋或輸入標籤",
+                "player_tags_no_db": "需先在設定中下載線上資料庫",
                 "play_count": "遊玩次數",
                 "lang": "語言",
-                "mode": "模式"
+                "mode": "模式",
+                "star_rating": "難度",
+                "sr_between": "範圍"
             },
             "filter_pool": {
                 "title": "標題",
@@ -278,6 +349,8 @@
                 "increase": "增加",
                 "decrease": "減少",
                 "add": "新增",
+                "enabled": "啟用",
+                "copy": "複製",
                 "field": "欄位",
                 "operator": "條件",
                 "cond_value": "值",
@@ -310,13 +383,14 @@
                     "hp": "HP",
                     "od": "OD",
                     "stack": "Stack Leniency",
-                    "sv": "Slider Velocity"
+                    "sv": "Slider Velocity",
+                    "player_tags": "玩家標籤 (線上)"
                 },
                 "sc": {
-                    "user": "使用者名稱",
-                    "300": "300 數量",
-                    "100": "100 數量",
                     "50": "50 數量",
+                    "100": "100 數量",
+                    "300": "300 數量",
+                    "user": "使用者名稱",
                     "geki": "激 數量",
                     "katu": "喝 數量",
                     "miss": "Miss 數量",
@@ -328,7 +402,10 @@
                     "str": {
                         "eq": "完全一致",
                         "contains": "包含",
-                        "not_contains": "不包含"
+                        "not_contains": "不包含",
+                        "contains_any": "包含任一",
+                        "not_contains_any": "不包含任一",
+                        "player_tags_eq": "完全一致"
                     },
                     "num": {
                         "eq": "等於",
@@ -354,12 +431,17 @@
                 "title": "願望清單",
                 "label": "規則名稱 (選填)",
                 "add": "新增規則",
-                "add_cond": "新增條件"
+                "add_cond": "新增條件",
+                "priority": "順位",
+                "enabled": "啟用",
+                "copy": "複製"
             },
+            "duplicate_condition": "此條件與其他條件重複，已自動關閉",
             "history": {
                 "title": "抽選紀錄",
                 "empty": "尚無紀錄",
                 "clear_confirm": "確定要清除所有抽選紀錄嗎?",
+                "rolling": "抽選中...",
                 "table": {
                     "song": "歌曲",
                     "difficulty": "難度",
@@ -369,7 +451,8 @@
                 }
             },
             "roll": {
-                "result": "抽到了: :title"
+                "result": "抽到了: :title",
+                "rolling": "抽選中..."
             },
             "result": {
                 "title": "抽選結果",
@@ -384,6 +467,7 @@
                 "stack": "Stack",
                 "mode": "模式",
                 "status": "狀態",
+                "online_tags": "線上標籤",
                 "source": "來源",
                 "unplayed": "未遊玩",
                 "scores": "成績 (:count 筆)",
@@ -391,18 +475,7 @@
                 "beatmap_id": "圖譜 ID",
                 "set_id": "圖譜集 ID",
                 "yes": "是",
-                "no": "否",
-                "dl": {
-                    "in_queue": ":setId.osz 已在下載佇列中",
-                    "exists": ":setId.osz 已存在於下載資料夾",
-                    "auth_required": "需登入 osu! 帳號才能下載 :setId.osz",
-                    "enqueued": "已加入下載：:setId.osz"
-                },
-                "local_not_found": "無法在本地圖譜中找到此項目",
-                "migration": {
-                    "title": "此設定部分內容過舊",
-                    "desc": "以下設定項目不再支援，點擊確定後將自動刪除（會先備份原始設定檔）："
-                }
+                "no": "否"
             },
             "profile": {
                 "name": "設定檔名稱",
@@ -412,15 +485,21 @@
                 "import": "導入 JSON",
                 "import_title": "選擇設定檔 JSON",
                 "saved": "設定檔已儲存",
-                "active": "使用中"
+                "active": "使用中",
+                "clone": "複製",
+                "clone_title": "複製設定檔",
+                "rename": "改名",
+                "rename_title": "改名設定檔",
+                "overwrite_title": "覆蓋設定檔",
+                "overwrite_desc": "設定檔 ':name' 已存在，是否覆蓋?"
             },
             "table": {
+                "50": "50",
+                "100": "100",
+                "300": "300",
                 "grade": "評價",
                 "map": "曲目",
                 "score": "分數",
-                "300": "300",
-                "100": "100",
-                "50": "50",
                 "miss": "Miss",
                 "mods": "Mods",
                 "pp": "PP",
@@ -438,7 +517,40 @@
                 "max_combo": "最大連擊",
                 "accuracy": "準確率"
             },
-            "path_required": "請先在右側設定中填寫 osu! Stable 路徑才能使用選圖器"
+            "score": {
+                "best": "最佳"
+            },
+            "path_required": "請先在右側設定中填寫 osu! Stable 路徑才能使用選圖器",
+            "current": {
+                "title": "目前圖譜",
+                "playing": "正在遊玩",
+                "selected": "目前選取",
+                "loading": "正在載入圖譜資料",
+                "unavailable": "無法取得圖譜資料",
+                "length": "長度",
+                "time": "時間",
+                "map_id": "圖譜 ID",
+                "checksum": "Checksum",
+                "last_played": "上次遊玩"
+            },
+            "dl": {
+                "in_queue": ":setId.osz 已在下載佇列中",
+                "exists": ":setId.osz 已存在於下載資料夾",
+                "auth_required": "需登入 osu! 帳號才能下載 :setId.osz",
+                "enqueued": "已加入下載：:setId.osz"
+            },
+            "local_not_found": "無法在本地圖譜中找到此項目",
+            "migration": {
+                "title": "此設定部分內容過舊",
+                "desc": "以下設定項目不再支援，點擊確定後將自動刪除（會先備份原始設定檔）："
+            },
+            "source": {
+                "title": "選擇圖譜資料來源",
+                "stable": "Stable",
+                "lazer": "Lazer",
+                "stable_mode": "Stable 模式",
+                "lazer_mode": "Lazer 模式"
+            }
         },
         "restorer": {
             "path_required": "需要 osu! Stable 路徑，請先在右側設定中填寫",
@@ -452,7 +564,16 @@
         },
         "collection": {
             "selected_count": ":selected/:total 已選擇",
-            "subs_count": ":count 個子項"
+            "subs_count": ":count 個子項",
+            "reading": {
+                "ol": "正在讀取 Lazer 收藏資料...",
+                "os": "正在讀取 Stable 收藏資料..."
+            },
+            "merging": "正在合併收藏資料...",
+            "merge": {
+                "confirm": "確認合併收藏",
+                "success": "收藏合併成功"
+            }
         },
         "i18n": {
             "file_missing": "找不到語系檔案: :lang"
@@ -503,6 +624,9 @@
                 "30d": "30天",
                 "custom": "自訂"
             }
+        },
+        "data": {
+            "reading": "正在讀取資料..."
         }
     },
     "btn": {
@@ -514,7 +638,8 @@
             },
             "player": {
                 "isme": "這是我!",
-                "check": "檢查玩家"
+                "check": "檢查玩家",
+                "confirm": "確認玩家"
             },
             "group": {
                 "local": "本地",
@@ -525,6 +650,9 @@
             "read_by_checksum": "獲取圖譜資訊 (API需求!)"
         },
         "ok": "確定",
+        "back": "上一步",
+        "next": "下一步",
+        "done": "完成",
         "skip": "跳過",
         "redownload": "重新下載",
         "reset": "重置",
@@ -539,7 +667,8 @@
             "pause_all": "一鍵暫停",
             "cancel_all": "一鍵取消",
             "delete_all": "刪除全部",
-            "install_all": "安裝全部",
+            "install_all": "全部安裝到 stable",
+            "install_all_lazer": "全部安裝到 lazer",
             "clear_history": "清除歷程",
             "keep_all": "保留全部",
             "delete_selected": "刪除勾選的",
@@ -583,6 +712,72 @@
         },
         "tracker": {
             "reanalyze": "重新分析"
+        },
+        "collection": {
+            "read": "讀取收藏",
+            "merge": "合併收藏"
+        }
+    },
+    "onboarding": {
+        "oauth2": {
+            "title": "如何取得 osu! API 憑證",
+            "step1": {
+                "title": "前往帳號設定頁面",
+                "short": "進入設定",
+                "desc": "開啟 osu! 官方網站並登入後，點擊右上角頭像進入「設定」。在左側選單找到「帳號」分頁，向下滾動至「OAuth 應用程式」區域，然後點擊「OAuth 應用程式」按鈕。",
+                "link": "前往 osu! 帳號設定"
+            },
+            "step2": {
+                "title": "註冊 OAuth 應用程式",
+                "short": "註冊應用程式",
+                "desc": "在彈出的註冊視窗中，只需要填寫「應用程式名稱」欄位即可，名稱可以隨意輸入（例如 OLSync）。輸入完畢後，點擊「註冊應用程式」按鈕。"
+            },
+            "step3": {
+                "title": "複製憑證",
+                "short": "複製憑證",
+                "desc": "註冊完成後會顯示「客戶端 ID」與「客戶端密鑰」。請先點擊「顯示客戶端密鑰」才能複製密鑰。請把這兩組值複製下來，稍後會用到。"
+            },
+            "step4": {
+                "title": "貼上至 OLSync",
+                "short": "貼上憑證",
+                "desc": "回到 OLSync，開啟設定並找到「API 設定」。將剛才複製的「客戶端 ID」貼入「Client Id」欄位，「客戶端密鑰」貼入「Client Secret」欄位，即完成設定。"
+            }
+        },
+        "beatmap_picker": {
+            "title": "選圖器使用說明",
+            "step1": {
+                "title": "選圖器",
+                "short": "簡介",
+                "desc": "選圖器可以依據本地與線上圖譜資料，套用篩選條件與權重，隨機抽選出一張符合需求的圖譜。"
+            }
+        },
+        "path_lazer": {
+            "title": "如何設定 osu!lazer 路徑",
+            "step1": {
+                "title": "開啟 osu!lazer 資料夾",
+                "short": "開啟資料夾",
+                "desc": "在 osu!lazer 的設定介面中，切換至「一般」→「安裝設定」，找到並點擊「開啟 osu! 資料夾」按鈕。"
+            },
+            "step2": {
+                "title": "複製資料夾路徑",
+                "short": "複製路徑",
+                "desc": "點擊後會開啟 osu!lazer 的資料夾。請複製此資料夾的路徑，並確認資料夾內包含 `client.realm` 檔案。"
+            },
+            "step3": {
+                "title": "在 OLSync 中選擇 Lazer 路徑",
+                "short": "OLSync 路徑設定",
+                "desc": "回到 OLSync，開啟設定並找到「路徑設定」中的「LazerPath」欄位，點擊右側的選擇檔案按鈕。"
+            },
+            "step4": {
+                "title": "貼上資料夾路徑",
+                "short": "貼上路徑",
+                "desc": "在選擇檔案視窗中，於路徑列貼上剛才複製的資料夾路徑，然後按下 Enter（前往）鍵。"
+            },
+            "step5": {
+                "title": "選取 client.realm",
+                "short": "選取檔案",
+                "desc": "按下前往後，資料夾內容會列出 `client.realm` 檔案。選取該檔案並點擊「開啟」，即可完成 Lazer 路徑設定。"
+            }
         }
     }
 }

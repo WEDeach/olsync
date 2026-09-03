@@ -1,18 +1,22 @@
+import { Box, Typography } from "@mui/material";
 import { action, makeAutoObservable, observable, runInAction } from "mobx";
 import React from "react";
 import { RespUserMostPlayedBeatmaps } from "../../api/v2/types/api_resp";
+import { LazerScore } from "../../defines/lazer_structs";
 import { StableLocalBeatmap, StableScoreBeatmapData } from "../../defines/stable_structs";
 import { OsuClients } from "../../defines/types";
-import { UpdateDiff } from "../../entrypoint/js/updater";
+import { UpdateProgress } from "../../entrypoint/js/updater/types";
 import { getApiPreDelayMs, InitApi } from "../../utils/api";
+import { getUseLazerModeExperiment } from "../../utils/experiments";
 import __ from "../../utils/i18n";
 import { LogError } from "../../utils/log";
-import { OsuData } from "../../utils/osu";
+import { lazerScoreToOsuScore, makeScoreDedupKey, OsuData } from "../../utils/osu";
 import { readAllWithOffset } from "../../utils/reader";
 import { sleep } from "../../utils/time";
 import { ConfigKey } from "../../utils/typed/config";
 import { I18nStrings } from "../../utils/typed/i18n";
 import { TGroupedLocalMap } from "../components/beatmapRestorer";
+import { ReleaseNotes } from "../components/releaseNotes";
 import { IPropertyWithName } from "../components/table";
 import g, { IDialogState, NewSyncState } from "../state";
 
@@ -286,8 +290,62 @@ export default class Controller {
             }
             if (this.StablePath.length > 0) {
                 await window.olsCore.initStableReader(this.StablePath);
-                let scores = await window.olsCore.getScores(OsuClients.Stable, 0, PAGE_SIZE);
-                if ("error" in scores) {
+                let scoreData: StableScoreBeatmapData[] = [];
+                const stableRaw = await window.olsCore.getScores(OsuClients.Stable, 0, PAGE_SIZE);
+                if (!("error" in stableRaw)) {
+                    const fetch_fn = async (offset: number, limit: number) =>
+                        (await window.olsCore.getScores(OsuClients.Stable, offset, limit)) as any;
+                    const allStable = await readAllWithOffset(fetch_fn, stableRaw);
+                    scoreData = allStable.data as StableScoreBeatmapData[];
+                }
+
+                const lazerPath = g.config?.[ConfigKey.PATH_LAZER_REALM] ?? "";
+                if (lazerPath && getUseLazerModeExperiment()) {
+                    try {
+                        await window.olsCore.initReader(lazerPath);
+                        const stableHashes = scoreData.map((d) => d.md5Hash);
+                        const stableDedupKeys: string[] = [];
+                        for (const sd of scoreData) {
+                            for (const sc of sd.scores) {
+                                stableDedupKeys.push(
+                                    makeScoreDedupKey(sd.md5Hash, sc.totalScore, sc.date, sc.maxCombo),
+                                );
+                            }
+                        }
+                        const HASH_BATCH = 500;
+                        const allLazerScores: LazerScore[] = [];
+                        for (let i = 0; i < stableHashes.length; i += HASH_BATCH) {
+                            const batch = stableHashes.slice(i, i + HASH_BATCH);
+                            const result = await window.olsCore.queryLazerScoresByHashes(batch, stableDedupKeys);
+                            allLazerScores.push(...(result.data as LazerScore[]));
+                        }
+                        if (allLazerScores.length > 0) {
+                            const byHash = new Map(scoreData.map((d) => [d.md5Hash, d]));
+                            for (const ls of allLazerScores) {
+                                const hash = ls.BeatmapInfo?.MD5Hash ?? ls.BeatmapHash;
+                                if (!hash) continue;
+                                const converted = lazerScoreToOsuScore(ls);
+                                const existing = byHash.get(hash);
+                                if (existing) {
+                                    existing.scoreCount++;
+                                    existing.scores.push(converted);
+                                } else {
+                                    const entry: StableScoreBeatmapData = {
+                                        md5Hash: hash,
+                                        scoreCount: 1,
+                                        scores: [converted],
+                                    };
+                                    scoreData.push(entry);
+                                    byHash.set(hash, entry);
+                                }
+                            }
+                        }
+                    } catch {
+                        // lazer not available
+                    }
+                }
+
+                if (scoreData.length === 0) {
                     g.setNotify({
                         message: __(I18nStrings.MAIN_SRS_READING_FAILED, {
                             reason: __(I18nStrings.MAIN_SRS_SCORES_DB_NOT_FOUND),
@@ -296,13 +354,10 @@ export default class Controller {
                     });
                     this.SetLoadingState(false);
                     return;
-                } else {
-                    const fetch_fn = async (offset: number, limit: number) =>
-                        (await window.olsCore.getScores(OsuClients.Stable, offset, limit)) as any;
-                    scores = await readAllWithOffset(fetch_fn, scores);
-                    this.SetCacheVal("scores", scores.data.length);
-                    this.SetCacheVal(CachedLegacyKey.LocalScores, scores.data);
                 }
+
+                this.SetCacheVal("scores", scoreData.length);
+                this.SetCacheVal(CachedLegacyKey.LocalScores, scoreData);
                 // scores -> GET maps's hash
                 //
                 // a. local: hash -> map_id
@@ -514,7 +569,7 @@ export default class Controller {
         try {
             // lazer
             this.SetLoadingState(true, __(I18nStrings.MAIN_COLLECTION_READING_OL));
-            if (this.LazerPath.length > 0) {
+            if (this.LazerPath.length > 0 && getUseLazerModeExperiment()) {
                 const ol_collections = await OsuData.getLazerCollections();
                 runInAction(() => {
                     this.state.v_select_group_a = ol_collections.map((data) => ({
@@ -709,29 +764,39 @@ export default class Controller {
         this.state.v_sub = undefined;
     };
 
+    @action
+    SwitchView = (value: SubViewType) => {
+        switch (value) {
+            case SubViewType.NONE:
+                this.state.s_main = MainViewState.NONE;
+                break;
+            case SubViewType.COLLECTION:
+                this.state.s_main = MainViewState.COLLECTION_IDLE;
+                break;
+            case SubViewType.SONG_RECOVERY_BY_SCORES:
+                this.state.s_main = MainViewState.SRS_IDLE;
+                break;
+            case SubViewType.MAP_PACKS:
+                this.state.s_main = MainViewState.BPAKS_IDLE;
+                break;
+        }
+        this.state.s_sub_view = value;
+
+        // clear state values
+        this.state.v_sub = undefined;
+        this.state.v_select_group_a = undefined;
+        this.state.v_select_group_b = undefined;
+        this.state.v_list = undefined;
+
+        // clear bulky cached collections/scores so they don't stay in renderer memory
+        this.RemoveCacheVal(CachedLegacyKey.LocalMaps);
+        this.RemoveCacheVal(CachedLegacyKey.LocalScores);
+        this.RemoveCacheVal(CachedLegacyKey.OnlineMaps);
+    };
+
     onBtnViewClicked = async (_: any, value: SubViewType) => {
         runInAction(() => {
-            switch (value) {
-                case SubViewType.NONE:
-                    this.state.s_main = MainViewState.NONE;
-                    break;
-                case SubViewType.COLLECTION:
-                    this.state.s_main = MainViewState.COLLECTION_IDLE;
-                    break;
-                case SubViewType.SONG_RECOVERY_BY_SCORES:
-                    this.state.s_main = MainViewState.SRS_IDLE;
-                    break;
-                case SubViewType.MAP_PACKS:
-                    this.state.s_main = MainViewState.BPAKS_IDLE;
-                    break;
-            }
-            this.state.s_sub_view = value;
-
-            // clear state values
-            this.state.v_sub = undefined;
-            this.state.v_select_group_a = undefined;
-            this.state.v_select_group_b = undefined;
-            this.state.v_list = undefined;
+            this.SwitchView(value);
         });
     };
 
@@ -921,92 +986,135 @@ export default class Controller {
                 label: __(I18nStrings.BTN_CANCEL),
                 callback: () => this.SetDialogState(false),
             },
-            {
-                label: __(I18nStrings.BTN_UPDATE_REPO),
-                callback: async () => {
-                    await window.olsCore.openExternal("https://github.com/WEDeach/olsync/releases/latest");
-                },
-            },
         ];
-        let onlineVersion = null;
-        if (us.type === "base") {
-            const diff = us as UpdateDiff;
-            onlineVersion = diff.version.latest;
-            if (diff?.needsUpdate) {
-                const filesCount = diff.files.added.length + diff.files.modified.length;
-                const sizeMB = (diff.totalSize / 1024 / 1024).toFixed(2);
-                const contentParts = [
-                    `<p>${__(I18nStrings.MAIN_UPDATE_VERSION_LATEST, { version: diff.version.latest })}</p>`,
-                    `<p>${__(I18nStrings.MAIN_UPDATE_VERSION_CURRENT, { version: diff.version.current })}</p>`,
-                ];
-                contentParts.push(`<p>${__(I18nStrings.MAIN_UPDATE_INFO_FILES, { count: filesCount })}</p>`);
-                contentParts.push(`<p>${__(I18nStrings.MAIN_UPDATE_INFO_SIZE, { size: sizeMB })}</p>`);
 
-                return this.SetDialogState(true, {
-                    title: __(I18nStrings.MAIN_UPDATE_AVAILABLE),
-                    content: contentParts.join("\n"),
-                    actions: [
-                        {
-                            label: __(I18nStrings.BTN_UPDATE_DOWNLOAD),
-                            callback: async () => {
-                                await this.downloadUpdate(diff);
-                            },
-                        },
-                        ...btns,
-                    ],
-                });
-            }
-        } else if (us.type === "github") {
-            this.SetDialogState(true, {
-                title: __(I18nStrings.MAIN_UPDATE_AVAILABLE),
-                content: `
-                    <p>${__(I18nStrings.MAIN_UPDATE_VERSION_LATEST, { version: us.version })}</p>
-                    <p>${__(I18nStrings.MAIN_UPDATE_VERSION_CURRENT, { version: this.Version })}</p>
-                `,
+        if (us.type === "error") {
+            return this.SetDialogState(true, {
+                title: __(I18nStrings.MAIN_UPDATE_FAILED),
+                content: us.error,
                 actions: btns,
             });
         }
 
+        if (us.type === "manual") {
+            return this.SetDialogState(true, {
+                title: __(I18nStrings.MAIN_UPDATE_AVAILABLE),
+                content: (
+                    <>
+                        <Typography variant="body1">
+                            {__(I18nStrings.MAIN_UPDATE_VERSION_LATEST, { version: us.targetVersion })}
+                        </Typography>
+                        <Typography variant="body1">
+                            {__(I18nStrings.MAIN_UPDATE_VERSION_CURRENT, { version: us.currentVersion })}
+                        </Typography>
+                        <Typography variant="body1">{us.reason}</Typography>
+                        {this.renderReleaseNotes(us.releaseNotes)}
+                    </>
+                ),
+                actions: [
+                    {
+                        label: __(I18nStrings.BTN_UPDATE_REPO),
+                        callback: async () => {
+                            await window.olsCore.openExternal(us.releasePageUrl);
+                        },
+                    },
+                    ...btns,
+                ],
+            });
+        }
+
+        if (us.type === "available") {
+            const sizeMB = (us.size / 1024 / 1024).toFixed(2);
+            return this.SetDialogState(true, {
+                title: __(I18nStrings.MAIN_UPDATE_AVAILABLE),
+                content: (
+                    <>
+                        <Typography variant="body1">
+                            {__(I18nStrings.MAIN_UPDATE_VERSION_LATEST, { version: us.targetVersion })}
+                        </Typography>
+                        <Typography variant="body1">
+                            {__(I18nStrings.MAIN_UPDATE_VERSION_CURRENT, { version: us.currentVersion })}
+                        </Typography>
+                        <Typography variant="body1">
+                            {__(I18nStrings.MAIN_UPDATE_INFO_KIND, { kind: us.kind })}
+                        </Typography>
+                        <Typography variant="body1">
+                            {__(I18nStrings.MAIN_UPDATE_INFO_SIZE, { size: sizeMB })}
+                        </Typography>
+                        {this.renderReleaseNotes(us.releaseNotes)}
+                    </>
+                ),
+                actions: [
+                    {
+                        label: __(I18nStrings.BTN_UPDATE_DOWNLOAD),
+                        callback: async () => {
+                            await this.downloadUpdate();
+                        },
+                    },
+                    {
+                        label: __(I18nStrings.BTN_UPDATE_REPO),
+                        callback: async () => {
+                            await window.olsCore.openExternal(us.releasePageUrl);
+                        },
+                    },
+                    ...btns,
+                ],
+            });
+        }
+
         if (isForce) {
+            const version = us.type === "upToDate" ? us.currentVersion : this.Version;
             return this.SetDialogState(true, {
                 title: __(I18nStrings.MAIN_UPDATE_NO_UPDATE),
                 content: __(I18nStrings.MAIN_UPDATE_VERSION_CURRENT, {
-                    version: onlineVersion || `${this.Version}@local`,
+                    version: version || `${this.Version}@local`,
                 }),
                 actions: btns,
             });
         }
     }
 
-    private async downloadUpdate(diff: UpdateDiff) {
-        this.SetDialogState(false);
-        this.SetLoadingState(
-            true,
-            __(I18nStrings.MAIN_UPDATE_DOWNLOADING, {
-                current: 0,
-                total: diff.files.added.length + diff.files.modified.length,
-            }),
+    private renderReleaseNotes(notes: string | undefined) {
+        if (!notes || !notes.trim()) {
+            return null;
+        }
+        return (
+            <Box sx={{ mt: 1.5 }}>
+                <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 0.5 }}>
+                    {__(I18nStrings.MAIN_UPDATE_RELEASE_NOTES)}
+                </Typography>
+                <ReleaseNotes notes={notes} />
+            </Box>
         );
+    }
 
-        const progressHandler = (_event: any, progress: any) => {
-            const percent = ((progress.current / progress.total) * 100).toFixed(0);
+    private async downloadUpdate() {
+        this.SetDialogState(false);
+        this.SetLoadingState(true, __(I18nStrings.MAIN_UPDATE_DOWNLOADING, { current: 0, total: 1 }));
+
+        const progressHandler = (progress: UpdateProgress) => {
+            const percent = progress.total > 0 ? ((progress.current / progress.total) * 100).toFixed(0) : "0";
+            const extra = progress.currentFile ? `${progress.currentFile} (${percent}%)` : `${percent}%`;
             this.SetLoadingState(
                 true,
                 `${__(I18nStrings.MAIN_UPDATE_DOWNLOADING, {
                     current: progress.current,
                     total: progress.total,
-                })} (${percent}%)`,
+                })} ${extra}`,
             );
         };
 
-        window.olsCore.on("ipc:up:update_progress", progressHandler);
+        const unsubscribe = window.olsCore.onGithubUpdateProgress(progressHandler);
 
-        const result = await window.olsCore.downloadUpdate(diff);
+        let result: { success: boolean; error?: string } | undefined;
+        try {
+            result = await window.olsCore.downloadGithubUpdate();
+        } finally {
+            unsubscribe();
+            this.SetLoadingState(false);
+        }
 
-        window.olsCore.removeListener("ipc:up:update_progress", progressHandler);
-        this.SetLoadingState(false);
-
-        if (result?.success && result?.tempDir) {
+        if (result?.success) {
             this.SetDialogState(true, {
                 title: __(I18nStrings.MAIN_UPDATE_SUCCESS),
                 content: __(I18nStrings.MAIN_UPDATE_RESTART_REQUIRED),
@@ -1015,17 +1123,33 @@ export default class Controller {
                         label: __(I18nStrings.BTN_UPDATE_RESTART),
                         callback: async () => {
                             this.SetDialogState(false);
-                            if (result.tempDir) {
-                                await window.olsCore.executeUpdate(result.tempDir);
+                            try {
+                                await window.olsCore.installPreparedUpdate();
+                            } catch (error) {
+                                const message = error instanceof Error ? error.message : String(error);
+                                this.SetDialogState(true, {
+                                    title: __(I18nStrings.MAIN_UPDATE_FAILED),
+                                    content: message,
+                                    actions: [
+                                        {
+                                            label: __(I18nStrings.BTN_CONFIRM),
+                                            callback: () => this.SetDialogState(false),
+                                        },
+                                    ],
+                                });
                             }
                         },
+                    },
+                    {
+                        label: __(I18nStrings.BTN_CANCEL),
+                        callback: () => this.SetDialogState(false),
                     },
                 ],
             });
         } else {
             this.SetDialogState(true, {
                 title: __(I18nStrings.MAIN_UPDATE_FAILED),
-                content: result?.error,
+                content: result?.error || __(I18nStrings.MAIN_UPDATE_DOWNLOAD_FAILED_NO_ERROR),
                 actions: [
                     {
                         label: __(I18nStrings.BTN_CONFIRM),

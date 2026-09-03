@@ -1,6 +1,7 @@
-import { NumberField } from "@base-ui/react/number-field";
 import { KeyboardArrowDown, KeyboardArrowUp } from "@mui/icons-material";
 import {
+    Autocomplete,
+    Chip,
     Container,
     Drawer,
     FormControl,
@@ -14,8 +15,7 @@ import {
     Stack,
     TextField,
 } from "@mui/material";
-import { Observer } from "mobx-react";
-import React, { useRef, useState } from "react";
+import React, { useCallback, useDeferredValue, useEffect, useRef, useState } from "react";
 import { RankedStatus } from "../../api/v2/types/api_resp";
 import { StableLocalBeatmapStatus } from "../../defines/stable_structs";
 import { OsuModes } from "../../defines/types";
@@ -39,6 +39,7 @@ export enum FilterType {
     PlayCount,
     Mode,
     RankStateLocal,
+    PlayerTags,
 }
 
 export enum SubFilterType {
@@ -56,7 +57,7 @@ export type TFilterSetting = {
     [key in FilterType]?: any;
 };
 
-type TSubFilterSetting = {
+export type TSubFilterSetting = {
     [key in FilterType]?: SubFilterType;
 };
 
@@ -66,10 +67,42 @@ interface IBeatmapFilterViewProps {
     allowedFilterTypes?: FilterType[];
     allowedLanguages?: TLanguage[];
     initialSettings?: TFilterSetting;
+    initialSubFilter?: TSubFilterSetting;
     onClose: () => void;
     onFilterChanged: (settings: TFilterSetting) => void;
     onSubFilterChanged: (settings: TFilterSetting) => void;
 }
+
+const useOnlineDbStatus = () => {
+    const [dbLoaded, setDbLoaded] = useState(false);
+    useEffect(() => {
+        window.olsCore.getOnlineDbStatus().then((s) => {
+            if (s && !(s as any).error) setDbLoaded((s as any).loaded ?? false);
+        });
+    }, []);
+    return dbLoaded;
+};
+
+const useTagSearch = () => {
+    const [options, setOptions] = useState<string[]>([]);
+    const deferredOptions = useDeferredValue(options);
+    const debounceRef = useRef<ReturnType<typeof setTimeout>>(null);
+
+    const search = useCallback((query: string) => {
+        if (debounceRef.current) clearTimeout(debounceRef.current);
+        if (!query.trim()) {
+            setOptions([]);
+            return;
+        }
+        debounceRef.current = setTimeout(async () => {
+            const results = await window.olsCore.searchOnlineTags(query);
+            if (!results || (results as any).error) return;
+            setOptions((results as any[]).map((t: any) => t.name ?? t));
+        }, 250);
+    }, []);
+
+    return { options: deferredOptions, search };
+};
 
 export const BeatmapFilterView: React.FC<IBeatmapFilterViewProps> = ({
     show,
@@ -80,15 +113,18 @@ export const BeatmapFilterView: React.FC<IBeatmapFilterViewProps> = ({
     onClose,
     onFilterChanged,
     onSubFilterChanged,
+    initialSubFilter,
 }) => {
     const [renderFields, _] = useState<FilterType[]>(
         allowedFilterTypes ?? [FilterType.Name, FilterType.Artist, FilterType.Title, FilterType.RankState],
     );
     const [settings, setSettings] = useState<TFilterSetting>(initialSettings ?? {});
     const [cacheSettings, setCacheSettings] = useState<TFilterSetting>(initialSettings ?? {});
-    const [subSettings, setSubSettings] = useState<TSubFilterSetting>({});
+    const [subSettings, setSubSettings] = useState<TSubFilterSetting>(initialSubFilter ?? {});
     const [titleInputValue, setTitleInputValue] = useState(initialSettings?.[FilterType.Title] ?? "");
     const titleDebounceRef = useRef<ReturnType<typeof setTimeout>>(null);
+    const dbLoaded = useOnlineDbStatus();
+    const { options: tagOptions, search: searchTags } = useTagSearch();
 
     const getSubSetting = (type: FilterType): SubFilterType => {
         return subSettings?.[type] ?? SubFilterType.Greater;
@@ -146,6 +182,8 @@ export const BeatmapFilterView: React.FC<IBeatmapFilterViewProps> = ({
                                 key={v}
                                 label={__(I18nStrings.MAIN_PICKER_FILTER_TITLE_LABEL)}
                                 variant="outlined"
+                                size="small"
+                                fullWidth
                                 value={titleInputValue}
                                 onChange={(e) => {
                                     const val = e.target.value;
@@ -159,7 +197,7 @@ export const BeatmapFilterView: React.FC<IBeatmapFilterViewProps> = ({
                         );
                     } else if (v === FilterType.RankState) {
                         return (
-                            <FormControl key={v} fullWidth>
+                            <FormControl key={v} size="small" fullWidth>
                                 <InputLabel id="rank-state">{__(I18nStrings.MAIN_PICKER_FILTER_RANK_STATE)}</InputLabel>
                                 <Select
                                     label={__(I18nStrings.MAIN_PICKER_FILTER_RANK_STATE)}
@@ -195,7 +233,7 @@ export const BeatmapFilterView: React.FC<IBeatmapFilterViewProps> = ({
                         );
                     } else if (v === FilterType.RankStateLocal) {
                         return (
-                            <FormControl key={v} fullWidth>
+                            <FormControl key={v} size="small" fullWidth>
                                 <InputLabel id="rank-state-local">
                                     {__(I18nStrings.MAIN_PICKER_FILTER_RANK_STATE_LOCAL)}
                                 </InputLabel>
@@ -230,133 +268,106 @@ export const BeatmapFilterView: React.FC<IBeatmapFilterViewProps> = ({
                         );
                     } else if (v === FilterType.PlayCount) {
                         return (
-                            <FormControl key={v} fullWidth>
+                            <FormControl key={v} size="small" fullWidth>
                                 <InputLabel htmlFor="play-count">
                                     {__(I18nStrings.MAIN_PICKER_FILTER_PLAY_COUNT)}
                                 </InputLabel>
-                                <NumberField.Root
-                                    value={settings?.[FilterType.PlayCount] ?? 0}
-                                    onValueChange={(value) => handleSettingsChanged(FilterType.PlayCount, value)}
-                                    min={0}
-                                    step={1}
-                                >
-                                    <NumberField.Group>
-                                        <NumberField.Input
-                                            id="play-count"
-                                            render={(props, state) => (
-                                                <Observer>
-                                                    {() => (
-                                                        <OutlinedInput
-                                                            label={__(I18nStrings.MAIN_PICKER_FILTER_PLAY_COUNT)}
-                                                            inputRef={props.ref}
-                                                            value={state.inputValue}
-                                                            onBlur={props.onBlur}
-                                                            onChange={props.onChange}
-                                                            onKeyUp={props.onKeyUp}
-                                                            onKeyDown={props.onKeyDown}
-                                                            onFocus={props.onFocus}
-                                                            slotProps={{
-                                                                input: props,
-                                                            }}
-                                                            startAdornment={
-                                                                <InputAdornment
-                                                                    position="start"
-                                                                    sx={{
-                                                                        borderRight: "1px solid",
-                                                                        borderColor: "divider",
-                                                                        maxHeight: "unset",
-                                                                        alignSelf: "stretch",
-                                                                    }}
-                                                                >
-                                                                    <Select
-                                                                        value={getSubSetting(FilterType.PlayCount)}
-                                                                        onChange={(e) =>
-                                                                            handleSubSettingsChanged(
-                                                                                FilterType.PlayCount,
-                                                                                e.target.value,
-                                                                            )
-                                                                        }
-                                                                        variant="standard"
-                                                                        disableUnderline
-                                                                        sx={{
-                                                                            minWidth: "50px",
-                                                                            "& .MuiSelect-select": {
-                                                                                py: 0,
-                                                                                pr: "24px !important",
-                                                                            },
-                                                                        }}
-                                                                    >
-                                                                        <MenuItem value={SubFilterType.Greater}>
-                                                                            ≥
-                                                                        </MenuItem>
-                                                                        <MenuItem value={SubFilterType.Equal}>
-                                                                            =
-                                                                        </MenuItem>
-                                                                        <MenuItem value={SubFilterType.Less}>
-                                                                            ≤
-                                                                        </MenuItem>
-                                                                    </Select>
-                                                                </InputAdornment>
-                                                            }
-                                                            endAdornment={
-                                                                <InputAdornment
-                                                                    position="end"
-                                                                    sx={{
-                                                                        flexDirection: "column",
-                                                                        maxHeight: "unset",
-                                                                        alignSelf: "stretch",
-                                                                        borderLeft: "1px solid",
-                                                                        borderColor: "divider",
-                                                                        ml: 0,
-                                                                        "& button": {
-                                                                            py: 0,
-                                                                            flex: 1,
-                                                                            borderRadius: 0.5,
-                                                                        },
-                                                                    }}
-                                                                >
-                                                                    <NumberField.Increment
-                                                                        render={
-                                                                            <IconButton
-                                                                                aria-label={__(
-                                                                                    I18nStrings.MAIN_PICKER_WEIGHT_INCREASE,
-                                                                                )}
-                                                                            />
-                                                                        }
-                                                                    >
-                                                                        <KeyboardArrowUp
-                                                                            sx={{ transform: "translateY(2px)" }}
-                                                                        />
-                                                                    </NumberField.Increment>
+                                <OutlinedInput
+                                    id="play-count"
+                                    size="small"
+                                    label={__(I18nStrings.MAIN_PICKER_FILTER_PLAY_COUNT)}
+                                    type="number"
+                                    value={cacheSettings?.[FilterType.PlayCount] ?? 0}
+                                    inputProps={{ min: 0, step: 1 }}
+                                    onChange={(e) =>
+                                        handlePreSettingsChanged(FilterType.PlayCount, Number(e.target.value))
+                                    }
+                                    onBlur={(e) => handleSettingsChanged(FilterType.PlayCount, Number(e.target.value))}
+                                    startAdornment={
+                                        <InputAdornment
+                                            position="start"
+                                            sx={{
+                                                borderRight: "1px solid",
+                                                borderColor: "divider",
+                                                maxHeight: "unset",
+                                                alignSelf: "stretch",
+                                            }}
+                                        >
+                                            <Select
+                                                value={getSubSetting(FilterType.PlayCount)}
+                                                onChange={(e) =>
+                                                    handleSubSettingsChanged(FilterType.PlayCount, e.target.value)
+                                                }
+                                                variant="standard"
+                                                disableUnderline
+                                                sx={{
+                                                    minWidth: "50px",
+                                                    "& .MuiSelect-select": {
+                                                        py: 0,
+                                                        pr: "24px !important",
+                                                    },
+                                                }}
+                                            >
+                                                <MenuItem value={SubFilterType.Greater}>≥</MenuItem>
+                                                <MenuItem value={SubFilterType.Equal}>=</MenuItem>
+                                                <MenuItem value={SubFilterType.Less}>≤</MenuItem>
+                                            </Select>
+                                        </InputAdornment>
+                                    }
+                                    endAdornment={
+                                        <InputAdornment
+                                            position="end"
+                                            sx={{
+                                                flexDirection: "column",
+                                                maxHeight: "unset",
+                                                alignSelf: "stretch",
+                                                height: 40,
+                                                borderLeft: "1px solid",
+                                                borderColor: "divider",
+                                                ml: 0,
+                                                overflow: "hidden",
+                                                "& button": {
+                                                    py: 0,
+                                                    flex: 1,
+                                                    borderRadius: 0.5,
+                                                    minHeight: 0,
+                                                    minWidth: 0,
+                                                },
+                                            }}
+                                        >
+                                            <IconButton
+                                                size="small"
+                                                onClick={() => {
+                                                    const current = cacheSettings?.[FilterType.PlayCount] ?? 0;
+                                                    handlePreSettingsChanged(FilterType.PlayCount, current + 1);
+                                                    handleSettingsChanged(FilterType.PlayCount, current + 1);
+                                                }}
+                                                aria-label={__(I18nStrings.MAIN_PICKER_WEIGHT_INCREASE)}
+                                            >
+                                                <KeyboardArrowUp sx={{ transform: "translateY(2px)" }} />
+                                            </IconButton>
 
-                                                                    <NumberField.Decrement
-                                                                        render={
-                                                                            <IconButton
-                                                                                aria-label={__(
-                                                                                    I18nStrings.MAIN_PICKER_WEIGHT_DECREASE,
-                                                                                )}
-                                                                            />
-                                                                        }
-                                                                    >
-                                                                        <KeyboardArrowDown
-                                                                            sx={{ transform: "translateY(-2px)" }}
-                                                                        />
-                                                                    </NumberField.Decrement>
-                                                                </InputAdornment>
-                                                            }
-                                                            sx={{ pr: 0 }}
-                                                        />
-                                                    )}
-                                                </Observer>
-                                            )}
-                                        />
-                                    </NumberField.Group>
-                                </NumberField.Root>
+                                            <IconButton
+                                                size="small"
+                                                onClick={() => {
+                                                    const current = cacheSettings?.[FilterType.PlayCount] ?? 0;
+                                                    const next = Math.max(0, current - 1);
+                                                    handlePreSettingsChanged(FilterType.PlayCount, next);
+                                                    handleSettingsChanged(FilterType.PlayCount, next);
+                                                }}
+                                                aria-label={__(I18nStrings.MAIN_PICKER_WEIGHT_DECREASE)}
+                                            >
+                                                <KeyboardArrowDown sx={{ transform: "translateY(-2px)" }} />
+                                            </IconButton>
+                                        </InputAdornment>
+                                    }
+                                    sx={{ pr: 0 }}
+                                />
                             </FormControl>
                         );
                     } else if (v === FilterType.Language) {
                         return (
-                            <FormControl key={v} fullWidth>
+                            <FormControl key={v} size="small" fullWidth>
                                 <InputLabel id="filter-lang">{__(I18nStrings.MAIN_PICKER_FILTER_LANG)}</InputLabel>
                                 <Select
                                     label={__(I18nStrings.MAIN_PICKER_FILTER_LANG)}
@@ -375,24 +386,216 @@ export const BeatmapFilterView: React.FC<IBeatmapFilterViewProps> = ({
                             </FormControl>
                         );
                     } else if (v === FilterType.StarRating) {
+                        const srMode = subSettings[FilterType.StarRating];
+                        const isRange = srMode === undefined;
+                        const srVal: [number, number] = cacheSettings?.[FilterType.StarRating] ?? [0, 15];
+
+                        const handleSrModeChange = (newMode: string) => {
+                            if (newMode === "range") {
+                                handleSubSettingsChanged(FilterType.StarRating, undefined);
+                                const current = srVal[0];
+                                handlePreSettingsChanged(FilterType.StarRating, [0, current]);
+                                handleSettingsChanged(FilterType.StarRating, [0, current]);
+                            } else {
+                                const mode = Number(newMode) as SubFilterType;
+                                handleSubSettingsChanged(FilterType.StarRating, mode);
+                                const first = srVal[0];
+                                handlePreSettingsChanged(FilterType.StarRating, [first, first]);
+                                handleSettingsChanged(FilterType.StarRating, [first, first]);
+                            }
+                        };
+
+                        const srStartAdornment = (
+                            <InputAdornment
+                                position="start"
+                                sx={{
+                                    borderRight: "1px solid",
+                                    borderColor: "divider",
+                                    maxHeight: "unset",
+                                    alignSelf: "stretch",
+                                }}
+                            >
+                                <Select
+                                    value={isRange ? "range" : srMode}
+                                    onChange={(e) => handleSrModeChange(e.target.value as string)}
+                                    variant="standard"
+                                    disableUnderline
+                                    sx={{
+                                        minWidth: "4rem",
+                                        "& .MuiSelect-select": {
+                                            py: 0,
+                                            pr: "24px !important",
+                                            fontSize: "0.85rem",
+                                        },
+                                    }}
+                                >
+                                    <MenuItem value="range">{__(I18nStrings.MAIN_PICKER_FILTER_SR_BETWEEN)}</MenuItem>
+                                    <MenuItem value={SubFilterType.Greater}>≥</MenuItem>
+                                    <MenuItem value={SubFilterType.Equal}>=</MenuItem>
+                                    <MenuItem value={SubFilterType.Less}>≤</MenuItem>
+                                </Select>
+                            </InputAdornment>
+                        );
+
+                        const srRangeEndAdornment = (
+                            <InputAdornment
+                                position="end"
+                                sx={{
+                                    borderLeft: "1px solid",
+                                    borderColor: "divider",
+                                    maxHeight: "unset",
+                                    alignSelf: "stretch",
+                                    ml: 0,
+                                    gap: 0.5,
+                                    px: 1,
+                                }}
+                            >
+                                <OutlinedInput
+                                    size="small"
+                                    type="number"
+                                    value={srVal[1]}
+                                    onChange={(e) =>
+                                        handlePreSettingsChanged(FilterType.StarRating, [
+                                            srVal[0],
+                                            Number(e.target.value),
+                                        ])
+                                    }
+                                    onBlur={(e) =>
+                                        handleSettingsChanged(FilterType.StarRating, [srVal[0], Number(e.target.value)])
+                                    }
+                                    inputProps={{ min: 0, max: 15, step: 0.1 }}
+                                    sx={{
+                                        width: 52,
+                                        "& .MuiOutlinedInput-notchedOutline": { border: "none" },
+                                        "& .MuiInputBase-input": { px: 0 },
+                                    }}
+                                />
+                            </InputAdornment>
+                        );
+
+                        const srSingleEndAdornment = (
+                            <InputAdornment
+                                position="end"
+                                sx={{
+                                    flexDirection: "column",
+                                    padding: "0 0.5rem",
+                                    maxHeight: "unset",
+                                    alignSelf: "stretch",
+                                    height: 40,
+                                    borderLeft: "1px solid",
+                                    borderColor: "divider",
+                                    ml: 0,
+                                    overflow: "hidden",
+                                    "& button": {
+                                        py: 0,
+                                        flex: 1,
+                                        borderRadius: 0.5,
+                                        minHeight: 0,
+                                        minWidth: 0,
+                                    },
+                                }}
+                            >
+                                <IconButton
+                                    size="small"
+                                    onClick={() => {
+                                        const next = Math.min(15, Math.round((srVal[0] + 0.1) * 10) / 10);
+                                        handlePreSettingsChanged(FilterType.StarRating, [next, next]);
+                                        handleSettingsChanged(FilterType.StarRating, [next, next]);
+                                    }}
+                                    aria-label={__(I18nStrings.MAIN_PICKER_WEIGHT_INCREASE)}
+                                >
+                                    <KeyboardArrowUp sx={{ transform: "translateY(2px)" }} />
+                                </IconButton>
+                                <IconButton
+                                    size="small"
+                                    onClick={() => {
+                                        const next = Math.max(0, Math.round((srVal[0] - 0.1) * 10) / 10);
+                                        handlePreSettingsChanged(FilterType.StarRating, [next, next]);
+                                        handleSettingsChanged(FilterType.StarRating, [next, next]);
+                                    }}
+                                    aria-label={__(I18nStrings.MAIN_PICKER_WEIGHT_DECREASE)}
+                                >
+                                    <KeyboardArrowDown sx={{ transform: "translateY(-2px)" }} />
+                                </IconButton>
+                            </InputAdornment>
+                        );
+
                         return (
-                            <Slider
+                            <Stack
                                 key={v}
-                                defaultValue={[0, 15]}
-                                valueLabelDisplay="auto"
-                                shiftStep={0.01}
-                                step={0.1}
-                                marks
-                                min={0}
-                                max={15}
-                                value={cacheSettings?.[FilterType.StarRating] ?? [0, 15]}
-                                onChange={(_, v) => handlePreSettingsChanged(FilterType.StarRating, v)}
-                                onChangeCommitted={(_, v) => handleSettingsChanged(FilterType.StarRating, v)}
-                            />
+                                direction="row"
+                                spacing={1}
+                                sx={{
+                                    alignItems: "center",
+                                }}
+                            >
+                                <FormControl size="small" sx={{ flexShrink: 0 }}>
+                                    <InputLabel htmlFor="sr-min" shrink>
+                                        {__(I18nStrings.MAIN_PICKER_FILTER_STAR_RATING)}
+                                    </InputLabel>
+                                    <OutlinedInput
+                                        id="sr-min"
+                                        size="small"
+                                        label={__(I18nStrings.MAIN_PICKER_FILTER_STAR_RATING)}
+                                        notched
+                                        type="number"
+                                        value={srVal[0]}
+                                        onChange={(e) =>
+                                            handlePreSettingsChanged(FilterType.StarRating, [
+                                                Number(e.target.value),
+                                                isRange ? srVal[1] : Number(e.target.value),
+                                            ])
+                                        }
+                                        onBlur={(e) =>
+                                            handleSettingsChanged(FilterType.StarRating, [
+                                                Number(e.target.value),
+                                                isRange ? srVal[1] : Number(e.target.value),
+                                            ])
+                                        }
+                                        inputProps={{ min: 0, max: 15, step: 0.1 }}
+                                        startAdornment={srStartAdornment}
+                                        endAdornment={isRange ? srRangeEndAdornment : srSingleEndAdornment}
+                                        sx={{ pr: 0 }}
+                                    />
+                                </FormControl>
+                                <Slider
+                                    value={isRange ? srVal : srVal[0]}
+                                    valueLabelDisplay="auto"
+                                    step={0.1}
+                                    min={0}
+                                    max={15}
+                                    track={
+                                        isRange
+                                            ? "normal"
+                                            : srMode === SubFilterType.Greater
+                                              ? "inverted"
+                                              : srMode === SubFilterType.Equal
+                                                ? false
+                                                : "normal"
+                                    }
+                                    sx={{ flex: 1, minWidth: 0, ml: "1rem !important" }}
+                                    onChange={(_, val) => {
+                                        if (isRange) {
+                                            handlePreSettingsChanged(FilterType.StarRating, val as [number, number]);
+                                        } else {
+                                            const n = val as number;
+                                            handlePreSettingsChanged(FilterType.StarRating, [n, n]);
+                                        }
+                                    }}
+                                    onChangeCommitted={(_, val) => {
+                                        if (isRange) {
+                                            handleSettingsChanged(FilterType.StarRating, val as [number, number]);
+                                        } else {
+                                            const n = val as number;
+                                            handleSettingsChanged(FilterType.StarRating, [n, n]);
+                                        }
+                                    }}
+                                />
+                            </Stack>
                         );
                     } else if (v === FilterType.Mode) {
                         return (
-                            <FormControl key={v} fullWidth>
+                            <FormControl key={v} size="small" fullWidth>
                                 <InputLabel id="filter-mode">{__(I18nStrings.MAIN_PICKER_FILTER_MODE)}</InputLabel>
                                 <Select
                                     label={__(I18nStrings.MAIN_PICKER_FILTER_MODE)}
@@ -409,6 +612,40 @@ export const BeatmapFilterView: React.FC<IBeatmapFilterViewProps> = ({
                                     ))}
                                 </Select>
                             </FormControl>
+                        );
+                    } else if (v === FilterType.PlayerTags) {
+                        return (
+                            <Autocomplete
+                                key={v}
+                                multiple
+                                freeSolo
+                                fullWidth
+                                size="small"
+                                filterOptions={(x) => x}
+                                options={tagOptions}
+                                value={(settings?.[FilterType.PlayerTags] as string[]) ?? []}
+                                onChange={(_, newValue) => {
+                                    handleSettingsChanged(FilterType.PlayerTags, newValue);
+                                }}
+                                onInputChange={(_, value) => dbLoaded && searchTags(value)}
+                                renderValue={(value, getItemProps) =>
+                                    value.map((option, index) => {
+                                        const { key, ...tagProps } = getItemProps({ index });
+                                        return <Chip key={key} label={option} size="small" {...tagProps} />;
+                                    })
+                                }
+                                renderInput={(params) => (
+                                    <TextField
+                                        {...params}
+                                        label={__(I18nStrings.MAIN_PICKER_FILTER_PLAYER_TAGS)}
+                                        placeholder={
+                                            dbLoaded
+                                                ? __(I18nStrings.MAIN_PICKER_FILTER_PLAYER_TAGS_PLACEHOLDER)
+                                                : __(I18nStrings.MAIN_PICKER_FILTER_PLAYER_TAGS_NO_DB)
+                                        }
+                                    />
+                                )}
+                            />
                         );
                     }
                     return null;

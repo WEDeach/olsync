@@ -24,7 +24,7 @@ export const ConfigTextField: React.FC<ConfigTextFieldProps> = ({
     placeholder,
     slotProps,
     sx,
-    fullWidth,
+    fullWidth = true,
 }) => (
     <TextField
         label={label}

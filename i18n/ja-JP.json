@@ -2,7 +2,7 @@
     "__LANG__": "日本語",
     "main": {
         "dl": {
-            "select": "ダウンロード方法を選択するか、<b>テキストダウンロード</b>を選択してダウンロードリンクをまとめて取得してください。<br><br>デフォルトのダウンロードURLはosu!公式ウェブサイトです。この場合、ダウンロードするにはアカウントにログインする必要があります！<br>現在使用中のダウンロードリンク: <b>:url</b><br><br>config内の<b>api:dlink</b>を編集することで、直接ダウンロード用のカスタムURLに設定できます！",
+            "select": "ダウンロード方法を選択するか、テキストダウンロードを選択してダウンロードリンクをまとめて取得してください。\n\nデフォルトのダウンロードURLはosu!公式ウェブサイトです。この場合、ダウンロードするにはアカウントにログインする必要があります！\n現在使用中のダウンロードリンク: :url\n\nconfig内のapi:dlinkを編集することで、直接ダウンロード用のカスタムURLに設定できます！",
             "fetching": "ダウンロードリンクを取得中...",
             "nodata": "データがありません...",
             "to_clipboard": ":count 件のダウンロードリンクをクリップボードにコピーしました",
@@ -21,6 +21,8 @@
             "tooltip": {
                 "copy_link": "リンクをコピー",
                 "install": "osu! にインストール",
+                "install_stable": "osu!stable にインストール",
+                "install_lazer": "osu!lazer にインストール",
                 "open_folder": "ファイルの場所を開く",
                 "delete_file": "ファイルを削除",
                 "pause": "一時停止",
@@ -43,13 +45,22 @@
             "login_incomplete": "ログインが完了していません。もう一度お試しください",
             "link_copied": "リンクをクリップボードにコピーしました",
             "no_stable_path": "先に osu!stable のパスを設定してください",
+            "lazer_not_running": "osu!lazer が起動していません。先にクライアントを起動してください",
+            "stable_not_running": "osu!stable が起動していません。先にクライアントを起動してください",
             "install_failed": "インストール失敗: :reason",
             "install_success": ":count 個の譜面をインストールしました",
             "file_deleted": "ファイルを削除しました",
             "delete_failed": "ファイルの削除に失敗しました",
+            "file_missing": "ファイルが見つかりません（移動または削除された可能性があります）",
+            "reveal_failed": "フォルダを開けませんでした",
             "batch_deleted": ":success 個のファイルを削除しました:failPart",
             "enqueued_notify": ":count 件のダウンロードタスクを追加しました:skipPart",
             "builtin_label": "内蔵ダウンロード機能",
+            "missing": {
+                "stable": "Stable 不足",
+                "lazer": "Lazer 不足",
+                "common": "両方不足"
+            },
             "delete_confirm_title": "ファイルを削除しますか？",
             "delete_confirm_label": "削除",
             "delete_confirm_body": "本当に :filename を削除してもよろしいですか？",
@@ -159,10 +170,25 @@
                     "all": "すべてのモード",
                     "label": "ゲームモード"
                 },
+                "scope": {
+                    "label": "検出範囲",
+                    "all": "すべて（Stable + Lazer）",
+                    "stable": "Stable のみ",
+                    "lazer": "Lazer のみ"
+                },
+                "missing": {
+                    "label": "不足ソース",
+                    "stable": "Stable に不足",
+                    "lazer": "Lazer に不足",
+                    "common": "両方に不足"
+                },
                 "no_type_selected": "パックのタイプを少なくとも1つ選択してください！",
                 "start": "ビートマップパックの処理を開始...",
                 "fetching": "パックデータを取得中 (タイプ: :type)...",
-                "init_api": "APIを初期化中..."
+                "init_api": "APIを初期化中...",
+                "osu_path_required": "先に osu!stable のパスを設定してください",
+                "lazer_path_required": "先に osu!lazer のパスを設定してください",
+                "lazer_not_enabled": "Lazer モードの実験的機能を有効にしてください"
             },
             "date_range": {
                 "confirm": "期間を「無制限」にすると、すべてのパックを取得するため、処理に長い時間がかかる場合があります。続行しますか？"
@@ -186,13 +212,20 @@
             },
             "info": {
                 "files": ":count 個のファイルを更新する必要があります",
+                "kind": "パッケージ種別: :kind",
                 "size": "ダウンロードサイズ: :size MB"
             },
             "download_failed_no_error": "ダウンロードに失敗しましたが、具体的なエラーメッセージがありません",
-            "unknown_error": "不明なエラー"
+            "unknown_error": "不明なエラー",
+            "release_notes": "リリースノート"
         },
         "settings": {
             "title": "設定",
+            "appearance": "外観",
+            "theme_mode": "テーマ",
+            "theme_system": "システムに従う",
+            "theme_light": "ライト",
+            "theme_dark": "ダーク",
             "path": "パス設定",
             "api": "API 設定",
             "download": "ダウンロード設定",
@@ -204,8 +237,13 @@
             "others": "その他の設定",
             "use_yinmo_chance": "確率の計算結果に YinMoChance を使用する",
             "check_file_by_md5": "MD5チェックサムでファイルの変更を確認する",
-            "pack_ruleset_by_nm": "NMダイジェストでパックのModを確認する",
+            "pack_ruleset_by_nm": "BNダイジェストでパックのModを確認する",
+            "pack_ruleset_by_bn_desc_pre": "各BNは異なるメインモードを担当しています。このスイッチをオンにすると、これらの情報に基づいて譜面がさらにフィルタリングされます。詳しくは",
+            "pack_ruleset_by_bn_desc_link": "こちら",
+            "pack_ruleset_by_bn_desc_post": "でBNの仕組みを確認できます。",
             "use_api_map_attr": "APIから譜面属性を取得してPPを計算する (実験的)",
+            "use_lazer_mode": "Lazerモードを使用する (実験的)",
+            "classic_score": "Classicスコア表示 (実験的)",
             "language": "言語",
             "no_i18n": "i18nファイルが見つかりません",
             "dl_section": "ダウンロード機能",
@@ -223,7 +261,21 @@
             "dl_mirror_workers": "ミラー最大同時ダウンロード数（推奨: 1）",
             "dl_speedtest_dns": "Speedtest DNS プロキシを使用する",
             "dl_speedtest_dns_desc": "DNS設定を変更してダウンロードの遅延を低減します。詳細は ",
-            "dl_speedtest_dns_link": "この記事を参照"
+            "dl_speedtest_dns_link": "この記事を参照",
+            "online_db": {
+                "section": "オンラインDB",
+                "update": "オンラインDBを更新",
+                "last_update": "最終更新",
+                "never": "未更新",
+                "tags": "計 :count タグ",
+                "downloading": "ダウンロード中...",
+                "success": "更新完了、:count タグの読み込み成功",
+                "failed": "ダウンロード失敗：:error",
+                "confirm_title": "更新確認",
+                "confirm_body": "DBは30日以内に更新されています。再ダウンロードしますか？"
+            },
+            "api_help": "API 認証情報の取得方法",
+            "path_lazer_help": "Lazer パスの設定方法"
         },
         "name": "名前",
         "author": "作者",
@@ -251,6 +303,9 @@
                 "not_submitted": "ローカル未提出",
                 "pending_wip_graveyard": "未ランク",
                 "title_label": "タイトル",
+                "player_tags": "プレイヤータグ",
+                "player_tags_placeholder": "タグを検索または入力",
+                "player_tags_no_db": "先に設定でオンラインDBをダウンロードしてください",
                 "play_count": "プレイ回数",
                 "lang": "言語",
                 "mode": "モード"
@@ -310,13 +365,14 @@
                     "hp": "HP",
                     "od": "OD",
                     "stack": "Stack Leniency",
-                    "sv": "Slider Velocity"
+                    "sv": "Slider Velocity",
+                    "player_tags": "プレイヤータグ (オンライン)"
                 },
                 "sc": {
-                    "user": "ユーザー名",
-                    "300": "300数",
-                    "100": "100数",
                     "50": "50数",
+                    "100": "100数",
+                    "300": "300数",
+                    "user": "ユーザー名",
                     "geki": "Geki数",
                     "katu": "Katu数",
                     "miss": "Miss数",
@@ -328,7 +384,10 @@
                     "str": {
                         "eq": "完全一致",
                         "contains": "含む",
-                        "not_contains": "含まない"
+                        "not_contains": "含まない",
+                        "contains_any": "いずれかを含む",
+                        "not_contains_any": "いずれも含まない",
+                        "player_tags_eq": "完全一致"
                     },
                     "num": {
                         "eq": "一致する",
@@ -360,6 +419,7 @@
                 "title": "抽選履歴",
                 "empty": "履歴がありません",
                 "clear_confirm": "すべての抽選履歴を削除してもよろしいですか？",
+                "rolling": "抽選中...",
                 "table": {
                     "song": "楽曲",
                     "difficulty": "難易度",
@@ -369,7 +429,8 @@
                 }
             },
             "roll": {
-                "result": "選ばれた譜面: :title"
+                "result": "選ばれた譜面: :title",
+                "rolling": "抽選中..."
             },
             "result": {
                 "title": "抽選結果",
@@ -384,6 +445,7 @@
                 "stack": "Stack",
                 "mode": "モード",
                 "status": "ステータス",
+                "online_tags": "オンラインタグ",
                 "source": "ソース",
                 "unplayed": "未プレイ",
                 "scores": "スコア (:count 件)",
@@ -392,6 +454,18 @@
                 "set_id": "譜面セット ID",
                 "yes": "はい",
                 "no": "いいえ",
+                "current": {
+                    "title": "現在の譜面",
+                    "playing": "プレイ中",
+                    "selected": "現在の選択",
+                    "loading": "譜面データを読み込み中",
+                    "unavailable": "譜面データを取得できません",
+                    "length": "長さ",
+                    "time": "時間",
+                    "map_id": "譜面 ID",
+                    "checksum": "Checksum",
+                    "last_played": "前回プレイ"
+                },
                 "dl": {
                     "in_queue": ":setId.osz は既にダウンロードキューにあります",
                     "exists": ":setId.osz は既にダウンロードフォルダに存在します",
@@ -415,12 +489,12 @@
                 "active": "使用中"
             },
             "table": {
+                "50": "50",
+                "100": "100",
+                "300": "300",
                 "grade": "ランク",
                 "map": "曲名",
                 "score": "スコア",
-                "300": "300",
-                "100": "100",
-                "50": "50",
                 "miss": "Miss",
                 "mods": "Mods",
                 "pp": "PP",
@@ -438,7 +512,17 @@
                 "max_combo": "最大コンボ",
                 "accuracy": "精度"
             },
-            "path_required": "選曲機能を使用するには、まず右側の設定で osu! Stable のパスを入力してください"
+            "score": {
+                "best": "ベスト"
+            },
+            "path_required": "選曲機能を使用するには、まず右側の設定で osu! Stable のパスを入力してください",
+            "source": {
+                "title": "譜面データソースを選択",
+                "stable": "Stable",
+                "lazer": "Lazer",
+                "stable_mode": "Stable モード",
+                "lazer_mode": "Lazer モード"
+            }
         },
         "restorer": {
             "path_required": "osu! Stable のパスが必要です。右側の設定で入力してください",
@@ -525,6 +609,9 @@
             "read_by_checksum": "譜面情報を取得 (APIが必要！)"
         },
         "ok": "確定",
+        "back": "戻る",
+        "next": "次へ",
+        "done": "完了",
         "skip": "スキップ",
         "redownload": "再ダウンロード",
         "reset": "リセット",
@@ -539,7 +626,8 @@
             "pause_all": "一括一時停止",
             "cancel_all": "一括キャンセル",
             "delete_all": "すべて削除",
-            "install_all": "すべてインストール",
+            "install_all": "stable へすべてインストール",
+            "install_all_lazer": "lazer へすべてインストール",
             "clear_history": "履歴をクリア",
             "keep_all": "すべて残す",
             "delete_selected": "選択項目を削除",
@@ -583,6 +671,68 @@
         },
         "tracker": {
             "reanalyze": "再分析"
+        }
+    },
+    "onboarding": {
+        "oauth2": {
+            "title": "osu! API 認証情報の取得方法",
+            "step1": {
+                "title": "アカウント設定を開く",
+                "short": "設定を開く",
+                "desc": "osu! 公式サイトにログインし、右上のアバターをクリックして「設定」を開きます。左側のメニューから「アカウント」タブを選び、下へスクロールして「OAuth アプリケーション」欄を見つけ、「OAuth アプリケーション」ボタンをクリックします。",
+                "link": "osu! アカウント設定を開く"
+            },
+            "step2": {
+                "title": "OAuth アプリケーションを登録",
+                "short": "アプリを登録",
+                "desc": "登録ダイアログでは「アプリケーション名」欄のみ入力が必要です。任意の名前（例：OLSync）を入力し、「アプリケーションを登録」ボタンをクリックします。"
+            },
+            "step3": {
+                "title": "認証情報をコピー",
+                "short": "コピー",
+                "desc": "登録後、クライアント ID とクライアントシークレットが表示されます。シークレットをコピーする前に「クライアントシークレットを表示」をクリックする必要があります。次のステップで使うため、両方をコピーしてください。"
+            },
+            "step4": {
+                "title": "OLSync に貼り付け",
+                "short": "OLSync に貼り付け",
+                "desc": "OLSync に戻り、設定の「API 設定」欄を開きます。クライアント ID を Client Id 欄に、クライアントシークレットを Client Secret 欄に貼り付けます。"
+            }
+        },
+        "beatmap_picker": {
+            "title": "選曲器の使い方",
+            "step1": {
+                "title": "選曲器",
+                "short": "概要",
+                "desc": "選曲器はローカルとオンラインの譜面データ、フィルタ、重み付けを使って、条件に合った譜面をランダムに選びます。"
+            }
+        },
+        "path_lazer": {
+            "title": "osu!lazer パスの設定方法",
+            "step1": {
+                "title": "osu!lazer データフォルダを開く",
+                "short": "フォルダを開く",
+                "desc": "osu!lazer の設定から「一般」→「インストール設定」に進み、「osu! データフォルダを開く」ボタンをクリックします。"
+            },
+            "step2": {
+                "title": "フォルダパスをコピー",
+                "short": "パスをコピー",
+                "desc": "osu!lazer のデータフォルダが開きます。フォルダパスをコピーし、その中に `client.realm` ファイルが含まれていることを確認します。"
+            },
+            "step3": {
+                "title": "OLSync で Lazer パスを選択",
+                "short": "OLSync パス",
+                "desc": "OLSync に戻り、設定の「パス設定」にある「LazerPath」欄を見つけ、右側のファイル選択ボタンをクリックします。"
+            },
+            "step4": {
+                "title": "フォルダパスを貼り付け",
+                "short": "パスを貼り付け",
+                "desc": "ファイル選択ウィンドウのパス欄にコピーしたフォルダパスを貼り付け、Enter（移動）を押します。"
+            },
+            "step5": {
+                "title": "client.realm を選択",
+                "short": "ファイルを選択",
+                "desc": "Enter を押すと、フォルダ内に `client.realm` ファイルが表示されます。それを選択して「開く」をクリックすると、Lazer パスの設定が完了します。"
+            }
         }
     }
 }

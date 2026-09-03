@@ -1,5 +1,6 @@
-import { Add, Block, Check, Delete, Edit } from "@mui/icons-material";
+import { Add, Block, Check, ContentCopy, Delete, Edit } from "@mui/icons-material";
 import {
+    Autocomplete,
     Box,
     Button,
     Chip,
@@ -10,15 +11,16 @@ import {
     MenuItem,
     Select,
     Stack,
+    Switch,
     TextField,
     Tooltip,
     Typography,
 } from "@mui/material";
-import React, { useMemo, useState } from "react";
+import React, { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { DefaultObject } from "realm/dist/public-types/schema/types";
 import { IOsuCollection } from "../../defines/types";
 import __ from "../../utils/i18n";
-import { formatDateTime, formatTimeAgo, useNow } from "../../utils/time";
+import { formatDateTime, formatTimeAgo, useNowAdaptive } from "../../utils/time";
 import { I18nStrings } from "../../utils/typed/i18n";
 import {
     BeatmapDataField,
@@ -96,6 +98,7 @@ const BEATMAP_FIELD_KIND: Record<BeatmapDataField, FieldKind> = {
     [BeatmapDataField.OD]: "number",
     [BeatmapDataField.Stack]: "number",
     [BeatmapDataField.SV]: "number",
+    [BeatmapDataField.PlayerTags]: "string",
 };
 
 const SCORE_FIELD_KIND: Record<ScoreRecordField, FieldKind> = {
@@ -128,6 +131,7 @@ const BEATMAP_FIELD_I18N: Record<BeatmapDataField, I18nStrings> = {
     [BeatmapDataField.OD]: I18nStrings.MAIN_PICKER_WEIGHT_BM_OD,
     [BeatmapDataField.Stack]: I18nStrings.MAIN_PICKER_WEIGHT_BM_STACK,
     [BeatmapDataField.SV]: I18nStrings.MAIN_PICKER_WEIGHT_BM_SV,
+    [BeatmapDataField.PlayerTags]: I18nStrings.MAIN_PICKER_WEIGHT_BM_PLAYER_TAGS,
 };
 
 const SCORE_FIELD_I18N: Record<ScoreRecordField, I18nStrings> = {
@@ -147,6 +151,12 @@ const STR_OP_I18N: Record<StringCondition, I18nStrings> = {
     [StringCondition.Equals]: I18nStrings.MAIN_PICKER_WEIGHT_OP_STR_EQ,
     [StringCondition.Contains]: I18nStrings.MAIN_PICKER_WEIGHT_OP_STR_CONTAINS,
     [StringCondition.NotContains]: I18nStrings.MAIN_PICKER_WEIGHT_OP_STR_NOT_CONTAINS,
+};
+
+const PLAYER_TAGS_OP_I18N: Record<StringCondition, I18nStrings> = {
+    [StringCondition.Equals]: I18nStrings.MAIN_PICKER_WEIGHT_OP_STR_PLAYER_TAGS_EQ,
+    [StringCondition.Contains]: I18nStrings.MAIN_PICKER_WEIGHT_OP_STR_CONTAINS_ANY,
+    [StringCondition.NotContains]: I18nStrings.MAIN_PICKER_WEIGHT_OP_STR_NOT_CONTAINS_ANY,
 };
 
 const NUM_OP_I18N: Record<NumberCondition, I18nStrings> = {
@@ -175,6 +185,7 @@ interface WeightDraft {
     type: PickerTargetType;
     id: string;
     weight: number;
+    enabled: boolean;
     field: string;
     operator: string;
     value: string;
@@ -184,14 +195,17 @@ const initDraft = (): WeightDraft => ({
     type: PickerTargetType.Map,
     id: "",
     weight: 1,
+    enabled: true,
     field: BeatmapDataField.Artist,
     operator: StringCondition.Contains,
     value: "",
 });
 
 const draftFromEntry = (entry: IWeightEntry): WeightDraft => {
+    const base = { enabled: entry.enabled !== false };
     if (entry.type === PickerTargetType.BeatmapData && entry.beatmapCondition) {
         return {
+            ...base,
             type: entry.type,
             id: "",
             weight: entry.weight,
@@ -202,6 +216,7 @@ const draftFromEntry = (entry: IWeightEntry): WeightDraft => {
     }
     if (entry.type === PickerTargetType.ScoreRecord && entry.scoreCondition) {
         return {
+            ...base,
             type: entry.type,
             id: "",
             weight: entry.weight,
@@ -212,6 +227,7 @@ const draftFromEntry = (entry: IWeightEntry): WeightDraft => {
     }
     if (entry.type === PickerTargetType.History && entry.historyCondition) {
         return {
+            ...base,
             type: entry.type,
             id: "",
             weight: entry.weight,
@@ -221,6 +237,7 @@ const draftFromEntry = (entry: IWeightEntry): WeightDraft => {
         };
     }
     return {
+        ...base,
         type: entry.type,
         id: entry.id,
         weight: entry.weight,
@@ -231,11 +248,13 @@ const draftFromEntry = (entry: IWeightEntry): WeightDraft => {
 };
 
 const draftToEntry = (draft: WeightDraft): IWeightEntry => {
+    const enabled = draft.enabled;
     if (draft.type === PickerTargetType.BeatmapData) {
         return {
             type: draft.type,
             id: "",
             weight: draft.weight,
+            enabled,
             beatmapCondition: {
                 field: draft.field as BeatmapDataField,
                 operator: draft.operator,
@@ -248,6 +267,7 @@ const draftToEntry = (draft: WeightDraft): IWeightEntry => {
             type: draft.type,
             id: "",
             weight: draft.weight,
+            enabled,
             scoreCondition: {
                 field: draft.field as ScoreRecordField,
                 operator: draft.operator,
@@ -260,13 +280,14 @@ const draftToEntry = (draft: WeightDraft): IWeightEntry => {
             type: draft.type,
             id: "",
             weight: draft.weight,
+            enabled,
             historyCondition: {
                 operator: draft.operator as HistoryCondition,
                 value: draft.value,
             } as IWeightHistoryCondition,
         };
     }
-    return { type: draft.type, id: draft.id.trim(), weight: draft.weight };
+    return { type: draft.type, id: draft.id.trim(), weight: draft.weight, enabled };
 };
 
 const isValidDraft = (draft: WeightDraft): boolean => {
@@ -280,7 +301,7 @@ const isValidDraft = (draft: WeightDraft): boolean => {
                 const [from, to] = draft.value.split("~");
                 return !!from?.trim() && !!to?.trim();
             }
-            if (op === DateCondition.WithinSecs) return (parseInt(draft.value) || 0) > 0;
+            if (op === DateCondition.WithinSecs) return (parseInt(draft.value, 10) || 0) > 0;
             return false;
         }
         return draft.value.trim() !== "";
@@ -288,12 +309,32 @@ const isValidDraft = (draft: WeightDraft): boolean => {
     if (draft.type === PickerTargetType.History) {
         const op = draft.operator as HistoryCondition;
         if (op === HistoryCondition.WithinLast || op === HistoryCondition.NotWithinLast) {
-            return (parseInt(draft.value) || 0) > 0;
+            return (parseInt(draft.value, 10) || 0) > 0;
         }
         return true;
     }
     return draft.id.trim() !== "";
 };
+
+const serializeWeightEntry = (w: IWeightEntry): string =>
+    JSON.stringify({
+        type: w.type,
+        id: w.id,
+        beatmapCondition: w.beatmapCondition,
+        scoreCondition: w.scoreCondition,
+        historyCondition: w.historyCondition,
+    });
+
+const serializeWishlistEntry = (e: IWishlistEntry): string =>
+    JSON.stringify({
+        conditions: e.conditions.map((c) => ({
+            type: c.type,
+            id: c.id,
+            beatmapCondition: c.beatmapCondition,
+            scoreCondition: c.scoreCondition,
+            historyCondition: c.historyCondition,
+        })),
+    });
 
 const getEntryCondDesc = (w: IWeightEntry): string => {
     if (w.type === PickerTargetType.BeatmapData && w.beatmapCondition) {
@@ -322,7 +363,11 @@ const getEntryCondDesc = (w: IWeightEntry): string => {
         const opLabel =
             kind === "number"
                 ? __(NUM_OP_I18N[operator as NumberCondition])
-                : __(STR_OP_I18N[operator as StringCondition]);
+                : __(
+                      (field === BeatmapDataField.PlayerTags ? PLAYER_TAGS_OP_I18N : STR_OP_I18N)[
+                          operator as StringCondition
+                      ],
+                  );
         return `${fieldLabel} ${opLabel} "${value}"`;
     }
     if (w.type === PickerTargetType.ScoreRecord && w.scoreCondition) {
@@ -372,7 +417,7 @@ const DateConditionEditor: React.FC<{
     onChange: (op: string, val: string) => void;
 }> = ({ operator, value, onChange }) => {
     const mode = (operator as DateCondition) || DateCondition.After;
-    const secs = parseInt(value) || 0;
+    const secs = parseInt(value, 10) || 0;
     const years = Math.floor(secs / 31536000);
     const months = Math.floor((secs % 31536000) / 2592000);
     const days = Math.floor((secs % 2592000) / 86400);
@@ -410,7 +455,13 @@ const DateConditionEditor: React.FC<{
                 />
             )}
             {mode === DateCondition.Between && (
-                <Stack direction="row" spacing={1} alignItems="center">
+                <Stack
+                    direction="row"
+                    spacing={1}
+                    sx={{
+                        alignItems: "center",
+                    }}
+                >
                     <TextField
                         size="small"
                         type="date"
@@ -441,7 +492,7 @@ const DateConditionEditor: React.FC<{
                         sx={{ flex: 1, minWidth: 52 }}
                         value={years}
                         onChange={(e) =>
-                            onChange(mode, buildSecs(Math.max(0, parseInt(e.target.value) || 0), months, days))
+                            onChange(mode, buildSecs(Math.max(0, parseInt(e.target.value, 10) || 0), months, days))
                         }
                         slotProps={{ htmlInput: { min: 0 } }}
                     />
@@ -452,7 +503,7 @@ const DateConditionEditor: React.FC<{
                         sx={{ flex: 1, minWidth: 52 }}
                         value={months}
                         onChange={(e) =>
-                            onChange(mode, buildSecs(years, Math.max(0, parseInt(e.target.value) || 0), days))
+                            onChange(mode, buildSecs(years, Math.max(0, parseInt(e.target.value, 10) || 0), days))
                         }
                         slotProps={{ htmlInput: { min: 0 } }}
                     />
@@ -463,7 +514,7 @@ const DateConditionEditor: React.FC<{
                         sx={{ flex: 1, minWidth: 52 }}
                         value={days}
                         onChange={(e) =>
-                            onChange(mode, buildSecs(years, months, Math.max(0, parseInt(e.target.value) || 0)))
+                            onChange(mode, buildSecs(years, months, Math.max(0, parseInt(e.target.value, 10) || 0)))
                         }
                         slotProps={{ htmlInput: { min: 0 } }}
                     />
@@ -483,8 +534,16 @@ const HistoryConditionEditor: React.FC<{
     const op = (operator as HistoryCondition) || HistoryCondition.Appeared;
     const needsN = op === HistoryCondition.WithinLast || op === HistoryCondition.NotWithinLast;
     return (
-        <Stack direction="row" spacing={1} alignItems="flex-start">
-            <FormControl size="small" sx={{ minWidth: 160, flexShrink: 0 }}>
+        <Stack
+            direction="row"
+            spacing={1}
+            sx={{
+                alignItems: "flex-start",
+                flexGrow: 1,
+                minWidth: 0,
+            }}
+        >
+            <FormControl size="small" sx={{ flexGrow: 1, minWidth: 160 }}>
                 <InputLabel>{__(I18nStrings.MAIN_PICKER_WEIGHT_OPERATOR)}</InputLabel>
                 <Select
                     label={__(I18nStrings.MAIN_PICKER_WEIGHT_OPERATOR)}
@@ -511,8 +570,8 @@ const HistoryConditionEditor: React.FC<{
                     type="number"
                     label={__(I18nStrings.MAIN_PICKER_WEIGHT_HIST_LAST_N)}
                     sx={{ width: 80, flexShrink: 0 }}
-                    value={parseInt(value) || ""}
-                    onChange={(e) => onChange(op, String(Math.max(1, parseInt(e.target.value) || 1)), weight)}
+                    value={parseInt(value, 10) || ""}
+                    onChange={(e) => onChange(op, String(Math.max(1, parseInt(e.target.value, 10) || 1)), weight)}
                     slotProps={{ htmlInput: { min: 1, step: 1 } }}
                 />
             )}
@@ -528,6 +587,48 @@ const HistoryConditionEditor: React.FC<{
                 />
             )}
         </Stack>
+    );
+};
+
+const PlayerTagsValueEditor: React.FC<{ value: string; onChange: (v: string) => void }> = ({ value, onChange }) => {
+    const [options, setOptions] = useState<string[]>([]);
+    const deferredOptions = useDeferredValue(options);
+    const debounceRef = useRef<ReturnType<typeof setTimeout>>(null);
+    const tags = value ? value.split(",").filter(Boolean) : [];
+
+    const search = useCallback((query: string) => {
+        if (debounceRef.current) clearTimeout(debounceRef.current);
+        if (!query.trim()) {
+            setOptions([]);
+            return;
+        }
+        debounceRef.current = setTimeout(async () => {
+            const results = await window.olsCore.searchOnlineTags(query);
+            if (!results || (results as any).error) return;
+            setOptions((results as any[]).map((t: any) => t.name ?? t));
+        }, 250);
+    }, []);
+
+    return (
+        <Autocomplete
+            multiple
+            freeSolo
+            sx={{ flexGrow: 1 }}
+            filterOptions={(x) => x}
+            options={deferredOptions}
+            value={tags}
+            onChange={(_, newValue) => onChange((newValue as string[]).join(","))}
+            onInputChange={(_, v) => search(v)}
+            renderValue={(val, getItemProps) =>
+                (val as string[]).map((option, index) => {
+                    const { key, ...tagProps } = getItemProps({ index });
+                    return <Chip key={key} label={option} size="small" {...tagProps} />;
+                })
+            }
+            renderInput={(params) => (
+                <TextField {...params} size="small" label={__(I18nStrings.MAIN_PICKER_WEIGHT_COND_VALUE)} />
+            )}
+        />
     );
 };
 
@@ -571,7 +672,13 @@ const WeightEntryFormFields: React.FC<{
 
     return (
         <Stack spacing={2}>
-            <Stack direction="row" spacing={1} alignItems="flex-start">
+            <Stack
+                direction="row"
+                spacing={1}
+                sx={{
+                    alignItems: "flex-start",
+                }}
+            >
                 <FormControl size="small" sx={{ minWidth: 100, flexShrink: 0 }}>
                     <Select value={draft.type} onChange={(e) => handleTypeChange(e.target.value as PickerTargetType)}>
                         <MenuItem value={PickerTargetType.Map}>{__(I18nStrings.MAIN_PICKER_WEIGHT_TYPE_MAP)}</MenuItem>
@@ -653,7 +760,13 @@ const WeightEntryFormFields: React.FC<{
                 )}
             </Stack>
             {isCond && (
-                <Stack direction="row" spacing={1} alignItems="flex-start">
+                <Stack
+                    direction="row"
+                    spacing={1}
+                    sx={{
+                        alignItems: "flex-start",
+                    }}
+                >
                     {fieldKind === "date" ? (
                         <DateConditionEditor
                             operator={draft.operator}
@@ -670,7 +783,11 @@ const WeightEntryFormFields: React.FC<{
                                     onChange={(e) => onChange({ ...draft, operator: e.target.value })}
                                 >
                                     {fieldKind === "string" &&
-                                        Object.entries(STR_OP_I18N).map(([op, key]) => (
+                                        Object.entries(
+                                            draft.field === BeatmapDataField.PlayerTags
+                                                ? PLAYER_TAGS_OP_I18N
+                                                : STR_OP_I18N,
+                                        ).map(([op, key]) => (
                                             <MenuItem key={op} value={op}>
                                                 {__(key)}
                                             </MenuItem>
@@ -691,7 +808,7 @@ const WeightEntryFormFields: React.FC<{
                                     ]}
                                 </Select>
                             </FormControl>
-                            {fieldKind !== "boolean" && (
+                            {fieldKind !== "boolean" && draft.field !== BeatmapDataField.PlayerTags && (
                                 <TextField
                                     size="small"
                                     sx={{ flexGrow: 1 }}
@@ -699,6 +816,12 @@ const WeightEntryFormFields: React.FC<{
                                     type={fieldKind === "number" ? "number" : "text"}
                                     value={draft.value}
                                     onChange={(e) => onChange({ ...draft, value: e.target.value })}
+                                />
+                            )}
+                            {draft.field === BeatmapDataField.PlayerTags && (
+                                <PlayerTagsValueEditor
+                                    value={draft.value}
+                                    onChange={(v) => onChange({ ...draft, value: v })}
                                 />
                             )}
                         </>
@@ -731,8 +854,36 @@ const WeightSection: React.FC<{
     const [editingIdx, setEditingIdx] = useState<number | null>(null);
     const [editDraft, setEditDraft] = useState<WeightDraft | null>(null);
 
+    const dupIndices = useMemo(() => {
+        const seen = new Map<string, number>();
+        const dups = new Set<number>();
+        weights.forEach((w, i) => {
+            const key = serializeWeightEntry(w);
+            const first = seen.get(key);
+            if (first !== undefined) {
+                dups.add(i);
+            } else {
+                seen.set(key, i);
+            }
+        });
+        return dups;
+    }, [weights]);
+
+    useEffect(() => {
+        const autoDisabled = weights.map((w, i) =>
+            dupIndices.has(i) && w.enabled !== false ? { ...w, enabled: false } : w,
+        );
+        if (autoDisabled.some((w, i) => w !== weights[i])) {
+            onChange(autoDisabled);
+        }
+    }, [dupIndices]);
+
     const handleDelete = (idx: number) => {
         onChange(weights.filter((_, i) => i !== idx));
+    };
+
+    const handleCopy = (idx: number) => {
+        onChange([...weights, { ...weights[idx], enabled: weights[idx].enabled }]);
     };
 
     const handleAdd = () => {
@@ -778,11 +929,22 @@ const WeightSection: React.FC<{
     };
 
     return (
-        <Box>
-            <Typography variant="subtitle2" color="text.secondary" textAlign="center">
+        <Box sx={{ display: "flex", flexDirection: "column", height: "100%" }}>
+            <Typography
+                variant="subtitle2"
+                sx={{
+                    color: "text.secondary",
+                    textAlign: "center",
+                }}
+            >
                 {__(I18nStrings.MAIN_PICKER_WEIGHT_TITLE)}
             </Typography>
-            <Box mt={1}>
+            <Divider />
+            <Box
+                sx={{
+                    mt: 1.5,
+                }}
+            >
                 <WeightEntryFormFields draft={newDraft} collections={collections} onChange={setNewDraft} />
                 <Button
                     variant="outlined"
@@ -796,83 +958,137 @@ const WeightSection: React.FC<{
                     {__(I18nStrings.MAIN_PICKER_WEIGHT_ADD)}
                 </Button>
             </Box>
-            <Divider sx={{ my: 1 }} />
-            <Box sx={{ maxHeight: 300, overflowY: "auto" }}>
+            <Divider sx={{ my: 1.5 }} />
+            <Box sx={{ flex: 1, overflowY: "auto" }}>
                 <Stack spacing={2}>
                     {weights.length === 0 && (
-                        <Typography variant="caption" color="text.secondary" textAlign="center" display="block">
+                        <Typography
+                            variant="caption"
+                            sx={{
+                                color: "text.secondary",
+                                textAlign: "center",
+                                display: "block",
+                            }}
+                        >
                             -
                         </Typography>
                     )}
                     {weights.map((w, i) => (
-                        <Box
-                            key={`${w.type}-${w.id}-${i}`}
-                            sx={{
-                                borderLeft: "3px solid",
-                                borderColor: editingIdx === i ? "warning.main" : "divider",
-                                bgcolor: editingIdx === i ? "action.hover" : "transparent",
-                                borderRadius: 1,
-                                px: 1,
-                                py: 0.5,
-                            }}
+                        <Tooltip
+                            key={`${w.type}-${w.id}-${w.weight}-${w.beatmapCondition?.field ?? ""}-${w.scoreCondition?.field ?? ""}-${i}`}
+                            title={dupIndices.has(i) ? __(I18nStrings.MAIN_PICKER_DUPLICATE_CONDITION) : ""}
+                            placement="top"
+                            arrow
+                            disableHoverListener={!dupIndices.has(i)}
                         >
-                            {editingIdx === i && editDraft ? (
-                                <Box>
-                                    <WeightEntryFormFields
-                                        draft={editDraft}
-                                        collections={collections}
-                                        onChange={(d) => setEditDraft(d)}
-                                    />
-                                    <Stack direction="row" justifyContent="flex-end" spacing={1} mt={0.5}>
-                                        <IconButton
-                                            size="small"
-                                            color="success"
-                                            onClick={confirmEdit}
-                                            disabled={!isValidDraft(editDraft)}
+                            <Box
+                                sx={{
+                                    borderLeft: "3px solid",
+                                    borderColor: dupIndices.has(i)
+                                        ? "error.main"
+                                        : editingIdx === i
+                                          ? "warning.main"
+                                          : w.enabled === false
+                                            ? "error.light"
+                                            : "divider",
+                                    bgcolor: editingIdx === i ? "action.hover" : "transparent",
+                                    borderRadius: 1,
+                                    px: 1,
+                                    py: 0.5,
+                                    opacity: w.enabled === false ? 0.45 : 1,
+                                    transition: "opacity 0.2s",
+                                }}
+                            >
+                                {editingIdx === i && editDraft ? (
+                                    <Box>
+                                        <WeightEntryFormFields
+                                            draft={editDraft}
+                                            collections={collections}
+                                            onChange={(d) => setEditDraft(d)}
+                                        />
+                                        <Stack
+                                            direction="row"
+                                            spacing={1}
+                                            sx={{
+                                                justifyContent: "flex-end",
+                                                mt: 0.5,
+                                            }}
                                         >
-                                            <Check fontSize="small" />
-                                        </IconButton>
-                                        <IconButton size="small" color="error" onClick={cancelEdit}>
-                                            <Block fontSize="small" />
-                                        </IconButton>
-                                    </Stack>
-                                </Box>
-                            ) : (
-                                <Stack direction="row" spacing={1} alignItems="center">
-                                    <Typography
-                                        variant="caption"
-                                        color="text.secondary"
-                                        sx={{ minWidth: 48, flexShrink: 0 }}
-                                        noWrap
-                                    >
-                                        {getTypeLabel(w.type)}
-                                    </Typography>
-                                    <Typography
-                                        variant="caption"
+                                            <IconButton
+                                                size="small"
+                                                color="success"
+                                                onClick={confirmEdit}
+                                                disabled={!isValidDraft(editDraft)}
+                                            >
+                                                <Check fontSize="small" />
+                                            </IconButton>
+                                            <IconButton size="small" color="error" onClick={cancelEdit}>
+                                                <Block fontSize="small" />
+                                            </IconButton>
+                                        </Stack>
+                                    </Box>
+                                ) : (
+                                    <Stack
+                                        direction="row"
+                                        spacing={1}
                                         sx={{
-                                            flexGrow: 1,
-                                            overflow: "hidden",
-                                            textOverflow: "ellipsis",
-                                            whiteSpace: "nowrap",
+                                            alignItems: "center",
                                         }}
                                     >
-                                        {getEntryCondDesc(w)}
-                                    </Typography>
-                                    <Typography
-                                        variant="caption"
-                                        sx={{ minWidth: 32, textAlign: "right", flexShrink: 0 }}
-                                    >
-                                        x{w.weight}
-                                    </Typography>
-                                    <IconButton size="small" onClick={() => startEdit(i)}>
-                                        <Edit fontSize="small" />
-                                    </IconButton>
-                                    <IconButton size="small" color="error" onClick={() => handleDelete(i)}>
-                                        <Delete fontSize="small" />
-                                    </IconButton>
-                                </Stack>
-                            )}
-                        </Box>
+                                        <Typography
+                                            variant="caption"
+                                            noWrap
+                                            sx={{
+                                                color: "text.secondary",
+                                                minWidth: 48,
+                                                flexShrink: 0,
+                                            }}
+                                        >
+                                            {getTypeLabel(w.type)}
+                                        </Typography>
+                                        <Typography
+                                            variant="caption"
+                                            sx={{
+                                                flexGrow: 1,
+                                                overflow: "hidden",
+                                                textOverflow: "ellipsis",
+                                                whiteSpace: "nowrap",
+                                            }}
+                                        >
+                                            {getEntryCondDesc(w)}
+                                        </Typography>
+                                        <Typography
+                                            variant="caption"
+                                            sx={{ minWidth: 32, textAlign: "right", flexShrink: 0 }}
+                                        >
+                                            x{w.weight}
+                                        </Typography>
+                                        <Tooltip title={__(I18nStrings.MAIN_PICKER_WEIGHT_ENABLED)} placement="top">
+                                            <Switch
+                                                size="small"
+                                                checked={w.enabled !== false}
+                                                onChange={() => {
+                                                    const updated = [...weights];
+                                                    updated[i] = { ...w, enabled: !(w.enabled !== false) };
+                                                    onChange(updated);
+                                                }}
+                                            />
+                                        </Tooltip>
+                                        <Tooltip title={__(I18nStrings.MAIN_PICKER_WEIGHT_COPY)} placement="top">
+                                            <IconButton size="small" onClick={() => handleCopy(i)}>
+                                                <ContentCopy fontSize="small" />
+                                            </IconButton>
+                                        </Tooltip>
+                                        <IconButton size="small" onClick={() => startEdit(i)}>
+                                            <Edit fontSize="small" />
+                                        </IconButton>
+                                        <IconButton size="small" color="error" onClick={() => handleDelete(i)}>
+                                            <Delete fontSize="small" />
+                                        </IconButton>
+                                    </Stack>
+                                )}
+                            </Box>
+                        </Tooltip>
                     ))}
                 </Stack>
             </Box>
@@ -932,6 +1148,7 @@ const condItemToDraft = (item: IWishlistConditionItem): WeightDraft => {
             type: item.type,
             id: "",
             weight: 0,
+            enabled: true,
             field: item.beatmapCondition.field,
             operator: item.beatmapCondition.operator,
             value: item.beatmapCondition.value,
@@ -942,6 +1159,7 @@ const condItemToDraft = (item: IWishlistConditionItem): WeightDraft => {
             type: item.type,
             id: "",
             weight: 0,
+            enabled: true,
             field: item.scoreCondition.field,
             operator: item.scoreCondition.operator,
             value: item.scoreCondition.value,
@@ -952,6 +1170,7 @@ const condItemToDraft = (item: IWishlistConditionItem): WeightDraft => {
             type: item.type,
             id: "",
             weight: 0,
+            enabled: true,
             field: "",
             operator: item.historyCondition.operator,
             value: item.historyCondition.value,
@@ -961,6 +1180,7 @@ const condItemToDraft = (item: IWishlistConditionItem): WeightDraft => {
         type: item.type,
         id: item.id,
         weight: 0,
+        enabled: true,
         field: BeatmapDataField.Artist,
         operator: StringCondition.Contains,
         value: "",
@@ -969,11 +1189,15 @@ const condItemToDraft = (item: IWishlistConditionItem): WeightDraft => {
 
 interface WishlistEntryDraft {
     label: string;
+    priority: number;
+    enabled: boolean;
     conditions: WeightDraft[];
 }
 
 const initWishlistEntryDraft = (): WishlistEntryDraft => ({
     label: "",
+    priority: 0,
+    enabled: true,
     conditions: [initDraft()],
 });
 
@@ -1011,6 +1235,30 @@ const WishlistSection: React.FC<{
     const [editingIdx, setEditingIdx] = useState<number | null>(null);
     const [editEntry, setEditEntry] = useState<WishlistEntryDraft | null>(null);
 
+    const dupIndices = useMemo(() => {
+        const seen = new Map<string, number>();
+        const dups = new Set<number>();
+        normalizedWishlist.forEach((e, i) => {
+            const key = serializeWishlistEntry(e);
+            const first = seen.get(key);
+            if (first !== undefined) {
+                dups.add(i);
+            } else {
+                seen.set(key, i);
+            }
+        });
+        return dups;
+    }, [normalizedWishlist]);
+
+    useEffect(() => {
+        const autoDisabled = wishlist.map((e, i) =>
+            dupIndices.has(i) && e.enabled !== false ? { ...e, enabled: false } : e,
+        );
+        if (autoDisabled.some((e, i) => e !== wishlist[i])) {
+            onChange(autoDisabled);
+        }
+    }, [dupIndices]);
+
     const isValidEntry = (entry: WishlistEntryDraft): boolean =>
         entry.conditions.length > 0 && entry.conditions.every(isValidDraft);
 
@@ -1033,6 +1281,8 @@ const WishlistSection: React.FC<{
         if (!isValidEntry(newEntry)) return;
         const entry: IWishlistEntry = {
             label: newEntry.label.trim() || undefined,
+            priority: newEntry.priority,
+            enabled: newEntry.enabled,
             conditions: newEntry.conditions.map(wishlistDraftToCondItem),
         };
         onChange([...wishlist, entry]);
@@ -1043,11 +1293,18 @@ const WishlistSection: React.FC<{
         onChange(wishlist.filter((_, i) => i !== idx));
     };
 
+    const handleCopy = (idx: number) => {
+        const entry = normalizedWishlist[idx];
+        onChange([...wishlist, { ...entry, label: undefined, enabled: entry.enabled }]);
+    };
+
     const startEdit = (idx: number) => {
         const entry = normalizedWishlist[idx];
         setEditingIdx(idx);
         setEditEntry({
             label: entry.label ?? "",
+            priority: entry.priority ?? 0,
+            enabled: entry.enabled !== false,
             conditions: entry.conditions.map(condItemToDraft),
         });
     };
@@ -1057,6 +1314,8 @@ const WishlistSection: React.FC<{
         const updated = [...wishlist];
         updated[editingIdx] = {
             label: editEntry.label.trim() || undefined,
+            priority: editEntry.priority,
+            enabled: editEntry.enabled,
             conditions: editEntry.conditions.map(wishlistDraftToCondItem),
         };
         onChange(updated);
@@ -1092,26 +1351,51 @@ const WishlistSection: React.FC<{
     };
 
     return (
-        <Box>
-            <Typography variant="subtitle2" color="text.secondary" textAlign="center">
+        <Box sx={{ display: "flex", flexDirection: "column", height: "100%" }}>
+            <Typography
+                variant="subtitle2"
+                sx={{
+                    color: "text.secondary",
+                    textAlign: "center",
+                }}
+            >
                 {__(I18nStrings.MAIN_PICKER_WISHLIST_TITLE)}
             </Typography>
-            <Box mt={1}>
-                <TextField
-                    size="small"
-                    fullWidth
-                    sx={{ mb: 1 }}
-                    label={__(I18nStrings.MAIN_PICKER_WISHLIST_LABEL)}
-                    value={newEntry.label}
-                    onChange={(e) => setNewEntry({ ...newEntry, label: e.target.value })}
-                />
+            <Divider />
+            <Box
+                sx={{
+                    mt: 1.5,
+                }}
+            >
+                <Stack direction="row" spacing={1} sx={{ mb: 1 }}>
+                    <TextField
+                        size="small"
+                        fullWidth
+                        label={__(I18nStrings.MAIN_PICKER_WISHLIST_LABEL)}
+                        value={newEntry.label}
+                        onChange={(e) => setNewEntry({ ...newEntry, label: e.target.value })}
+                    />
+                    <TextField
+                        size="small"
+                        sx={{ width: 90, flexShrink: 0 }}
+                        type="number"
+                        slotProps={{ htmlInput: { min: 0, max: 99 } }}
+                        label={__(I18nStrings.MAIN_PICKER_WISHLIST_PRIORITY)}
+                        value={newEntry.priority}
+                        onChange={(e) =>
+                            setNewEntry({ ...newEntry, priority: Math.max(0, Number(e.target.value) || 0) })
+                        }
+                    />
+                </Stack>
                 <Stack spacing={2}>
                     {newEntry.conditions.map((cond, i) => (
                         <Stack
-                            key={`new-${i}-${cond.type}-${cond.field}`}
+                            key={`new-${cond.type}-${cond.field}`}
                             direction="row"
                             spacing={1}
-                            alignItems="flex-start"
+                            sx={{
+                                alignItems: "flex-start",
+                            }}
                         >
                             <Box sx={{ flexGrow: 1 }}>
                                 <WeightEntryFormFields
@@ -1133,7 +1417,13 @@ const WishlistSection: React.FC<{
                         </Stack>
                     ))}
                 </Stack>
-                <Stack direction="row" spacing={1} mt={1}>
+                <Stack
+                    direction="row"
+                    spacing={1}
+                    sx={{
+                        mt: 1,
+                    }}
+                >
                     <Button variant="text" size="small" startIcon={<Add />} onClick={addNewCond}>
                         {__(I18nStrings.MAIN_PICKER_WISHLIST_ADD_COND)}
                     </Button>
@@ -1149,117 +1439,219 @@ const WishlistSection: React.FC<{
                     </Button>
                 </Stack>
             </Box>
-            <Divider sx={{ my: 1 }} />
-            <Box sx={{ maxHeight: 300, overflowY: "auto" }}>
+            <Divider sx={{ my: 1.5 }} />
+            <Box sx={{ flex: 1, overflowY: "auto" }}>
                 <Stack spacing={2}>
                     {wishlist.length === 0 && (
-                        <Typography variant="caption" color="text.secondary" textAlign="center" display="block">
+                        <Typography
+                            variant="caption"
+                            sx={{
+                                color: "text.secondary",
+                                textAlign: "center",
+                                display: "block",
+                            }}
+                        >
                             -
                         </Typography>
                     )}
                     {normalizedWishlist.map((entry, i) => (
-                        <Box
-                            key={`${entry.label ?? ""}-${i}`}
-                            sx={{
-                                borderLeft: "3px solid",
-                                borderColor: editingIdx === i ? "warning.main" : "primary.main",
-                                bgcolor: editingIdx === i ? "action.hover" : "transparent",
-                                borderRadius: 1,
-                                px: 1,
-                                py: 0.5,
-                            }}
+                        <Tooltip
+                            key={`${entry.label ?? ""}-${entry.priority ?? 0}-${i}`}
+                            title={dupIndices.has(i) ? __(I18nStrings.MAIN_PICKER_DUPLICATE_CONDITION) : ""}
+                            placement="top"
+                            arrow
+                            disableHoverListener={!dupIndices.has(i)}
                         >
-                            {editingIdx === i && editEntry ? (
-                                <Box>
-                                    <TextField
-                                        size="small"
-                                        fullWidth
-                                        sx={{ mb: 1 }}
-                                        label={__(I18nStrings.MAIN_PICKER_WISHLIST_LABEL)}
-                                        value={editEntry.label}
-                                        onChange={(e) => setEditEntry({ ...editEntry, label: e.target.value })}
-                                    />
-                                    <Stack spacing={2}>
-                                        {editEntry.conditions.map((cond, ci) => (
-                                            <Stack
-                                                key={`edit-${ci}-${cond.type}-${cond.field}`}
-                                                direction="row"
-                                                spacing={1}
-                                                alignItems="flex-start"
-                                            >
-                                                <Box sx={{ flexGrow: 1 }}>
-                                                    <WeightEntryFormFields
-                                                        draft={cond}
-                                                        collections={collections}
-                                                        hideWeight
-                                                        onChange={(d) => updateEditCond(ci, d)}
-                                                    />
-                                                </Box>
-                                                <IconButton
-                                                    size="small"
-                                                    color="error"
-                                                    disabled={editEntry.conditions.length <= 1}
-                                                    onClick={() => removeEditCond(ci)}
-                                                    sx={{ mt: 0.5 }}
-                                                >
-                                                    <Delete fontSize="small" />
-                                                </IconButton>
-                                            </Stack>
-                                        ))}
-                                    </Stack>
-                                    <Stack direction="row" spacing={1} mt={0.5}>
-                                        <Button variant="text" size="small" startIcon={<Add />} onClick={addEditCond}>
-                                            {__(I18nStrings.MAIN_PICKER_WISHLIST_ADD_COND)}
-                                        </Button>
-                                        <Stack
-                                            direction="row"
-                                            justifyContent="flex-end"
-                                            spacing={1}
-                                            sx={{ flexGrow: 1 }}
-                                        >
-                                            <IconButton
+                            <Box
+                                sx={{
+                                    borderLeft: "3px solid",
+                                    borderColor: dupIndices.has(i)
+                                        ? "error.main"
+                                        : editingIdx === i
+                                          ? "warning.main"
+                                          : entry.enabled === false
+                                            ? "error.light"
+                                            : "primary.main",
+                                    bgcolor: editingIdx === i ? "action.hover" : "transparent",
+                                    borderRadius: 1,
+                                    px: 1,
+                                    py: 0.5,
+                                    opacity: entry.enabled === false ? 0.45 : 1,
+                                    transition: "opacity 0.2s",
+                                }}
+                            >
+                                {editingIdx === i && editEntry ? (
+                                    <Box>
+                                        <Stack direction="row" spacing={1} sx={{ mb: 1 }}>
+                                            <TextField
                                                 size="small"
-                                                color="success"
-                                                onClick={confirmEdit}
-                                                disabled={!isValidEntry(editEntry)}
-                                            >
-                                                <Check fontSize="small" />
-                                            </IconButton>
-                                            <IconButton size="small" color="error" onClick={cancelEdit}>
-                                                <Block fontSize="small" />
-                                            </IconButton>
+                                                fullWidth
+                                                label={__(I18nStrings.MAIN_PICKER_WISHLIST_LABEL)}
+                                                value={editEntry.label}
+                                                onChange={(e) => setEditEntry({ ...editEntry, label: e.target.value })}
+                                            />
+                                            <TextField
+                                                size="small"
+                                                sx={{ width: 90, flexShrink: 0 }}
+                                                type="number"
+                                                slotProps={{ htmlInput: { min: 0, max: 99 } }}
+                                                label={__(I18nStrings.MAIN_PICKER_WISHLIST_PRIORITY)}
+                                                value={editEntry.priority}
+                                                onChange={(e) =>
+                                                    setEditEntry({
+                                                        ...editEntry,
+                                                        priority: Math.max(0, Number(e.target.value) || 0),
+                                                    })
+                                                }
+                                            />
                                         </Stack>
-                                    </Stack>
-                                </Box>
-                            ) : (
-                                <Stack direction="row" spacing={1} alignItems="center">
-                                    <Stack sx={{ flexGrow: 1, overflow: "hidden" }} spacing={2}>
-                                        {entry.label && (
-                                            <Typography variant="caption" fontWeight="bold" noWrap>
-                                                {entry.label}
-                                            </Typography>
-                                        )}
-                                        <Stack direction="row" spacing={1} flexWrap="wrap">
-                                            {entry.conditions.map((c, ci) => (
-                                                <Chip
-                                                    key={`${ci}-${c.type}-${c.id || c.beatmapCondition?.field || c.scoreCondition?.field}`}
-                                                    label={getCondDesc(c)}
-                                                    size="small"
-                                                    variant="outlined"
-                                                    sx={{ fontSize: "0.65rem", height: 18 }}
-                                                />
+                                        <Stack spacing={2}>
+                                            {editEntry.conditions.map((cond, ci) => (
+                                                <Stack
+                                                    key={`edit-${cond.type}-${cond.field}`}
+                                                    direction="row"
+                                                    spacing={1}
+                                                    sx={{
+                                                        alignItems: "flex-start",
+                                                    }}
+                                                >
+                                                    <Box sx={{ flexGrow: 1 }}>
+                                                        <WeightEntryFormFields
+                                                            draft={cond}
+                                                            collections={collections}
+                                                            hideWeight
+                                                            onChange={(d) => updateEditCond(ci, d)}
+                                                        />
+                                                    </Box>
+                                                    <IconButton
+                                                        size="small"
+                                                        color="error"
+                                                        disabled={editEntry.conditions.length <= 1}
+                                                        onClick={() => removeEditCond(ci)}
+                                                        sx={{ mt: 0.5 }}
+                                                    >
+                                                        <Delete fontSize="small" />
+                                                    </IconButton>
+                                                </Stack>
                                             ))}
                                         </Stack>
+                                        <Stack
+                                            direction="row"
+                                            spacing={1}
+                                            sx={{
+                                                mt: 0.5,
+                                            }}
+                                        >
+                                            <Button
+                                                variant="text"
+                                                size="small"
+                                                startIcon={<Add />}
+                                                onClick={addEditCond}
+                                            >
+                                                {__(I18nStrings.MAIN_PICKER_WISHLIST_ADD_COND)}
+                                            </Button>
+                                            <Stack
+                                                direction="row"
+                                                spacing={1}
+                                                sx={{
+                                                    justifyContent: "flex-end",
+                                                    flexGrow: 1,
+                                                }}
+                                            >
+                                                <IconButton
+                                                    size="small"
+                                                    color="success"
+                                                    onClick={confirmEdit}
+                                                    disabled={!isValidEntry(editEntry)}
+                                                >
+                                                    <Check fontSize="small" />
+                                                </IconButton>
+                                                <IconButton size="small" color="error" onClick={cancelEdit}>
+                                                    <Block fontSize="small" />
+                                                </IconButton>
+                                            </Stack>
+                                        </Stack>
+                                    </Box>
+                                ) : (
+                                    <Stack
+                                        direction="row"
+                                        spacing={1}
+                                        sx={{
+                                            alignItems: "center",
+                                            width: "100%",
+                                        }}
+                                    >
+                                        <Stack sx={{ flexGrow: 1, minWidth: 0 }} spacing={2}>
+                                            <Stack
+                                                direction="row"
+                                                spacing={1}
+                                                sx={{
+                                                    alignItems: "center",
+                                                }}
+                                            >
+                                                {entry.label && (
+                                                    <Typography
+                                                        variant="caption"
+                                                        noWrap
+                                                        sx={{
+                                                            fontWeight: "bold",
+                                                        }}
+                                                    >
+                                                        {entry.label}
+                                                    </Typography>
+                                                )}
+                                                <Chip
+                                                    label={`P${entry.priority ?? 0}`}
+                                                    size="small"
+                                                    color={entry.priority && entry.priority > 0 ? "primary" : "default"}
+                                                    variant="outlined"
+                                                    sx={{ fontSize: "0.6rem", height: 16 }}
+                                                />
+                                            </Stack>
+                                            <Stack
+                                                direction="row"
+                                                spacing={1}
+                                                sx={{
+                                                    flexWrap: "wrap",
+                                                }}
+                                            >
+                                                {entry.conditions.map((c, ci) => (
+                                                    <Chip
+                                                        key={`${c.type}-${c.id || c.beatmapCondition?.field || c.scoreCondition?.field}-${ci}`}
+                                                        label={getCondDesc(c)}
+                                                        size="small"
+                                                        variant="outlined"
+                                                        sx={{ fontSize: "0.65rem", height: 18 }}
+                                                    />
+                                                ))}
+                                            </Stack>
+                                        </Stack>
+                                        <Tooltip title={__(I18nStrings.MAIN_PICKER_WISHLIST_ENABLED)} placement="top">
+                                            <Switch
+                                                size="small"
+                                                checked={entry.enabled !== false}
+                                                onChange={() => {
+                                                    const updated = [...wishlist];
+                                                    updated[i] = { ...entry, enabled: !(entry.enabled !== false) };
+                                                    onChange(updated);
+                                                }}
+                                            />
+                                        </Tooltip>
+                                        <Tooltip title={__(I18nStrings.MAIN_PICKER_WISHLIST_COPY)} placement="top">
+                                            <IconButton size="small" onClick={() => handleCopy(i)}>
+                                                <ContentCopy fontSize="small" />
+                                            </IconButton>
+                                        </Tooltip>
+                                        <IconButton size="small" onClick={() => startEdit(i)}>
+                                            <Edit fontSize="small" />
+                                        </IconButton>
+                                        <IconButton size="small" color="error" onClick={() => handleDelete(i)}>
+                                            <Delete fontSize="small" />
+                                        </IconButton>
                                     </Stack>
-                                    <IconButton size="small" onClick={() => startEdit(i)}>
-                                        <Edit fontSize="small" />
-                                    </IconButton>
-                                    <IconButton size="small" color="error" onClick={() => handleDelete(i)}>
-                                        <Delete fontSize="small" />
-                                    </IconButton>
-                                </Stack>
-                            )}
-                        </Box>
+                                )}
+                            </Box>
+                        </Tooltip>
                     ))}
                 </Stack>
             </Box>
@@ -1276,7 +1668,8 @@ export const BeatmapPickerAdvancedPanel: React.FC<IBeatmapPickerAdvancedPanelPro
     onClearHistory,
     onHistoryItemClick,
 }) => {
-    useNow();
+    const latestPickedAt = history.length > 0 ? Math.max(...history.map((h) => h.pickedAt)) : null;
+    useNowAdaptive(section === "history" ? latestPickedAt : null);
 
     const historyRows: DefaultObject[] = useMemo(
         () =>
@@ -1312,7 +1705,7 @@ export const BeatmapPickerAdvancedPanel: React.FC<IBeatmapPickerAdvancedPanelPro
                 flexDirection: "column",
                 p: 1,
                 gap: 1,
-                height: section === "history" ? "100%" : undefined,
+                height: "100%",
             }}
         >
             {(!section || section === "weight") && (
@@ -1338,12 +1731,25 @@ export const BeatmapPickerAdvancedPanel: React.FC<IBeatmapPickerAdvancedPanelPro
                         ...(section !== "history" && { height: "100%" }),
                     }}
                 >
-                    <Typography variant="subtitle2" color="text.secondary" textAlign="center" sx={{ flexShrink: 0 }}>
+                    <Typography
+                        variant="subtitle2"
+                        sx={{
+                            color: "text.secondary",
+                            textAlign: "center",
+                            flexShrink: 0,
+                        }}
+                    >
                         {__(I18nStrings.MAIN_PICKER_HISTORY_TITLE)}
                     </Typography>
+                    <Divider sx={{ flexShrink: 0 }} />
                     <Box sx={{ flexGrow: 1, overflow: "hidden", mt: 1 }}>
                         {history.length === 0 ? (
-                            <Typography variant="caption" color="text.secondary">
+                            <Typography
+                                variant="caption"
+                                sx={{
+                                    color: "text.secondary",
+                                }}
+                            >
                                 {__(I18nStrings.MAIN_PICKER_HISTORY_EMPTY)}
                             </Typography>
                         ) : (

@@ -2,7 +2,7 @@
     "__LANG__": "English",
     "main": {
         "dl": {
-            "select": "Please select a download method, or select <b>Text Download</b> to batch fetch download links.<br><br>The default download URL points to the official osu! website, which requires logging into your account to download!<br>Your current download link is: <b>:url</b><br><br>You can modify <b>api:dlink</b> in config to use a custom download URL for direct downloading!",
+            "select": "Please select a download method, or select Text Download to batch fetch download links.\n\nThe default download URL points to the official osu! website, which requires logging into your account to download!\nYour current download link is: :url\n\nYou can modify api:dlink in config to use a custom download URL for direct downloading!",
             "fetching": "Fetching download links...",
             "nodata": "No data available...",
             "to_clipboard": "Copied :count download links to clipboard",
@@ -21,6 +21,8 @@
             "tooltip": {
                 "copy_link": "Copy Link",
                 "install": "Install to osu!",
+                "install_stable": "Install to Stable",
+                "install_lazer": "Install to Lazer",
                 "open_folder": "Open Containing Folder",
                 "delete_file": "Delete File",
                 "pause": "Pause",
@@ -43,13 +45,22 @@
             "login_incomplete": "Login incomplete, please try again",
             "link_copied": "Link copied to clipboard",
             "no_stable_path": "Please configure osu!stable path first",
+            "lazer_not_running": "osu!lazer is not running, please start the client first",
+            "stable_not_running": "osu!stable is not running, please start the client first",
             "install_failed": "Installation failed: :reason",
             "install_success": "Successfully installed :count beatmaps",
             "file_deleted": "File deleted",
             "delete_failed": "Failed to delete file",
+            "file_missing": "File not found (it may have been moved or deleted)",
+            "reveal_failed": "Failed to open containing folder",
             "batch_deleted": "Deleted :success files:failPart",
             "enqueued_notify": "Added :count download tasks:skipPart",
             "builtin_label": "Built-in Downloader",
+            "missing": {
+                "stable": "Stable Missing",
+                "lazer": "Lazer Missing",
+                "common": "Both Missing"
+            },
             "delete_confirm_title": "Delete File?",
             "delete_confirm_label": "Delete",
             "delete_confirm_body": "Are you sure you want to delete :filename?",
@@ -82,12 +93,25 @@
                 "done_tooltip": ":count downloads completed, click to view",
                 "active_tooltip": "Downloading: :downloading, Queued: :queued, Awaiting Login: :held"
             },
+            "manual_input_set_label": "Beatmapset ID",
+            "manual_input_set_placeholder": "e.g. 123456",
+            "manual_input_beatmap_label": "Beatmap ID",
+            "manual_input_beatmap_placeholder": "e.g. 789",
+            "manual_input_button": "Download",
+            "manual_input_invalid": "Please enter a valid positive integer ID",
+            "manual_input_resolving": "Resolving beatmap ID to beatmapset...",
+            "manual_input_resolved": "Resolved to beatmapset #:setId",
+            "manual_input_not_found": "Beatmap ID not found",
+            "deep_link_confirm_title": "Download from osu:// link",
+            "deep_link_confirm_body": "Download beatmapset #:id?",
             "tab": {
                 "all": "All (:count)",
                 "done": "Completed (:count)",
                 "cancelled": "Cancelled (:count)",
                 "error": "Error (:count)"
-            }
+            },
+            "aborted": "Download aborted: :success succeeded, :failed failed, :total total",
+            "success": "Successfully opened :count download link(s)"
         },
         "api": {
             "client": {
@@ -114,7 +138,9 @@
                 "reading": "Reading online records...",
                 "success": "Online records read successfully!",
                 "nodata": "No data found in online records!",
-                "aborted": "Aborted reading online records..."
+                "aborted": "Aborted reading online records...",
+                "states": "Online States",
+                "alert": "Online Alert"
             },
             "reading": {
                 "failed": "Failed to read data: :reason",
@@ -159,10 +185,24 @@
                     "all": "All Modes",
                     "label": "Game Mode"
                 },
+                "scope": {
+                    "label": "Detection Scope",
+                    "all": "All (Stable + Lazer)",
+                    "stable": "Stable Only",
+                    "lazer": "Lazer Only"
+                },
+                "missing": {
+                    "label": "Missing Source",
+                    "stable": "Missing in Stable",
+                    "lazer": "Missing in Lazer",
+                    "common": "Missing in Both"
+                },
                 "no_type_selected": "Please select at least one pack type!",
                 "start": "Starting to process beatmap packs...",
                 "fetching": "Fetching pack data (Type: :type)...",
-                "init_api": "Initializing API..."
+                "osu_path_required": "osu! Stable path is required",
+                "lazer_path_required": "osu! Lazer path is required",
+                "lazer_not_enabled": "Lazer mode experiment must be enabled"
             },
             "date_range": {
                 "confirm": "Setting the date range to 'No Time Limit' will fetch all packs, which may take a significant amount of time. Do you wish to continue?"
@@ -186,13 +226,20 @@
             },
             "info": {
                 "files": ":count files need to be updated",
+                "kind": "Package kind: :kind",
                 "size": "Download Size: :size MB"
             },
             "download_failed_no_error": "Download failed with no specific error message",
-            "unknown_error": "Unknown error"
+            "unknown_error": "Unknown error",
+            "release_notes": "Release notes"
         },
         "settings": {
             "title": "Settings",
+            "appearance": "Appearance",
+            "theme_mode": "Theme",
+            "theme_system": "System",
+            "theme_light": "Light",
+            "theme_dark": "Dark",
             "path": "Path Settings",
             "api": "API Settings",
             "download": "Download Settings",
@@ -204,8 +251,14 @@
             "others": "Other Settings",
             "use_yinmo_chance": "Use YinMoChance to calculate probability results",
             "check_file_by_md5": "Check file changes using MD5 validation",
-            "pack_ruleset_by_nm": "Check pack Mod using NM digest",
+            "pack_ruleset_by_nm": "Check pack Mod using BN digest",
+            "pack_ruleset_by_bn_desc_pre": "Each BN is responsible for different main modes. When this toggle is enabled, beatmaps will be further filtered based on this information. You can learn more about how BNs work ",
+            "pack_ruleset_by_bn_desc_link": "here",
+            "pack_ruleset_by_bn_desc_post": ".",
             "use_api_map_attr": "Use API beatmap attributes for PP calculation (Experimental)",
+            "include_online_db": "Include online database in filters (Experimental)",
+            "use_lazer_mode": "Use Lazer Mode (Experimental)",
+            "classic_score": "Classic Score Display (Experimental)",
             "language": "Language",
             "no_i18n": "No i18n files found",
             "dl_section": "Downloader",
@@ -223,12 +276,25 @@
             "dl_mirror_workers": "Mirror Max Concurrent Downloads (Recommended: 1)",
             "dl_speedtest_dns": "Use Speedtest DNS Proxy",
             "dl_speedtest_dns_desc": "Get lower download latency by changing DNS settings. For details, refer to ",
-            "dl_speedtest_dns_link": "this article"
+            "dl_speedtest_dns_link": "this article",
+            "online_db": {
+                "section": "Online Database",
+                "update": "Update Online Database",
+                "last_update": "Last Updated",
+                "never": "Never",
+                "tags": ":count tags total",
+                "downloading": "Downloading...",
+                "success": "Update complete, :count tags loaded",
+                "failed": "Download failed: :error",
+                "confirm_title": "Confirm Update",
+                "confirm_body": "The database was updated within 30 days. Download again?"
+            },
+            "api_help": "How to get API credentials",
+            "path_lazer_help": "How to set the Lazer path"
         },
         "name": "Name",
         "author": "Author",
         "date": "Date",
-        "version": "Version",
         "ruleset": "Mode",
         "picker": {
             "filter": {
@@ -251,9 +317,14 @@
                 "not_submitted": "Local",
                 "pending_wip_graveyard": "Unranked",
                 "title_label": "Title",
+                "player_tags": "Player Tags",
+                "player_tags_placeholder": "Search or enter tag",
+                "player_tags_no_db": "Download the online database in Settings first",
                 "play_count": "Play Count",
                 "lang": "Language",
-                "mode": "Mode"
+                "mode": "Mode",
+                "star_rating": "Star Rating",
+                "sr_between": "Between"
             },
             "filter_pool": {
                 "title": "Title",
@@ -278,6 +349,8 @@
                 "increase": "Increase",
                 "decrease": "Decrease",
                 "add": "Add",
+                "enabled": "Enabled",
+                "copy": "Copy",
                 "field": "Field",
                 "operator": "Condition",
                 "cond_value": "Value",
@@ -310,13 +383,14 @@
                     "hp": "HP",
                     "od": "OD",
                     "stack": "Stack Leniency",
-                    "sv": "Slider Velocity"
+                    "sv": "Slider Velocity",
+                    "player_tags": "Player Tags (Online)"
                 },
                 "sc": {
-                    "user": "Username",
-                    "300": "300 Count",
-                    "100": "100 Count",
                     "50": "50 Count",
+                    "100": "100 Count",
+                    "300": "300 Count",
+                    "user": "Username",
                     "geki": "Geki Count",
                     "katu": "Katu Count",
                     "miss": "Miss Count",
@@ -328,7 +402,10 @@
                     "str": {
                         "eq": "Exact Match",
                         "contains": "Contains",
-                        "not_contains": "Does Not Contain"
+                        "not_contains": "Does Not Contain",
+                        "contains_any": "Contains Any",
+                        "not_contains_any": "Does Not Contain Any",
+                        "player_tags_eq": "Exact Match"
                     },
                     "num": {
                         "eq": "Equals",
@@ -354,12 +431,17 @@
                 "title": "Wishlist",
                 "label": "Rule Name (Optional)",
                 "add": "Add Rule",
-                "add_cond": "Add Condition"
+                "add_cond": "Add Condition",
+                "priority": "Priority",
+                "enabled": "Enabled",
+                "copy": "Copy"
             },
+            "duplicate_condition": "This condition is a duplicate of another and has been auto-disabled",
             "history": {
                 "title": "Roll History",
                 "empty": "No history records yet",
                 "clear_confirm": "Are you sure you want to clear all roll history?",
+                "rolling": "Rolling...",
                 "table": {
                     "song": "Song",
                     "difficulty": "Difficulty",
@@ -369,7 +451,8 @@
                 }
             },
             "roll": {
-                "result": "Rolled: :title"
+                "result": "Rolled: :title",
+                "rolling": "Rolling..."
             },
             "result": {
                 "title": "Roll Result",
@@ -384,6 +467,7 @@
                 "stack": "Stack",
                 "mode": "Mode",
                 "status": "Status",
+                "online_tags": "Online Tags",
                 "source": "Source",
                 "unplayed": "Unplayed",
                 "scores": "Scores (:count records)",
@@ -391,18 +475,7 @@
                 "beatmap_id": "Beatmap ID",
                 "set_id": "Beatmapset ID",
                 "yes": "Yes",
-                "no": "No",
-                "dl": {
-                    "in_queue": ":setId.osz is already in the download queue",
-                    "exists": ":setId.osz already exists in the download folder",
-                    "auth_required": "osu! account login required to download :setId.osz",
-                    "enqueued": "Added to downloads: :setId.osz"
-                },
-                "local_not_found": "Could not find this item in local beatmaps",
-                "migration": {
-                    "title": "Some settings are outdated",
-                    "desc": "The following configuration items are no longer supported. Clicking OK will automatically delete them (the original configuration file will be backed up beforehand):"
-                }
+                "no": "No"
             },
             "profile": {
                 "name": "Profile Name",
@@ -412,15 +485,21 @@
                 "import": "Import JSON",
                 "import_title": "Select Profile JSON",
                 "saved": "Profile saved successfully",
-                "active": "Active"
+                "active": "Active",
+                "clone": "Clone",
+                "clone_title": "Clone Profile",
+                "rename": "Rename",
+                "rename_title": "Rename Profile",
+                "overwrite_title": "Overwrite Profile",
+                "overwrite_desc": "Profile ':name' already exists. Overwrite?"
             },
             "table": {
+                "50": "50",
+                "100": "100",
+                "300": "300",
                 "grade": "Grade",
                 "map": "Track",
                 "score": "Score",
-                "300": "300",
-                "100": "100",
-                "50": "50",
                 "miss": "Miss",
                 "mods": "Mods",
                 "pp": "PP",
@@ -438,7 +517,40 @@
                 "max_combo": "Max Combo",
                 "accuracy": "Accuracy"
             },
-            "path_required": "Please fill in the osu! Stable path in the right settings panel to use the Map Picker"
+            "score": {
+                "best": "Best"
+            },
+            "path_required": "Please fill in the osu! Stable path in the right settings panel to use the Map Picker",
+            "current": {
+                "title": "Current Beatmap",
+                "playing": "Now Playing",
+                "selected": "Current Selection",
+                "loading": "Loading beatmap data",
+                "unavailable": "Beatmap data unavailable",
+                "length": "Length",
+                "time": "Time",
+                "map_id": "Beatmap ID",
+                "checksum": "Checksum",
+                "last_played": "Last Played"
+            },
+            "dl": {
+                "in_queue": ":setId.osz is already in the download queue",
+                "exists": ":setId.osz already exists in the download folder",
+                "auth_required": "osu! account login required to download :setId.osz",
+                "enqueued": "Added to downloads: :setId.osz"
+            },
+            "local_not_found": "Could not find this item in local beatmaps",
+            "migration": {
+                "title": "Some settings are outdated",
+                "desc": "The following configuration items are no longer supported. Clicking OK will automatically delete them (the original configuration file will be backed up beforehand):"
+            },
+            "source": {
+                "title": "Choose beatmap data source",
+                "stable": "Stable",
+                "lazer": "Lazer",
+                "stable_mode": "Stable Mode",
+                "lazer_mode": "Lazer Mode"
+            }
         },
         "restorer": {
             "path_required": "osu! Stable path is required. Please fill it in the right settings first",
@@ -452,7 +564,16 @@
         },
         "collection": {
             "selected_count": ":selected/:total Selected",
-            "subs_count": ":count sub-items"
+            "subs_count": ":count sub-items",
+            "reading": {
+                "ol": "Reading Lazer collections...",
+                "os": "Reading Stable collections..."
+            },
+            "merging": "Merging collections...",
+            "merge": {
+                "confirm": "Confirm Collection Merge",
+                "success": "Collections merged successfully"
+            }
         },
         "i18n": {
             "file_missing": "Language file not found: :lang"
@@ -503,6 +624,9 @@
                 "30d": "30 Days",
                 "custom": "Custom"
             }
+        },
+        "data": {
+            "reading": "Reading data..."
         }
     },
     "btn": {
@@ -514,7 +638,8 @@
             },
             "player": {
                 "isme": "This is me!",
-                "check": "Check Player"
+                "check": "Check Player",
+                "confirm": "Confirm Player"
             },
             "group": {
                 "local": "Local",
@@ -525,6 +650,9 @@
             "read_by_checksum": "Fetch Beatmap Info (API Required!)"
         },
         "ok": "OK",
+        "back": "Back",
+        "next": "Next",
+        "done": "Done",
         "skip": "Skip",
         "redownload": "Redownload",
         "reset": "Reset",
@@ -539,7 +667,8 @@
             "pause_all": "Pause All",
             "cancel_all": "Cancel All",
             "delete_all": "Delete All",
-            "install_all": "Install All",
+            "install_all": "Install All to Stable",
+            "install_all_lazer": "Install All to Lazer",
             "clear_history": "Clear History",
             "keep_all": "Keep All",
             "delete_selected": "Delete Selected",
@@ -583,6 +712,72 @@
         },
         "tracker": {
             "reanalyze": "Reanalyze"
+        },
+        "collection": {
+            "read": "Read Collections",
+            "merge": "Merge Collections"
+        }
+    },
+    "onboarding": {
+        "oauth2": {
+            "title": "How to get osu! API credentials",
+            "step1": {
+                "title": "Go to account settings",
+                "short": "Open settings",
+                "desc": "Open the osu! website and log in. Click your avatar to open Settings, then select the Account tab. Scroll down to the OAuth section and click the OAuth button.",
+                "link": "Go to osu! account settings"
+            },
+            "step2": {
+                "title": "Register an OAuth application",
+                "short": "Register",
+                "desc": "In the registration dialog, only the Application Name field is required. You can enter anything (e.g. OLSync). Then click the Register button."
+            },
+            "step3": {
+                "title": "Copy the credentials",
+                "short": "Copy credentials",
+                "desc": "After registering, the Client ID and Client Secret are shown. Click Show Client Secret before copying the secret. Copy both values for the next step."
+            },
+            "step4": {
+                "title": "Paste into OLSync",
+                "short": "Paste into OLSync",
+                "desc": "Return to OLSync, open Settings, and find the API section. Paste the Client ID into the Client Id field and the Client Secret into the Client Secret field."
+            }
+        },
+        "beatmap_picker": {
+            "title": "How to use the Beatmap Picker",
+            "step1": {
+                "title": "Beatmap Picker",
+                "short": "Intro",
+                "desc": "The picker uses local and online beatmap data, filters, and weights to randomly select a beatmap that matches your criteria."
+            }
+        },
+        "path_lazer": {
+            "title": "How to set the osu!lazer path",
+            "step1": {
+                "title": "Open the osu!lazer data folder",
+                "short": "Open folder",
+                "desc": "In osu!lazer settings, go to General → Installation Settings, find and click the Open osu! data folder button."
+            },
+            "step2": {
+                "title": "Copy the folder path",
+                "short": "Copy path",
+                "desc": "The osu!lazer data folder will open. Copy the folder path and make sure the folder contains the `client.realm` file."
+            },
+            "step3": {
+                "title": "Select the Lazer path in OLSync",
+                "short": "OLSync path",
+                "desc": "Return to OLSync, open Settings, find the LazerPath field under Path Settings, and click the select file button."
+            },
+            "step4": {
+                "title": "Paste the folder path",
+                "short": "Paste path",
+                "desc": "In the file picker window, paste the copied folder path into the path bar and press Enter (Go)."
+            },
+            "step5": {
+                "title": "Select client.realm",
+                "short": "Select file",
+                "desc": "After pressing Enter, the folder contents will show the `client.realm` file. Select it and click Open to finish setting the Lazer path."
+            }
         }
     }
 }

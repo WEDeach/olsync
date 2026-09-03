@@ -1,13 +1,9 @@
 import { AlertProps, SnackbarOrigin } from "@mui/material";
 import { action, observable, runInAction } from "mobx";
 import { DownloadTask } from "../defines/download_types";
-import { UpdateDiff } from "../entrypoint/js/updater";
-import { createLogger } from "../utils/logger";
 import { ConfigKey, SyncState } from "../utils/typed/config";
 import { IBeatmapListProps } from "./components/beatmapList";
 import { ICompareListProps } from "./components/compareList";
-
-const log = createLogger("State");
 
 interface IGlobalError {
     message: string;
@@ -23,7 +19,8 @@ interface IGlobalCacheValue {
     ss_player_id?: string;
 }
 
-interface IGlobalNotify {
+export interface IGlobalNotify {
+    id: number;
     message: string;
     severity?: AlertProps["severity"];
     action?: React.ReactNode;
@@ -45,16 +42,41 @@ interface ICheckUpdateBaseResult {
     type: "ignore";
 }
 
-interface ICheckUpdateDiffResult extends UpdateDiff {
-    type: "base";
+interface ICheckUpdateUpToDateResult {
+    type: "upToDate";
+    currentVersion: string;
 }
 
-interface ICheckUpdateVersionResult {
-    type: "github";
-    version: string;
+interface ICheckUpdateAvailableResult {
+    type: "available";
+    currentVersion: string;
+    targetVersion: string;
+    kind: "diff" | "overall" | "full";
+    size: number;
+    releasePageUrl: string;
+    releaseNotes?: string;
 }
 
-type ICheckUpdateResult = ICheckUpdateBaseResult | ICheckUpdateDiffResult | ICheckUpdateVersionResult;
+interface ICheckUpdateManualResult {
+    type: "manual";
+    currentVersion: string;
+    targetVersion: string;
+    releasePageUrl: string;
+    reason: string;
+    releaseNotes?: string;
+}
+
+interface ICheckUpdateErrorResult {
+    type: "error";
+    error: string;
+}
+
+type ICheckUpdateResult =
+    | ICheckUpdateBaseResult
+    | ICheckUpdateUpToDateResult
+    | ICheckUpdateAvailableResult
+    | ICheckUpdateManualResult
+    | ICheckUpdateErrorResult;
 
 export interface NewSyncState extends SyncState {
     new_count?: number;
@@ -68,7 +90,7 @@ interface DialogActionProps {
 export interface IDialogState {
     show: boolean;
     title?: string;
-    content?: string | (() => React.JSX.Element);
+    content?: React.ReactNode | (() => React.ReactNode);
     beatmaps?: IBeatmapListProps;
     compares?: ICompareListProps;
     actions?: DialogActionProps[];
@@ -88,10 +110,11 @@ interface IGlobalState {
     i18nVersion: number;
     error?: IGlobalError & IGlobalShowable;
     cacheVal: IGlobalCacheValue;
-    notify?: IGlobalNotify & IGlobalShowable;
+    notifies: IGlobalNotify[];
     loadingState?: IGlobalLoading;
     dialog?: IDialogState;
     duplicateConfirm: DuplicateConfirmState;
+    onboarding?: { open: boolean; topic?: string };
     version: string;
 
     bumpI18nVersion: () => void;
@@ -100,25 +123,42 @@ interface IGlobalState {
     clearError: () => void;
     initConfig: () => Promise<void>;
     saveConfig: (k: string, v: any) => Promise<void>;
-    setNotify: (n?: IGlobalNotify) => void;
+    setNotify: (n?: Omit<IGlobalNotify, "id">) => void;
     hasNotify: () => boolean;
-    clearNotify: () => void;
+    clearNotify: (id?: number) => void;
     setLoading: (loading: boolean, message?: string, aborter?: AbortController) => void;
     isLoading: () => boolean;
     checkUpdate: (isForce?: boolean) => Promise<ICheckUpdateResult>;
     setDialog: (is_show: boolean, opt?: Omit<IDialogState, "show">) => void;
+    setOnboarding: (open: boolean, topic?: string) => void;
     showDuplicateConfirm: (items: Array<{ filename: string; task?: DownloadTask; req: any }>) => Promise<boolean>;
     closeDuplicateConfirm: (confirmed: boolean) => void;
 }
 
-const g: IGlobalState = observable({
-    cacheVal: {},
-    i18nVersion: 0,
-    duplicateConfirm: {
-        show: false,
-        items: [],
+const g: IGlobalState = observable(
+    {
+        cacheVal: {},
+        i18nVersion: 0,
+        notifies: [],
+        // Keys must exist in the source object for their annotations to apply.
+        dialog: undefined,
+        loadingState: undefined,
+        duplicateConfirm: {
+            show: false,
+            items: [],
+        },
     },
-}) as unknown as IGlobalState;
+    {
+        // Fields that may carry React nodes (notify `action`, dialog `content`)
+        // must not be deep-proxied: React calls internal methods on elements
+        // (e.g. element._debugTask.run in dev builds) and throws "illegal
+        // receiver" when `this` is a MobX proxy. Shallow keeps the items
+        // themselves raw while the array/object properties stay reactive.
+        notifies: observable.shallow,
+        dialog: observable.shallow,
+        loadingState: observable.shallow,
+    },
+) as unknown as IGlobalState;
 
 Object.assign(g, {
     bumpI18nVersion: action(() => {
@@ -161,26 +201,20 @@ Object.assign(g, {
         g.config[k] = v;
         await window.olsCore.saveConfig(k, v);
     }),
-    setNotify: (n: IGlobalNotify) => {
-        let delay = 0;
-        if (g.notify?.show === true) {
-            g.clearNotify();
-            delay = 200;
-        }
-        setTimeout(
-            action(() => {
-                g.notify = {
-                    ...n,
-                    show: true,
-                };
-            }),
-            delay,
-        );
+    setNotify: (n: Omit<IGlobalNotify, "id">) => {
+        const id = Date.now() + Math.random();
+        action(() => {
+            g.notifies.push({ ...n, id });
+        })();
     },
-    hasNotify: () => g.notify?.show === true,
-    clearNotify: action(() => {
-        if (g.notify === undefined || g.notify.show === false) return;
-        g.notify.show = false;
+    hasNotify: () => g.notifies.length > 0,
+    clearNotify: action((id?: number) => {
+        if (id === undefined) {
+            g.notifies.splice(0);
+        } else {
+            const idx = g.notifies.findIndex((n) => n.id === id);
+            if (idx >= 0) g.notifies.splice(idx, 1);
+        }
     }),
     setLoading: action((loading: boolean, message?: string, aborter?: AbortController) => {
         g.loadingState = {
@@ -192,49 +226,56 @@ Object.assign(g, {
     isLoading: () => g.loadingState?.loading === true,
     checkUpdate: async (isForce: boolean = false): Promise<ICheckUpdateResult> => {
         const autoCheck = g.config?.[ConfigKey.UPDATE_AUTO_CHECK] ?? true;
-        if (autoCheck || isForce) {
-            const updateBaseUrl = g.config?.[ConfigKey.UPDATE_BASE_URL] || "https://olsdk1-page-static.deachsword.com";
-
-            // Check for updates from manifest
-            // 1. fetch by updateBaseUrl
-            //   - dev or prod
-            // 2. fetch by github repo
-            //   - prod
-            // 3. ingnore
-            //   - prod
-
-            await window.olsCore.initUpdater({
-                sources: [{ url: updateBaseUrl }],
-                publicKey: `-----BEGIN RSA PUBLIC KEY-----\nMIIBCgKCAQEAy6o0Ax7zPtaOQdbbmJkNg4ii3AIQqoNHog9YuN5ZWIf+cFp/yUfz\nkWGsc55eDMUgZXD5FyupIYuZ0ACagxq3o6kVnhlfUth32UQeT0xJ5cgD3mRFxoTy\ndDTxja670ak2fAJQGk9nc7vocIdUi2I9eQoyyR1sVJ3FEJLlRf0qTTdIVHQTCEMx\nZuPNJUTPDtQmHyQyqcQpmwh\n+aqD7OhKG5GDZXmmnFTdwxlWqx8NbPnvXlcU0x+F9\n2HsuP6ZNwlgU+a0WBKtU6cPupG2X/ju8x6r+oPbiPq5LQpXKj2Y\n+2mdpiVIQvrEL\nz+qWe/NUXGz64Ar1w6PiAbReqBKLgH1ZkQIDAQAB\n-----END RSA PUBLIC KEY-----`,
-            });
-            const diff = await window.olsCore.checkForUpdates();
-            if (diff && "error" in diff) {
-                try {
-                    const response = await fetch("https://api.github.com/repos/WEDeach/olsync/releases/latest");
-                    if (response.ok) {
-                        const data = await response.json();
-                        log.debug(data);
-                        const ov = data.tag_name?.replace(/^v/, "");
-                        return { type: "github", version: ov };
-                    }
-                } catch (error) {
-                    log.error("Failed to check for updates from manifest:", error);
-                }
-            } else if (diff?.needsUpdate) {
-                return { type: "base", ...diff };
-            }
+        if (!autoCheck && !isForce) {
+            return { type: "ignore" };
         }
+
+        const result = await window.olsCore.checkForGithubUpdate();
+        if ("error" in result && typeof result.error === "string") {
+            return { type: "error", error: result.error };
+        }
+
+        if (result.status === "upToDate") {
+            return { type: "upToDate", currentVersion: result.currentVersion };
+        }
+
+        if (result.status === "manual") {
+            return {
+                type: "manual",
+                currentVersion: result.currentVersion,
+                targetVersion: result.targetVersion,
+                releasePageUrl: result.releasePageUrl,
+                reason: result.reason,
+                releaseNotes: result.releaseNotes,
+            };
+        }
+
+        if (result.status === "available") {
+            return {
+                type: "available",
+                currentVersion: result.currentVersion,
+                targetVersion: result.targetVersion,
+                kind: result.kind,
+                size: result.size,
+                releasePageUrl: result.releasePageUrl,
+                releaseNotes: result.releaseNotes,
+            };
+        }
+
         return { type: "ignore" };
     },
     setDialog: action((is_show: boolean, opt?: Omit<IDialogState, "show">) => {
-        if (!is_show && g.dialog?.show) {
-            g.dialog.show = is_show;
+        if (!is_show) {
+            g.dialog = { show: false };
             return;
         }
         g.dialog = {
             show: is_show,
             ...opt,
         };
+    }),
+    setOnboarding: action((open: boolean, topic?: string) => {
+        g.onboarding = { open, topic };
     }),
     showDuplicateConfirm: action((items: Array<{ filename: string; task?: DownloadTask; req: any }>) => {
         return new Promise<boolean>((resolve) => {

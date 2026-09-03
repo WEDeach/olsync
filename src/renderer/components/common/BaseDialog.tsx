@@ -23,19 +23,18 @@ export const BaseDialog: React.FC<BaseDialogProps> = ({
     fullWidth = true,
     disableEscapeKeyDown = false,
     disableBackdropClick = false,
-}) => (
-    <Dialog
-        open={open}
-        onClose={(e, reason) => {
-            if (disableBackdropClick && reason === "backdropClick") return;
-            onClose?.(e, reason);
-        }}
-        maxWidth={maxWidth}
-        fullWidth={fullWidth}
-        disableEscapeKeyDown={disableEscapeKeyDown}
-    >
-        {title && <DialogTitle>{title}</DialogTitle>}
-        {children && <DialogContent>{children}</DialogContent>}
-        {actions && <DialogActions>{actions}</DialogActions>}
-    </Dialog>
-);
+}) => {
+    const handleClose = (e: object, reason: "backdropClick" | "escapeKeyDown" | "closeButtonClick") => {
+        if (disableBackdropClick && reason === "backdropClick") return;
+        if (disableEscapeKeyDown && reason === "escapeKeyDown") return;
+        onClose?.(e, reason);
+    };
+
+    return (
+        <Dialog open={open} onClose={handleClose} maxWidth={maxWidth} fullWidth={fullWidth}>
+            {title && <DialogTitle>{title}</DialogTitle>}
+            {children && <DialogContent>{children}</DialogContent>}
+            {actions && <DialogActions>{actions}</DialogActions>}
+        </Dialog>
+    );
+};

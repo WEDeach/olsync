@@ -58,6 +58,7 @@ export enum BeatmapDataField {
     OD = "od",
     Stack = "stack",
     SV = "sv",
+    PlayerTags = "player_tags",
 }
 
 export enum ScoreRecordField {
@@ -94,6 +95,7 @@ export interface IWeightEntry {
     type: PickerTargetType;
     id: string;
     weight: number;
+    enabled?: boolean;
     beatmapCondition?: IWeightBeatmapCondition;
     scoreCondition?: IWeightScoreCondition;
     historyCondition?: IWeightHistoryCondition;
@@ -109,6 +111,8 @@ export interface IWishlistConditionItem {
 
 export interface IWishlistEntry {
     label?: string;
+    priority?: number;
+    enabled?: boolean;
     conditions: IWishlistConditionItem[];
 }
 
@@ -125,6 +129,7 @@ export interface IPickerAdvancedSettings {
 
 export interface IPickerHistory {
     beatmapId: number;
+    md5Hash?: string;
     title: string;
     artist?: string;
     songTitle?: string;
@@ -136,6 +141,7 @@ export interface IPickerHistory {
 export interface IPickerProfile {
     name: string;
     generalFilter: { [key: string]: any };
+    subFilter?: { [key: string]: any };
     includedCollections: string[];
     excludedCollections: string[];
     advancedSettings: IPickerAdvancedSettings;

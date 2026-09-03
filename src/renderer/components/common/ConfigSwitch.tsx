@@ -24,10 +24,22 @@ export const ConfigSwitch: React.FC<ConfigSwitchProps> = ({ configKey, label, to
         }
         label={
             tooltip ? (
-                <Stack direction="row" alignItems="center" spacing={1} useFlexGap>
+                <Stack
+                    direction="row"
+                    spacing={1}
+                    useFlexGap
+                    sx={{
+                        alignItems: "center",
+                    }}
+                >
                     {label}
                     <Tooltip title={tooltip} arrow>
-                        <Typography variant="caption" color="text.secondary">
+                        <Typography
+                            variant="caption"
+                            sx={{
+                                color: "text.secondary",
+                            }}
+                        >
                             ?
                         </Typography>
                     </Tooltip>

@@ -1,8 +1,9 @@
-import { Button, CircularProgress } from "@mui/material";
+import { Button } from "@mui/material";
 import React from "react";
 import __ from "../../../utils/i18n";
 import { I18nStrings } from "../../../utils/typed/i18n";
 import { BaseDialog } from "./BaseDialog";
+import { PausableCircularProgress } from "./PausableCircularProgress";
 
 interface ConfirmDialogProps {
     open: boolean;
@@ -52,7 +53,7 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
                     color={confirmColor}
                     variant={confirmVariant}
                     disabled={confirmDisabled || confirmLoading}
-                    endIcon={confirmLoading ? <CircularProgress size={16} color="inherit" /> : undefined}
+                    endIcon={confirmLoading ? <PausableCircularProgress size={16} color="inherit" /> : undefined}
                 >
                     {confirmLabel}
                 </Button>
