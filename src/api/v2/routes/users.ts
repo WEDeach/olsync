@@ -1,4 +1,4 @@
-import { RespUserInfo, RespUserMostPlayedBeatmaps } from "../types/api_resp";
+import { RespUserInfo, RespUserMostPlayedBeatmaps, RespUserRecentScores } from "../types/api_resp";
 import BaseRoute from "./base";
 
 export default class UsersRoute extends BaseRoute {
@@ -27,5 +27,21 @@ export default class UsersRoute extends BaseRoute {
             return response;
         }
         throw new Error("Failed to get user info.");
+    }
+
+    async get_user_recent_scores(
+        user_id: number,
+        include_fails: boolean = true,
+        legacy_only: boolean = true,
+    ): Promise<RespUserRecentScores> {
+        const url = this.url_with_prefix(`/users/${user_id}/scores/recent`);
+        const response = await this.client.request<RespUserRecentScores>("GET", url, undefined, {
+            include_fails: include_fails ? 1 : 0,
+            legacy_only: legacy_only ? 1 : 0,
+        });
+        if (response && Object.keys(response)) {
+            return response;
+        }
+        throw new Error("Failed to get user recent scores.");
     }
 }

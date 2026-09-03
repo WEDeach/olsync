@@ -1,5 +1,7 @@
-import { ipcMain } from "electron";
+import { dialog, ipcMain } from "electron";
+import { promises as fsp } from "fs";
 import SharedManager from "../../../shared/sharedManager";
+import { sanitizeProfileId } from "../../../utils/profileId";
 import { IPC_CN_NAMES } from "./ns";
 
 export function register() {
@@ -44,5 +46,25 @@ export function register() {
     });
     ipcMain.handle(IPC_CN_NAMES.MIGRATE_PICKER_PROFILE, async (_, profileId: string, outdatedKeys: string[]) => {
         return SharedManager.config.migrate_picker_profile(profileId, outdatedKeys);
+    });
+    ipcMain.handle(IPC_CN_NAMES.IMPORT_PICKER_PROFILES, async () => {
+        const result = await dialog.showOpenDialog({
+            properties: ["openFile"],
+            filters: [{ name: "JSON", extensions: ["json"] }],
+        });
+        if (result.canceled || result.filePaths.length === 0) {
+            return null;
+        }
+        const content = await fsp.readFile(result.filePaths[0], "utf8");
+        const parsed = JSON.parse(content);
+        if (!Array.isArray(parsed)) {
+            throw new Error("Invalid picker profiles: expected array");
+        }
+        for (const p of parsed) {
+            if (p && typeof p.name === "string") {
+                sanitizeProfileId(p.name);
+            }
+        }
+        return parsed;
     });
 }

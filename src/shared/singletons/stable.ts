@@ -70,11 +70,11 @@ export default class StableReader extends SingletonBase {
         this._utilProc?.postMessage({ id: -1, type, ...data });
     }
 
-    init(fpath: string) {
+    async init(fpath: string): Promise<void> {
         if (this.base_path === fpath && this._utilProc) return;
         this.stop_watch();
         this.base_path = fpath;
-        this._post("init", { basePath: fpath });
+        await this._send("init", { basePath: fpath });
         log.debug(`StableReader init: ${fpath}`);
     }
 
@@ -90,7 +90,6 @@ export default class StableReader extends SingletonBase {
         onCollectionsChanged: () => void,
         isMd5CheckEnabled: () => boolean,
     ) {
-        this.update_watch();
         this.stop_watch();
         if (!this.base_path) return;
         const dir = this.base_path;
@@ -222,10 +221,6 @@ export default class StableReader extends SingletonBase {
         }
     }
 
-    private update_watch() {
-        // TODO: optimize this
-    }
-
     private async _has_watch_file_md5_changed(
         dir: string,
         filename: string,
@@ -291,6 +286,28 @@ export default class StableReader extends SingletonBase {
 
     async get_beatmap_detail(md5Hash: string): Promise<StableBeatmapDetail | null> {
         return this._send<StableBeatmapDetail | null>("get_beatmap_detail", { md5Hash });
+    }
+
+    async query_scores_by_user(
+        userName: string,
+        dateFrom?: number,
+        dateTo?: number,
+        offset: number = 0,
+        limit: number = 10,
+    ) {
+        return this._send("query_scores_by_user", { userName, dateFrom, dateTo, offset, limit });
+    }
+
+    async query_scores_by_hashes(hashes: string[], userName?: string, offset: number = 0, limit: number = 10) {
+        return this._send("query_scores_by_hashes", { hashes, userName, offset, limit });
+    }
+
+    async query_users(): Promise<string[]> {
+        return this._send<string[]>("query_users");
+    }
+
+    async get_username(): Promise<string | null> {
+        return this._send<string | null>("get_username");
     }
 
     get_base_path(): string | undefined {

@@ -1,3 +1,4 @@
+import { createHash } from "crypto";
 import { pathJoin, pCache, readJson, saveJson } from "../../utils/file";
 import { createLogger } from "../../utils/logger";
 import BeatmapsRoute from "./routes/beatmaps";
@@ -33,7 +34,8 @@ export default class ApiClient {
         if (this.client_id?.length === 0 || this.client_secret?.length === 0) {
             throw new Error("Invalid client id or client secret.");
         }
-        const unit_token_key = `client_${this.client_id}`;
+        const clientIdHash = createHash("sha256").update(this.client_id, "utf8").digest("hex");
+        const unit_token_key = `client_${clientIdHash}.json`;
         const json = (await readJson(pathJoin(pCache, unit_token_key))) as RespOAuthToken | null;
         if (json === null || json.expires_in <= Date.now() / 1000) {
             const token = await this.r_oauth.get_token();
@@ -84,7 +86,7 @@ export default class ApiClient {
         const json = await response.json();
 
         if ("error" in json) {
-            throw new APIException(json);
+            throw new APIException(json, response.status);
         }
 
         return json;

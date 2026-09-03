@@ -1,4 +1,10 @@
-import { RespBeatmapAttributes, RespBeatmapLookup, RespBeatmapPack, RespBeatmapPacks } from "../types/api_resp";
+import {
+    RespBeatmapAttributes,
+    RespBeatmapLookup,
+    RespBeatmapPack,
+    RespBeatmapPacks,
+    RespBeatmapUserScore,
+} from "../types/api_resp";
 import BaseRoute from "./base";
 
 export type PackTypes = "standard" | "featured" | "tournament" | "loved" | "chart" | "theme" | "artist";
@@ -56,5 +62,26 @@ export default class BeatmapsRoute extends BaseRoute {
             return response;
         }
         throw new Error(`Failed to lookup beatmap with params: ${JSON.stringify(params)}.`);
+    }
+
+    async get_beatmap_user_score(
+        beatmap_id: number,
+        user_id: number,
+        legacy_only?: boolean,
+    ): Promise<RespBeatmapUserScore> {
+        const params: Record<string, number> = {};
+        if (legacy_only !== undefined) {
+            params.legacy_only = legacy_only ? 1 : 0;
+        }
+        const response = await this.client.request<RespBeatmapUserScore>(
+            "GET",
+            this.url_with_prefix(`/beatmaps/${beatmap_id}/scores/users/${user_id}`),
+            undefined,
+            Object.keys(params).length > 0 ? params : undefined,
+        );
+        if (response?.score) {
+            return response;
+        }
+        throw new Error(`Failed to get beatmap user score: ${beatmap_id}, ${user_id}.`);
     }
 }

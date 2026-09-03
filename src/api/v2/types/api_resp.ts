@@ -392,3 +392,47 @@ export interface BeatmapDifficultyAttributes {
 export interface RespBeatmapAttributes {
     attributes: BeatmapDifficultyAttributes;
 }
+
+export interface ScoreStatistics {
+    count_100: number;
+    count_300: number;
+    count_50: number;
+    count_geki: number | null;
+    count_katu: number | null;
+    count_miss: number;
+}
+
+export interface RespUserRecentScore {
+    accuracy: number;
+    best_id: number | null;
+    created_at: string;
+    id: number;
+    legacy_score_id?: number | null;
+    legacy_total_score?: number;
+    max_combo: number;
+    mode: string;
+    mode_int: number;
+    mods: unknown[];
+    passed: boolean;
+    perfect: boolean;
+    pp: number | null;
+    rank: string;
+    replay: boolean;
+    score: number;
+    statistics: ScoreStatistics;
+    total_score?: number;
+    type: string;
+    user_id: number;
+    current_user_attributes: { pin: null };
+    beatmap: RespBeatmapLookup;
+    beatmapset: Beatmapset;
+    user: RespUserInfo;
+    isBest?: boolean;
+}
+
+export type RespUserRecentScores = RespUserRecentScore[];
+
+export interface RespBeatmapUserScore {
+    position: number;
+    score: RespUserRecentScore;
+}

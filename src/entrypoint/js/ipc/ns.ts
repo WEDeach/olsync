@@ -1,13 +1,17 @@
-// NOT_SET
-export enum IPC_CM_NAMES {}
+// PROTOCOL
+export enum IPC_PC_NAMES {
+    DEEP_LINK_RECEIVED = "ipc:pc:deep_link_received",
+}
 
 // FILE_SYSTEM
 export enum IPC_FS_NAMES {
     OPEN = "ipc:fs:open",
     IS_DEV_MODE = "ipc:fs:is_dev_mode",
-    EXEC = "ipc:fs:exec",
+    GET_OSU_STABLE_INSTALL_PATH = "ipc:fs:get_osu_stable_install_path",
     OPEN_EXTERNAL = "ipc:fs:open_external",
+    OPEN_BEATMAP_PAGE = "ipc:fs:open_beatmap_page",
     READ_FILE = "ipc:fs:read_file",
+    READ_BEATMAP_ASSET = "ipc:fs:read_beatmap_asset",
 }
 
 // READER
@@ -38,7 +42,21 @@ export enum IPC_RD_NAMES {
     COUNT_BEATMAPS = "ipc:rd:count_beatmaps",
     GET_BEATMAP_INDEX = "ipc:rd:get_beatmap_index",
     GET_BEATMAP_DETAIL = "ipc:rd:get_beatmap_detail",
+    QUERY_STABLE_SCORES_BY_USER = "ipc:rd:query_stable_scores_by_user",
+    QUERY_STABLE_SCORES_BY_HASHES = "ipc:rd:query_stable_scores_by_hashes",
+    QUERY_STABLE_USERS = "ipc:rd:query_stable_users",
     CALC_PP = "ipc:rd:calc_pp",
+    QUERY_LAZER_BEATMAPS = "ipc:rd:query_lazer_beatmaps",
+    COUNT_LAZER_BEATMAPS = "ipc:rd:count_lazer_beatmaps",
+    GET_LAZER_BEATMAP_DETAIL = "ipc:rd:get_lazer_beatmap_detail",
+    QUERY_LAZER_SCORES_BY_HASHES = "ipc:rd:query_lazer_scores_by_hashes",
+    QUERY_LAZER_SCORES_BY_USER = "ipc:rd:query_lazer_scores_by_user",
+    QUERY_LAZER_USERS = "ipc:rd:query_lazer_users",
+    LAZER_SCORES_CHANGED = "ipc:rd:lazer_scores_changed",
+    START_LAZER_WATCH = "ipc:rd:start_lazer_watch",
+    GET_STABLE_CLIENT_DATA = "ipc:rd:get_stable_client_data",
+    STABLE_CLIENT_DATA_CHANGED = "ipc:rd:stable_client_data_changed",
+    STABLE_RECENT_SCORE_CHANGED = "ipc:rd:stable_recent_score_changed",
 }
 
 // CONFIG
@@ -56,6 +74,7 @@ export enum IPC_CN_NAMES {
     GET_PICKER_LOG = "ipc:cn:get_picker_log",
     SAVE_PICKER_LOG = "ipc:cn:save_picker_log",
     MIGRATE_PICKER_PROFILE = "ipc:cn:migrate_picker_profile",
+    IMPORT_PICKER_PROFILES = "ipc:cn:import_picker_profiles",
 }
 
 // API
@@ -71,12 +90,15 @@ export enum IPC_AC_NAMES {
     FETCH_PACKS = "ipc:ac:fetch_packs",
     GET_PACK = "ipc:ac:get_pack",
     LOOKUP_MAP_BY_CHECKSUM = "ipc:ac:lookup_map_by_checksum",
+    LOOKUP_MAP_BY_ID = "ipc:ac:lookup_map_by_id",
 }
 
 // i18n
 export enum IPC_LA_NAMES {
     FETCH_LANGS = "ipc:la:fetch_langs",
     GET_LANG = "ipc:la:get_lang",
+    FETCH_CURRENT = "ipc:la:fetch_current",
+    SET_LANG = "ipc:la:set_lang",
     I18N_CHANGED = "ipc:la:i18n_changed",
 }
 
@@ -106,26 +128,55 @@ export enum IPC_DL_NAMES {
     LOGIN_OSU = "ipc:dl:login_osu",
     CHECK_EXISTS = "ipc:dl:check_exists",
     INSTALL_FILE = "ipc:dl:install_file",
+    CHECK_CLIENT = "ipc:dl:check_client",
     DELETE_FILE = "ipc:dl:delete_file",
+    VERIFY_FILES = "ipc:dl:verify_files",
     GET_RATE_STATUS = "ipc:dl:get_rate_status",
     // push (main → renderer)
     TASK_UPDATED = "ipc:dl:task_updated",
+    TASK_REMOVED = "ipc:dl:task_removed",
     SESSION_EXPIRED = "ipc:dl:session_expired",
     SESSION_READY = "ipc:dl:session_ready",
     AUTH_REQUIRED = "ipc:dl:auth_required",
     LOGIN_RESULT = "ipc:dl:login_result",
 }
 
-// Deprecated: Use IPC_DL_NAMES instead
-export const IPC_DLV2_NAMES = IPC_DL_NAMES;
+// PICKER
+export enum IPC_PK_NAMES {
+    ROLL_LAZER_BEATMAP = "ipc:pk:roll_lazer_beatmap",
+}
+
+// ONLINE DB
+export enum IPC_OD_NAMES {
+    DOWNLOAD = "ipc:od:download",
+    CHECK_UPDATE = "ipc:od:check_update",
+    GET_TAGS = "ipc:od:get_tags",
+    SEARCH_TAGS = "ipc:od:search_tags",
+    GET_BEATMAP_TAGS = "ipc:od:get_beatmap_tags",
+    GET_ALL_BEATMAP_TAGS = "ipc:od:get_all_beatmap_tags",
+    GET_BEATMAPS_BY_TAG = "ipc:od:get_beatmaps_by_tag",
+    GET_STATUS = "ipc:od:get_status",
+    GET_ALL_BEATMAPS = "ipc:od:get_all_beatmaps",
+}
 
 // UPDATER
 export enum IPC_UP_NAMES {
+    /** @deprecated Legacy updater init; fail closed. */
     INIT = "ipc:up:init",
+    /** @deprecated Legacy update check. */
     CHECK_FOR_UPDATES = "ipc:up:check_for_updates",
+    /** @deprecated Legacy update download. */
     DOWNLOAD_UPDATE = "ipc:up:download_update",
+    /** @deprecated Legacy update execute. */
     EXECUTE_UPDATE = "ipc:up:execute_update",
+    /** @deprecated Legacy update verify. */
     VERIFY_UPDATE = "ipc:up:verify_update",
     GET_CURRENT_VERSION = "ipc:up:get_current_version",
+    /** @deprecated Legacy progress channel. */
     UPDATE_PROGRESS = "ipc:up:update_progress",
+
+    CHECK_FOR_GITHUB_UPDATE = "ipc:up:check_for_github_update",
+    DOWNLOAD_GITHUB_UPDATE = "ipc:up:download_github_update",
+    INSTALL_PREPARED_UPDATE = "ipc:up:install_prepared_update",
+    GITHUB_UPDATE_PROGRESS = "ipc:up:github_update_progress",
 }

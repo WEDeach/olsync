@@ -37,4 +37,7 @@ export function register() {
     ipcMain.handle(IPC_AC_NAMES.LOOKUP_MAP_BY_CHECKSUM, async (_, checksum: string) => {
         return await SharedManager.api.lookup_beatmap_by_checksum(checksum);
     });
+    ipcMain.handle(IPC_AC_NAMES.LOOKUP_MAP_BY_ID, async (_, beatmapId: number) => {
+        return await SharedManager.api.lookup_beatmap_by_id(beatmapId);
+    });
 }

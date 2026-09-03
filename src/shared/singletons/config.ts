@@ -3,6 +3,7 @@ import path from "path";
 import { GetLocalConfig, SaveLocalConfig } from "../../utils/config";
 import { backupFileBySha256, pRoot, readJson, readJsonV2, saveJson, saveJsonV2 } from "../../utils/file";
 import { createLogger } from "../../utils/logger";
+import { sanitizeProfileId } from "../../utils/profileId";
 import { SyncState } from "../../utils/typed/config";
 import { ServiceCode, SpaceId } from "../../utils/typed/file";
 import SingletonBase from "./base";
@@ -10,6 +11,10 @@ import SingletonBase from "./base";
 const log = createLogger("Config");
 
 export default class Config extends SingletonBase {
+    public static get getInstance(): Config {
+        return super.getInstance as Config;
+    }
+
     _config?: { [key: string]: any };
     _syncStates?: SyncState[];
     private _writeQueue: Promise<void> = Promise.resolve();
@@ -46,7 +51,7 @@ export default class Config extends SingletonBase {
         await this._writeQueue;
     }
 
-    async saveMultiple(entries: { k: string; v: any }[]) {
+    async save_multiple(entries: { k: string; v: any }[]) {
         if (this._config === undefined) {
             throw new Error("Config has not been initialized.");
         }
@@ -102,17 +107,20 @@ export default class Config extends SingletonBase {
     }
 
     async get_picker_profile(profileId: string): Promise<any> {
-        const p = path.join(pRoot, ServiceCode.PickerProfile, `${profileId}.json`);
+        const safeProfileId = sanitizeProfileId(profileId);
+        const p = path.join(pRoot, ServiceCode.PickerProfile, `${safeProfileId}.json`);
         return readJson(p);
     }
 
     async save_picker_profile(profileId: string, data: any): Promise<void> {
-        const p = path.join(pRoot, ServiceCode.PickerProfile, `${profileId}.json`);
+        const safeProfileId = sanitizeProfileId(profileId);
+        const p = path.join(pRoot, ServiceCode.PickerProfile, `${safeProfileId}.json`);
         await saveJson(p, data);
     }
 
     async delete_picker_profile(profileId: string): Promise<void> {
-        const p = path.join(pRoot, ServiceCode.PickerProfile, `${profileId}.json`);
+        const safeProfileId = sanitizeProfileId(profileId);
+        const p = path.join(pRoot, ServiceCode.PickerProfile, `${safeProfileId}.json`);
         try {
             await fs.promises.unlink(p);
         } catch {}
@@ -129,19 +137,22 @@ export default class Config extends SingletonBase {
     }
 
     async get_picker_log(profileId: string): Promise<any[]> {
-        const data = await readJsonV2<any[]>(ServiceCode.Data, SpaceId.PickerLog, `${profileId}.json`);
+        const safeProfileId = sanitizeProfileId(profileId);
+        const data = await readJsonV2<any[]>(ServiceCode.Data, SpaceId.PickerLog, `${safeProfileId}.json`);
         return data ?? [];
     }
 
     async save_picker_log(profileId: string, data: any[]): Promise<void> {
-        await saveJsonV2(ServiceCode.Data, SpaceId.PickerLog, `${profileId}.json`, data);
+        const safeProfileId = sanitizeProfileId(profileId);
+        await saveJsonV2(ServiceCode.Data, SpaceId.PickerLog, `${safeProfileId}.json`, data);
     }
 
     async migrate_picker_profile(profileId: string, outdatedKeys: string[]): Promise<any> {
-        const p = path.join(pRoot, ServiceCode.PickerProfile, `${profileId}.json`);
+        const safeProfileId = sanitizeProfileId(profileId);
+        const p = path.join(pRoot, ServiceCode.PickerProfile, `${safeProfileId}.json`);
         const data = await readJson(p);
         if (!data) return null;
-        backupFileBySha256(p, path.join(pRoot, ServiceCode.PickerProfile, `${profileId}.json`));
+        backupFileBySha256(p, path.join(pRoot, ServiceCode.PickerProfile, `${safeProfileId}.json`));
         if (data.generalFilter) {
             for (const key of outdatedKeys) delete data.generalFilter[key];
         }
@@ -199,7 +210,8 @@ export default class Config extends SingletonBase {
         const legacyProfiles: any[] = getLegacy<any[]>("profiles", []);
         for (const profile of legacyProfiles) {
             if (!profile?.name) continue;
-            const profilePath = path.join(pRoot, ServiceCode.PickerProfile, `${profile.name}.json`);
+            const safeName = sanitizeProfileId(profile.name);
+            const profilePath = path.join(pRoot, ServiceCode.PickerProfile, `${safeName}.json`);
             if (!fs.existsSync(profilePath)) {
                 await saveJson(profilePath, profile);
             }

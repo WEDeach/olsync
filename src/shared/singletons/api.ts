@@ -1,6 +1,11 @@
 import ApiClient from "../../api/v2/client";
 import { PackTypes } from "../../api/v2/routes/beatmaps";
-import { RespBeatmapPack, RespUserMostPlayedBeatmap } from "../../api/v2/types/api_resp";
+import {
+    RespBeatmapPack,
+    RespBeatmapUserScore,
+    RespUserMostPlayedBeatmap,
+    RespUserRecentScores,
+} from "../../api/v2/types/api_resp";
 import { readJsonV2, saveJsonV2 } from "../../utils/file";
 import { ServiceCode, SpaceId } from "../../utils/typed/file";
 import SingletonBase from "./base";
@@ -67,11 +72,37 @@ export default class Api extends SingletonBase {
         return [];
     }
 
+    get is_initialized(): boolean {
+        return this._client !== undefined;
+    }
+
     async get_user_info(user_id: number | string) {
         if (this._client === undefined) {
             throw new Error("API client has not been initialized.");
         }
         return this._client.r_users.get_user_info(user_id);
+    }
+
+    async get_user_recent_scores(
+        user_id: number,
+        include_fails: boolean = true,
+        legacy_only: boolean = true,
+    ): Promise<RespUserRecentScores> {
+        if (this._client === undefined) {
+            throw new Error("API client has not been initialized.");
+        }
+        return this._client.r_users.get_user_recent_scores(user_id, include_fails, legacy_only);
+    }
+
+    async get_beatmap_user_score(
+        beatmap_id: number,
+        user_id: number,
+        legacy_only: boolean = true,
+    ): Promise<RespBeatmapUserScore> {
+        if (this._client === undefined) {
+            throw new Error("API client has not been initialized.");
+        }
+        return this._client.r_beatmaps.get_beatmap_user_score(beatmap_id, user_id, legacy_only);
     }
 
     async get_dlink_by_beatmapset_id(beatmapset_id: number) {
@@ -121,5 +152,12 @@ export default class Api extends SingletonBase {
             throw new Error("API client has not been initialized.");
         }
         return this._client.r_beatmaps.lookup({ checksum });
+    }
+
+    async lookup_beatmap_by_id(beatmapId: number) {
+        if (this._client === undefined) {
+            throw new Error("API client has not been initialized.");
+        }
+        return this._client.r_beatmaps.lookup({ id: beatmapId });
     }
 }

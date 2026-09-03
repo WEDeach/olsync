@@ -8,23 +8,27 @@ export const getApiPreDelayMs = () => Number(g.config?.[ConfigKey.API_DELAY_MS])
 export const getApiDownloadLink = () =>
     g.config?.[ConfigKey.API_DLINK] || "https://osu.ppy.sh/beatmapsets/:id/download";
 
-export const InitApi = async (callback?: () => void) => {
+export const InitApi = async (callback?: () => void, notify = true): Promise<boolean> => {
     const ccid = g.cacheVal.str_client_id ?? "";
     const ccsc = g.cacheVal.str_client_secret ?? "";
     const init_result = await window.olsCore.initAC(ccid, ccsc);
     if (init_result) {
         LogError(init_result.error);
-    } else {
-        if (g.config?.[ConfigKey.API_CLIENT_ID] !== ccid) {
-            await g.saveConfig(ConfigKey.API_CLIENT_ID, ccid);
-        }
-        if (g.config?.[ConfigKey.API_CLIENT_SECRET] !== ccsc) {
-            await g.saveConfig(ConfigKey.API_CLIENT_SECRET, ccsc);
-        }
+        return false;
+    }
+
+    if (g.config?.[ConfigKey.API_CLIENT_ID] !== ccid) {
+        await g.saveConfig(ConfigKey.API_CLIENT_ID, ccid);
+    }
+    if (g.config?.[ConfigKey.API_CLIENT_SECRET] !== ccsc) {
+        await g.saveConfig(ConfigKey.API_CLIENT_SECRET, ccsc);
+    }
+    if (notify) {
         g.setNotify({
             message: __(I18nStrings.MAIN_API_CLIENT_INIT_SUCCESS),
             severity: "success",
         });
-        callback?.();
     }
+    callback?.();
+    return true;
 };
