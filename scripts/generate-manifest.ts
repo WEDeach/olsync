@@ -240,7 +240,7 @@ function saveSnapshot(buildDir: string, version: string): void {
     const snapshotPath = path.join(SNAPSHOT_DIR, version);
     if (fs.existsSync(snapshotPath)) {
         console.log(`  Snapshot already exists for v${version}, skipping.`);
-        return;
+        throw Error(`Snapshot already exists for v${version}`);
     }
     console.log(`  Saving snapshot for v${version} → ${snapshotPath}`);
     copyDirSync(buildDir, snapshotPath);

@@ -1,89 +1,52 @@
-import { ipcMain } from "electron";
+import { BrowserWindow, ipcMain } from "electron";
 import { createLogger } from "../../../utils/logger";
-import { UpdateConfig, UpdateDiff, Updater } from "../updater";
+import { UpdateConfig, UpdateDiff } from "../updater";
+import { GithubUpdater } from "../updater/githubUpdater";
+import { UpdateProgress } from "../updater/types";
 import { IPC_UP_NAMES } from "./ns";
 
 const log = createLogger("IPC_UP");
 
-let updaterInstance: Updater | null = null;
+const githubUpdater = new GithubUpdater();
+
+function legacyDeprecatedError() {
+    return { error: "Legacy update API is deprecated and no longer accepts renderer parameters." };
+}
 
 export function register() {
-    ipcMain.handle(IPC_UP_NAMES.INIT, async (_, config: UpdateConfig) => {
-        try {
-            updaterInstance = new Updater(config);
-            return true;
-        } catch (error) {
-            log.error("Failed to initialize updater:", error);
-            return false;
-        }
+    // Legacy handlers fail closed; they do not act on renderer-supplied config/diff/path.
+    ipcMain.handle(IPC_UP_NAMES.INIT, async (_event, _config: UpdateConfig) => legacyDeprecatedError());
+    ipcMain.handle(IPC_UP_NAMES.CHECK_FOR_UPDATES, async (_event) => legacyDeprecatedError());
+    ipcMain.handle(IPC_UP_NAMES.DOWNLOAD_UPDATE, async (_event, _diff: UpdateDiff) => legacyDeprecatedError());
+    ipcMain.handle(IPC_UP_NAMES.EXECUTE_UPDATE, async (_event, _tempDir: string) => legacyDeprecatedError());
+    ipcMain.handle(IPC_UP_NAMES.VERIFY_UPDATE, async (_event) => legacyDeprecatedError());
+    ipcMain.handle(IPC_UP_NAMES.GET_CURRENT_VERSION, async (_event) => {
+        const { Updater } = await import("../updater");
+        const tempInstance = new Updater({ sources: [] });
+        return await tempInstance.getCurrentVersion();
     });
 
-    ipcMain.handle(IPC_UP_NAMES.CHECK_FOR_UPDATES, async (_) => {
-        if (!updaterInstance) {
-            throw new Error("Updater not initialized");
-        }
-
-        const diff = await updaterInstance.checkForUpdates();
-        return diff;
+    // New, main-owned GitHub release updater
+    ipcMain.handle(IPC_UP_NAMES.CHECK_FOR_GITHUB_UPDATE, async (_event) => {
+        return await githubUpdater.checkForGithubUpdate();
     });
 
-    ipcMain.handle(IPC_UP_NAMES.DOWNLOAD_UPDATE, async (_, diff: UpdateDiff) => {
-        if (!updaterInstance) {
-            throw new Error("Updater not initialized");
-        }
-
-        return new Promise<{ success: boolean; tempDir?: string; error?: string }>((resolve) => {
-            updaterInstance
-                ?.downloadAndPrepareUpdate(diff, (current, total, currentFile) => {
-                    const sender = _?.sender;
-                    if (sender && !sender.isDestroyed()) {
-                        sender.send(IPC_UP_NAMES.UPDATE_PROGRESS, {
-                            current,
-                            total,
-                            currentFile,
-                        });
-                    }
-                })
-                .then((tempDir) => {
-                    if (tempDir) {
-                        resolve({ success: true, tempDir });
-                    } else {
-                        resolve({ success: false, error: "下載失敗但沒有具體錯誤訊息" });
-                    }
-                })
-                .catch((error) => {
-                    log.error("Failed to download update:", error);
-                    const errorMsg = error?.message || error?.toString() || "未知錯誤";
-                    resolve({ success: false, error: errorMsg });
-                });
-        });
+    ipcMain.handle(IPC_UP_NAMES.DOWNLOAD_GITHUB_UPDATE, async (_event) => {
+        return await githubUpdater.downloadGithubUpdate();
     });
 
-    ipcMain.handle(IPC_UP_NAMES.EXECUTE_UPDATE, async (_, tempDir: string) => {
-        if (!updaterInstance) {
-            throw new Error("Updater not initialized");
-        }
-
-        await updaterInstance.executeUpdate(tempDir);
+    ipcMain.handle(IPC_UP_NAMES.INSTALL_PREPARED_UPDATE, async (_event) => {
+        await githubUpdater.installPreparedUpdate();
         return true;
     });
 
-    ipcMain.handle(IPC_UP_NAMES.VERIFY_UPDATE, async (_) => {
-        if (!updaterInstance) {
-            throw new Error("Updater not initialized");
+    githubUpdater.addProgressListener((progress: UpdateProgress) => {
+        for (const window of BrowserWindow.getAllWindows()) {
+            if (!window.isDestroyed()) {
+                window.webContents.send(IPC_UP_NAMES.GITHUB_UPDATE_PROGRESS, progress);
+            }
         }
-
-        return await updaterInstance.verifyUpdate();
     });
 
-    ipcMain.handle(IPC_UP_NAMES.GET_CURRENT_VERSION, async (_) => {
-        if (!updaterInstance) {
-            const Updater = (await import("../updater")).Updater;
-            const tempInstance = new Updater({
-                sources: [],
-            });
-            return await tempInstance.getCurrentVersion();
-        }
-        return await updaterInstance.getCurrentVersion();
-    });
+    githubUpdater.cleanupOldStagings().catch((error: Error) => log.warn("Cleanup old update stagings failed:", error));
 }

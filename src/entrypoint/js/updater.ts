@@ -24,16 +24,19 @@ const log = createLogger("Updater");
 // Types
 // ---------------------------------------------------------------------------
 
+/** @deprecated Legacy renderer-driven updater source; do not use. */
 export interface UpdateSource {
     url: string;
 }
 
+/** @deprecated Legacy renderer-driven updater config; do not use. */
 export interface UpdateConfig {
     sources: UpdateSource[];
     publicKey?: string;
     concurrency?: number;
 }
 
+/** @deprecated Legacy manifest format; replaced by the GitHub release index format. */
 export interface FileManifest {
     version: string;
     electronVersion?: string;
@@ -50,6 +53,7 @@ export interface FileManifest {
     };
 }
 
+/** @deprecated Legacy renderer-driven diff; replaced by main-owned GitHub release selection. */
 export interface UpdateDiff {
     needsUpdate: boolean;
     requiresExeUpdate?: boolean;
@@ -188,6 +192,7 @@ function applyBinaryPatch(oldBuffer: Buffer, patch: Buffer): Buffer {
 // Updater
 // ---------------------------------------------------------------------------
 
+/** @deprecated Legacy renderer-driven updater; replaced by GithubUpdater. */
 export class Updater {
     private sources: UpdateSource[];
     private publicKey?: string;

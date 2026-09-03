@@ -1,0 +1,185 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to release, e.g. 1.2.0. CI creates and pushes the v<version> tag; the tag-push trigger then builds and drafts the release."
+        required: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref_name }}
+  cancel-in-progress: true
+
+env:
+  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+jobs:
+  release:
+    runs-on: windows-latest
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      # workflow_dispatch only: create and push the tag, then stop. The tag-push
+      # trigger below performs the actual build + draft release.
+      - name: Create tag from workflow dispatch
+        if: github.event_name == 'workflow_dispatch'
+        shell: bash
+        run: |
+          VER="${{ github.event.inputs.version }}"
+          if ! [[ "$VER" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.-]+)?$ ]]; then
+            echo "::error::Invalid version '$VER' (expected semver like 1.2.0)"
+            exit 1
+          fi
+          if git rev-parse -q --verify "refs/tags/v${VER}" >/dev/null 2>&1; then
+            echo "::error::Tag v${VER} already exists."
+            exit 1
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag "v${VER}"
+          git push "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "v${VER}"
+          echo "Tag v${VER} created — the release build runs from the tag-push trigger."
+
+      - name: Install dependencies
+        if: github.event_name == 'push'
+        run: npm ci
+
+      - name: Restore signing key
+        if: github.event_name == 'push'
+        shell: bash
+        env:
+          RELEASE_SIGNING_KEY: ${{ secrets.RELEASE_SIGNING_KEY }}
+        run: |
+          if [ -z "$RELEASE_SIGNING_KEY" ]; then
+            echo "::error::Repository secret RELEASE_SIGNING_KEY is not set. Add your keys/private.pem content as a GitHub Actions secret (Settings → Secrets and variables → Actions)."
+            exit 1
+          fi
+          mkdir -p keys
+          printf '%s' "$RELEASE_SIGNING_KEY" > keys/private.pem
+          echo "Signing key restored to keys/private.pem"
+
+      - name: Quality gates
+        if: github.event_name == 'push'
+        run: |
+          npm run lint
+          npx tsc --noEmit
+          npx vitest run --passWithNoTests
+
+      - name: Sync package.json version
+        if: github.event_name == 'push'
+        shell: bash
+        run: |
+          VER="${GITHUB_REF_NAME#v}"
+          npm version "${VER}" --no-git-tag-version --allow-same-version
+          echo "Package version: $(node -p "require('./package.json').version")"
+
+      - name: Check existing release and find previous published release
+        id: prev
+        if: github.event_name == 'push'
+        shell: bash
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          if gh release view "${TAG}" --json isDraft --jq .isDraft >/dev/null 2>&1; then
+            DRAFT="$(gh release view "${TAG}" --json isDraft --jq .isDraft)"
+            if [ "$DRAFT" = "false" ]; then
+              echo "::error::Release ${TAG} is already published. Delete it or use a new tag."
+              exit 1
+            fi
+            echo "existing_draft=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "existing_draft=false" >> "$GITHUB_OUTPUT"
+          fi
+          PREV_TAG="$(gh api "repos/${GITHUB_REPOSITORY}/releases/latest" --jq .tag_name 2>/dev/null || true)"
+          echo "prev_tag=${PREV_TAG}" >> "$GITHUB_OUTPUT"
+
+      # Diff base: the previous release's full zip IS the previous win-unpacked
+      # build (every file at its relative path, including manifest.json).
+      - name: Download previous release build (diff base)
+        id: prev-download
+        if: github.event_name == 'push'
+        shell: bash
+        run: |
+          PREV_TAG="${{ steps.prev.outputs.prev_tag }}"
+          if [ -n "$PREV_TAG" ]; then
+            mkdir -p prev-build
+            gh release download "${PREV_TAG}" --pattern 'olsync-full-*.zip' --dir prev-build --clobber || true
+            ZIP="$(ls prev-build/olsync-full-*.zip 2>/dev/null | head -1 || true)"
+            if [ -n "$ZIP" ]; then
+              mkdir -p prev-unpacked
+              # Git-bash's tar is GNU tar, which cannot read zip archives
+              # ("This does not look like a tar archive"); use Windows' bsdtar.
+              /c/Windows/System32/tar.exe -xf "$ZIP" -C prev-unpacked
+              if [ ! -f prev-unpacked/manifest.json ]; then
+                echo "::error::Downloaded prev build ${ZIP} has no manifest.json; cannot use it as diff base."
+                exit 1
+              fi
+              echo "prev_build_dir=${PWD}/prev-unpacked" >> "$GITHUB_OUTPUT"
+              echo "Diff base: ${PREV_TAG} (${ZIP})"
+            else
+              echo "::warning::Previous release ${PREV_TAG} has no olsync-full-*.zip asset; the diff package will be skipped."
+            fi
+          else
+            echo "::warning::No previous published release found; the diff package will be skipped (first release)."
+          fi
+
+      - name: Generate release notes
+        if: github.event_name == 'push'
+        shell: bash
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          PREV_TAG="${{ steps.prev.outputs.prev_tag }}"
+          if [ -n "$PREV_TAG" ] && git rev-parse -q --verify "${PREV_TAG}^{commit}" >/dev/null 2>&1; then
+            git log --oneline --no-merges "${PREV_TAG}..HEAD" > release-notes.md || true
+          fi
+          if [ ! -s release-notes.md ]; then
+            printf '%s\n' "olSync ${TAG}" > release-notes.md
+          fi
+
+      - name: Build and stage release assets
+        if: github.event_name == 'push'
+        shell: bash
+        env:
+          PREV_BUILD_DIR: ${{ steps.prev-download.outputs.prev_build_dir }}
+        run: |
+          VER="${GITHUB_REF_NAME#v}"
+          ARGS=(--version "${VER}" --no-copy-legacy --force)
+          if [ -n "$PREV_BUILD_DIR" ]; then
+            ARGS+=(--prev-build-dir "${PREV_BUILD_DIR}")
+          else
+            ARGS+=(--allow-no-prev)
+          fi
+          npm run publish:release -- "${ARGS[@]}"
+
+      - name: Create or update draft release
+        if: github.event_name == 'push'
+        shell: bash
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          VER="${TAG#v}"
+          ASSETS=(release/dist/${VER}/github/*)
+          if [ "${{ steps.prev.outputs.existing_draft }}" = "true" ]; then
+            gh release upload "${TAG}" "${ASSETS[@]}" --clobber
+            echo "Updated draft release ${TAG} with assets."
+          else
+            gh release create "${TAG}" "${ASSETS[@]}" --draft --title "${TAG}" --notes-file release-notes.md
+            echo "Draft release created: https://github.com/${GITHUB_REPOSITORY}/releases"
+          fi
+          echo "Publish the draft manually when ready (the updater only sees published releases)."
