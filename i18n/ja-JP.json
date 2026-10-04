@@ -1,12 +1,28 @@
 {
     "__LANG__": "日本語",
     "main": {
+        "data": {
+            "reading": "データを読み込み中..."
+        },
         "dl": {
             "select": "ダウンロード方法を選択するか、テキストダウンロードを選択してダウンロードリンクをまとめて取得してください。\n\nデフォルトのダウンロードURLはosu!公式ウェブサイトです。この場合、ダウンロードするにはアカウントにログインする必要があります！\n現在使用中のダウンロードリンク: :url\n\nconfig内のapi:dlinkを編集することで、直接ダウンロード用のカスタムURLに設定できます！",
             "fetching": "ダウンロードリンクを取得中...",
             "nodata": "データがありません...",
             "to_clipboard": ":count 件のダウンロードリンクをクリップボードにコピーしました",
             "progress": "ダウンロード中... :current/:total",
+            "manual_input_set_label": "譜面セット ID",
+            "manual_input_set_placeholder": "例：123456",
+            "manual_input_beatmap_label": "譜面 ID",
+            "manual_input_beatmap_placeholder": "例：789",
+            "manual_input_button": "ダウンロード",
+            "manual_input_invalid": "有効な正の整数 ID を入力してください",
+            "manual_input_resolving": "譜面 ID から譜面セットを検索中...",
+            "manual_input_resolved": "譜面セット #:setId が見つかりました",
+            "manual_input_not_found": "指定された譜面 ID が見つかりません",
+            "deep_link_confirm_title": "osu:// リンクからダウンロード",
+            "deep_link_confirm_body": "譜面セット #:id をダウンロードしますか？",
+            "aborted": "ダウンロードを中止しました：成功 :success 件、失敗 :failed 件（合計 :total 件）",
+            "success": ":count 件のダウンロードリンクを開きました",
             "status": {
                 "queued": "待機中",
                 "downloading": "ダウンロード中",
@@ -125,7 +141,9 @@
                 "reading": "オンライン履歴を読み込み中...",
                 "success": "オンライン履歴の読み込みに成功しました！",
                 "nodata": "オンライン履歴にデータがありません！",
-                "aborted": "オンライン履歴の読み込みを停止しました..."
+                "aborted": "オンライン履歴の読み込みを停止しました...",
+                "alert": "オンライン通知",
+                "states": "オンライン状態"
             },
             "reading": {
                 "failed": "データを読み込めませんでした: :reason",
@@ -243,6 +261,7 @@
             "pack_ruleset_by_bn_desc_post": "でBNの仕組みを確認できます。",
             "use_api_map_attr": "APIから譜面属性を取得してPPを計算する (実験的)",
             "use_lazer_mode": "Lazerモードを使用する (実験的)",
+            "include_online_db": "オンラインデータベースを含める (実験的)",
             "classic_score": "Classicスコア表示 (実験的)",
             "language": "言語",
             "no_i18n": "i18nファイルが見つかりません",
@@ -306,6 +325,8 @@
                 "player_tags": "プレイヤータグ",
                 "player_tags_placeholder": "タグを検索または入力",
                 "player_tags_no_db": "先に設定でオンラインDBをダウンロードしてください",
+                "star_rating": "難易度（スター）",
+                "sr_between": "範囲内",
                 "play_count": "プレイ回数",
                 "lang": "言語",
                 "mode": "モード"
@@ -330,6 +351,8 @@
                 },
                 "id": "ID / 名前",
                 "value": "重み",
+                "enabled": "有効",
+                "copy": "コピー",
                 "increase": "増やす",
                 "decrease": "減らす",
                 "add": "追加",
@@ -413,7 +436,10 @@
                 "title": "ウィッシュリスト",
                 "label": "ルール名 (任意)",
                 "add": "ルールを追加",
-                "add_cond": "条件を追加"
+                "add_cond": "条件を追加",
+                "priority": "優先順位",
+                "enabled": "有効",
+                "copy": "コピー"
             },
             "history": {
                 "title": "抽選履歴",
@@ -478,6 +504,30 @@
                     "desc": "以下の設定項目はサポートされなくなりました。確定をクリックすると自動的に削除されます（元の設定ファイルは事前にバックアップされます）："
                 }
             },
+            "duplicate_condition": "他の条件と重複しているため、自動的に無効化されました",
+            "current": {
+                "title": "現在の譜面",
+                "playing": "プレイ中",
+                "selected": "現在の選択",
+                "loading": "譜面データを読み込み中",
+                "unavailable": "譜面データを取得できません",
+                "length": "長さ",
+                "time": "時間",
+                "map_id": "譜面 ID",
+                "checksum": "チェックサム",
+                "last_played": "前回プレイ"
+            },
+            "dl": {
+                "in_queue": ":setId.osz は既にダウンロードキューにあります",
+                "exists": ":setId.osz は既にダウンロードフォルダに存在します",
+                "auth_required": ":setId.osz をダウンロードするには osu! アカウントへのログインが必要です",
+                "enqueued": "ダウンロードに追加されました：:setId.osz"
+            },
+            "local_not_found": "ローカルの譜面から該当する項目が見つかりませんでした",
+            "migration": {
+                "title": "この設定の一部は古い形式です",
+                "desc": "以下の設定項目はサポートされなくなりました。確定すると自動的に削除されます（元の設定ファイルは事前にバックアップされます）："
+            },
             "profile": {
                 "name": "プロファイル名",
                 "save": "保存",
@@ -486,7 +536,13 @@
                 "import": "JSON インポート",
                 "import_title": "プロファイル JSON を選択",
                 "saved": "プロファイルが保存されました",
-                "active": "使用中"
+                "active": "使用中",
+                "clone": "複製",
+                "clone_title": "プロファイルを複製",
+                "rename": "名前を変更",
+                "rename_title": "プロファイル名を変更",
+                "overwrite_title": "プロファイルを上書き",
+                "overwrite_desc": "プロファイル「:name」は既に存在します。上書きしますか？"
             },
             "table": {
                 "50": "50",
@@ -536,7 +592,87 @@
         },
         "collection": {
             "selected_count": ":selected/:total 選択済み",
-            "subs_count": ":count 個の子項目"
+            "subs_count": ":count 個の子項目",
+            "merge": {
+                "desc": "コレクションを osu!stable へ一方向に出力します。各コレクションは「両方を統合」「Lazer を採用」「統合しない」から選べ、書き込み前に差分プレビューを表示します。",
+                "confirm": "コレクション統合の確認",
+                "success": "コレクションを統合しました",
+                "choice": "統合の選択",
+                "include": "統合",
+                "selected": ":selected / :total 選択中",
+                "select_all": "すべて選択",
+                "only_stable": "Stable のみ",
+                "only_lazer": "Lazer のみ",
+                "clear": "すべて解除",
+                "preview": "統合プレビュー",
+                "preview_empty": "プレビューがありません。先に「プレビューを作成」を押してください。",
+                "kind_skipped": "統合しない",
+                "confirm_desc": "実行すると osu!stable のコレクションがプレビュー結果で上書きされます。実行前にバックアップを作成し、osu!stable は終了している必要があります。",
+                "stale": "プレビュー後にコレクションが変更されたため、再作成しました。確認してからもう一度実行してください。"
+            },
+            "sync": {
+                "desc": "コレクション名で両クライアントを比較し、内容を双方向に同期します。除外と削除リストの種類を設定できます。",
+                "type": "同期タイプ",
+                "type_default": "デフォルト",
+                "type_excluded": "同期しない",
+                "type_delete": "削除",
+                "type_delete_desc": "このコレクションは変更されません。含まれるマップは削除対象として扱われます。",
+                "collections": "コレクション",
+                "preview": "同期プレビュー",
+                "preview_empty": "プレビューがありません。先に「プレビューを作成」を押してください。",
+                "kind_create": "作成",
+                "kind_update": "更新",
+                "kind_in_sync": "同期済み",
+                "kind_conflict": "競合",
+                "kind_excluded": "同期しない",
+                "kind_delete": "削除リスト",
+                "conflict_content": "両クライアントで内容が変更されています。保持する内容を選択してください。",
+                "conflict_missing": "このコレクションは :client に存在しません。再作成するか選択してください。",
+                "keep": "現状を維持",
+                "union": "両方を統合",
+                "use_stable": "Stable を採用",
+                "use_lazer": "Lazer を採用",
+                "changes": "変更",
+                "deletions": "マップの削除",
+                "deletions_desc": "以下は削除タイプのコレクションに含まれるマップです。実行すると両クライアントから該当する難易度が削除されます。コレクションの内容は変更されません。",
+                "not_installed": "未インストール",
+                "baseline": "同期ベースライン",
+                "baseline_none": "ベースラインがありません。初回の同期ではすべての競合を解決してください。",
+                "override": "インポートした同期内容を適用中",
+                "no_client": "有効な osu! パスが見つかりません。設定で指定してください。",
+                "confirm": "同期の実行を確認",
+                "confirm_desc": "同期は両クライアントのコレクションを書き換え、削除リストのマップを削除します。実行前にバックアップし、osu! は終了しておいてください。",
+                "stale": "プレビュー後にコレクションが変更されたため、再作成しました。もう一度確認してください。",
+                "result": "同期結果",
+                "result_stable": "Stable コレクション",
+                "result_lazer": "Lazer コレクション",
+                "result_written": "書き込み済み",
+                "result_skipped": "スキップ",
+                "result_deleted": "削除したマップ",
+                "result_backup": "バックアップ",
+                "result_rescan": "削除した難易度を反映するには osu!stable の再スキャン（F5）が必要です。",
+                "imported_settings": "同期設定をインポートしました",
+                "imported_content": "同期内容をインポートしました：:count コレクション",
+                "exported": ":path にエクスポートしました",
+                "reset_done": "同期ベースラインをリセットしました",
+                "no_collections": "どちらのクライアントからもコレクションを読み取れませんでした。",
+                "client_running": "osu!stable が実行中です。stable は終了時にメモリ上の内容で collection.db を上書きするため、先に osu!stable を完全に終了してください。",
+                "blocked_running": "同期を中止しました：osu!stable が実行中です。終了してから再度実行してください。",
+                "conflict_block": "先にすべての競合を解決してください。",
+                "missing_title": "マップ不足チェック",
+                "missing_none": "すべてのコレクションのマップがインストール済みです。",
+                "missing_desc": "以下のコレクションには同期されていないマップがあります（クライアントごとに判定：そのクライアントのライブラリに hash が無ければ不足とみなします）。確認すると内蔵ダウンローダーで不足セットをダウンロードし、不足している側を表示します。",
+                "missing_summary": ":missing 件が不足（いずれかのクライアント基準）、:sets 個のビートマップセットに該当します。",
+                "missing_unresolved": ":count 件はビートマップセットを特定できません（未投稿または削除済み）。これらはダウンロードされません。",
+                "missing_not_found": "うち :count 件は osu! API 上に存在しないことを確認済みです（削除済みまたは未投稿）。下の除外オプションをオンにすると、同期時にコレクションから取り除かれます。",
+                "exclude_not_found": "同期時に削除済みの :count 件を除外する",
+                "missing_resolving": "ビートマップセットを解析中：:resolved / :total（osu! API のレート制限に合わせて実行するため、件数が多いと時間がかかります）"
+            },
+            "reading": {
+                "ol": "Lazer のコレクションを読み込み中...",
+                "os": "Stable のコレクションを読み込み中..."
+            },
+            "merging": "コレクションを統合中..."
         },
         "i18n": {
             "file_missing": "言語ファイルが見つかりません: :lang"
@@ -598,7 +734,8 @@
             },
             "player": {
                 "isme": "これは私です！",
-                "check": "プレイヤーを確認"
+                "check": "プレイヤーを確認",
+                "confirm": "このプレイヤーで確定"
             },
             "group": {
                 "local": "ローカル",
@@ -671,6 +808,26 @@
         },
         "tracker": {
             "reanalyze": "再分析"
+        },
+        "collection": {
+            "read": "コレクションを読み込む",
+            "merge": "コレクションを統合",
+            "merge_preview": "プレビューを作成",
+            "merge_execute": "統合を実行",
+            "sync": "同期",
+            "sync_preview": "プレビューを作成",
+            "sync_execute": "同期を実行",
+            "sync_refresh": "再読み込み",
+            "sync_back": "戻る",
+            "sync_export_settings": "同期設定をエクスポート",
+            "sync_import_settings": "同期設定をインポート",
+            "sync_export_content": "同期内容をエクスポート",
+            "sync_import_content": "同期内容をインポート",
+            "sync_reset_baseline": "同期ベースラインをリセット",
+            "sync_check_missing": "不足マップを確認",
+            "sync_download_missing": "不足しているセットをダウンロード (:count)",
+            "sync_download_missing_stable": "Stable の不足分をダウンロード (:count)",
+            "sync_download_missing_lazer": "Lazer の不足分をダウンロード (:count)"
         }
     },
     "onboarding": {
