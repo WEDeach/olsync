@@ -9,11 +9,18 @@ import { createLogger } from "../../../utils/logger";
 import {
     apply_filename_from_content_disposition,
     build_request_options,
-    get_chrome_headers,
+    classify_download_response,
+    DownloadResponseDiagnostics,
+    fetch_response_diagnostics,
+    get_browser_headers,
     is_official_osu_host,
     is_private_ip,
+    node_response_diagnostics,
+    read_node_body_snippet,
+    read_response_snippet,
     task_hostname,
     validate_download_response,
+    wait_for_shared_promise,
 } from "./downloadUtils";
 import { RateLimiter } from "./rateLimiter";
 import { create_progress_tracker, create_speed_limiter } from "./speedLimiter";
@@ -34,12 +41,52 @@ export interface DownloadEngineContext {
 
 export class DownloadEngine {
     private _dnsCache: { ip: string; expires: number } | null = null;
+    private _cfSolvePromise: Promise<void> | null = null;
     private static readonly DNS_CACHE_TTL_MS = 5 * 60 * 1000;
 
     constructor(
         private _rateLimiter: RateLimiter,
         private _ctx: DownloadEngineContext,
     ) {}
+
+    private _browser_headers(extra?: Record<string, string>): Record<string, string> {
+        return get_browser_headers(session.defaultSession.getUserAgent(), extra);
+    }
+
+    private async _head_diagnostics(
+        url: string,
+        status: number,
+        contentType: string,
+        diagnostics: DownloadResponseDiagnostics,
+        signal: AbortSignal,
+    ): Promise<DownloadResponseDiagnostics> {
+        if (
+            status !== 403 ||
+            !contentType.toLowerCase().includes("text/html") ||
+            !diagnostics.server?.toLowerCase().includes("cloudflare") ||
+            diagnostics.cfMitigated?.toLowerCase().includes("challenge")
+        ) {
+            return diagnostics;
+        }
+        try {
+            const response = await this._sessionFetch(
+                url,
+                { headers: this._browser_headers({ Range: "bytes=0-0" }), cache: "no-store" },
+                AbortSignal.any([signal, AbortSignal.timeout(10_000)]),
+            );
+            const snippet = await read_response_snippet(response);
+            const sampled = fetch_response_diagnostics(response, response.url || url, snippet);
+            return {
+                ...diagnostics,
+                bodySnippet: snippet,
+                cfMitigated: sampled.cfMitigated ?? diagnostics.cfMitigated,
+            };
+        } catch (error) {
+            if (signal.aborted) throw new Error("aborted");
+            log.warn(`CF response sampling failed: ${String(error)}`);
+            return diagnostics;
+        }
+    }
 
     private _request(
         url: string,
@@ -130,10 +177,14 @@ export class DownloadEngine {
             try {
                 await this._download_via_node_https(task, signal, speedLimitBps, true);
             } catch (err) {
-                if ((err as Error).message === "CF_CHALLENGE") {
+                if ((err as Error).message.startsWith("CF_CHALLENGE")) {
                     log.info("CF challenge detected (dns-proxy path), falling back to browser session...");
                     await this._solve_cf_challenge(requestUrl, signal);
-                    await this._download_via_sess_fetch(task, signal, speedLimitBps, requestUrl);
+                    await this._download_official(
+                        () => this._download_via_sess_fetch(task, signal, speedLimitBps, requestUrl),
+                        requestUrl,
+                        signal,
+                    );
                 } else {
                     throw err;
                 }
@@ -142,21 +193,27 @@ export class DownloadEngine {
         }
 
         if (isOfficialHost) {
-            try {
-                await this._download_via_sess_fetch(task, signal, speedLimitBps, requestUrl);
-            } catch (err) {
-                if ((err as Error).message === "CF_CHALLENGE") {
-                    log.info("CF challenge detected, opening browser window to solve...");
-                    await this._solve_cf_challenge(requestUrl, signal);
-                    await this._download_via_sess_fetch(task, signal, speedLimitBps, requestUrl);
-                } else {
-                    throw err;
-                }
-            }
+            await this._download_official(
+                () => this._download_via_sess_fetch(task, signal, speedLimitBps, requestUrl),
+                requestUrl,
+                signal,
+            );
             return;
         }
 
         await this._download_via_node_https(task, signal, speedLimitBps, false);
+    }
+
+    private async _download_official(run: () => Promise<void>, requestUrl: string, signal: AbortSignal): Promise<void> {
+        try {
+            await run();
+            return;
+        } catch (err) {
+            if (!(err as Error).message.startsWith("CF_CHALLENGE")) throw err;
+            log.info("CF challenge detected, opening browser window to solve...");
+            await this._solve_cf_challenge(requestUrl, signal);
+        }
+        await run();
     }
 
     private async _download_via_sess_fetch(
@@ -166,7 +223,7 @@ export class DownloadEngine {
         url: string = task.url,
     ): Promise<void> {
         const tempPath = `${task.savePath}.tmp`;
-        const headers = get_chrome_headers();
+        const headers = this._browser_headers();
         const hostname = task_hostname({ url });
 
         await this._rateLimiter.acquire_rate_limit(hostname);
@@ -191,7 +248,7 @@ export class DownloadEngine {
         } catch {
             parsedHeadUrl = new URL(url);
         }
-        if (this._is_unauthorized_page(parsedHeadUrl)) {
+        if (headResponse.status !== 403 && this._is_unauthorized_page(parsedHeadUrl)) {
             await (headResponse.body?.cancel() ?? Promise.resolve()).catch(() => {});
             throw new Error("HTTP 401");
         }
@@ -201,6 +258,13 @@ export class DownloadEngine {
                 headResponse.status,
                 headResponse.headers.get("content-type") || "",
                 parsedHeadUrl.hostname,
+                await this._head_diagnostics(
+                    parsedHeadUrl.href,
+                    headResponse.status,
+                    headResponse.headers.get("content-type") || "",
+                    fetch_response_diagnostics(headResponse, parsedHeadUrl.href),
+                    signal,
+                ),
             );
         } catch (e) {
             await (headResponse.body?.cancel() ?? Promise.resolve()).catch(() => {});
@@ -247,8 +311,17 @@ export class DownloadEngine {
             const response = await this._sessionFetch(url, { headers: chunkHeaders, cache: "no-store" }, chunkSignal);
 
             const contentType = response.headers.get("content-type") || "";
+            const snippet =
+                response.status >= 400 || contentType.includes("text/html")
+                    ? await read_response_snippet(response)
+                    : "";
             try {
-                validate_download_response(response.status, contentType, new URL(url).hostname);
+                validate_download_response(
+                    response.status,
+                    contentType,
+                    new URL(url).hostname,
+                    fetch_response_diagnostics(response, url, snippet),
+                );
             } catch (e) {
                 await (response.body?.cancel() ?? Promise.resolve()).catch(() => {});
                 throw e;
@@ -382,13 +455,20 @@ export class DownloadEngine {
                 currentReq = this._request(finalUrl, options, (res) => {
                     const contentType = String(res.headers["content-type"] ?? "");
                     if (!res.statusCode || res.statusCode < 200 || res.statusCode >= 400) {
-                        res.resume();
-                        try {
-                            validate_download_response(res.statusCode ?? null, contentType, chunkHost);
-                        } catch (e) {
-                            cleanup();
-                            reject(e);
-                        }
+                        void (async () => {
+                            const snippet = await read_node_body_snippet(res);
+                            try {
+                                validate_download_response(
+                                    res.statusCode ?? null,
+                                    contentType,
+                                    chunkHost,
+                                    node_response_diagnostics(res, finalUrl, snippet),
+                                );
+                            } catch (e) {
+                                cleanup();
+                                reject(e as Error);
+                            }
+                        })();
                         return;
                     }
                     if (res.statusCode !== 206) {
@@ -648,13 +728,20 @@ export class DownloadEngine {
         } catch {
             parsedFinalUrl = new URL(url);
         }
-        if (this._is_unauthorized_page(parsedFinalUrl)) {
+        if (response.status !== 403 && this._is_unauthorized_page(parsedFinalUrl)) {
             await (response.body?.cancel() ?? Promise.resolve()).catch(() => {});
             throw new Error("HTTP 401");
         }
 
+        const snippet =
+            response.status >= 400 || contentType.includes("text/html") ? await read_response_snippet(response) : "";
         try {
-            validate_download_response(response.status, contentType, parsedFinalUrl.hostname);
+            validate_download_response(
+                response.status,
+                contentType,
+                parsedFinalUrl.hostname,
+                fetch_response_diagnostics(response, parsedFinalUrl.href, snippet),
+            );
         } catch (e) {
             await (response.body?.cancel() ?? Promise.resolve()).catch(() => {});
             throw e;
@@ -762,7 +849,7 @@ export class DownloadEngine {
         if (isOfficialHost) {
             const cookies = await session.defaultSession.cookies.get({ url: requestUrl });
             const cookieHeader = cookies.map((c) => `${c.name}=${c.value}`).join("; ");
-            headers = get_chrome_headers(cookieHeader ? { Cookie: cookieHeader } : {});
+            headers = this._browser_headers(cookieHeader ? { Cookie: cookieHeader } : {});
             const ip = await this._resolve_speedtest_ip(parsedUrl.hostname);
             if (ip) {
                 log.info(`speedtest-dns-proxy: ${parsedUrl.hostname} > ${ip}`);
@@ -907,12 +994,20 @@ export class DownloadEngine {
                 const contentType = String(res.headers["content-type"] ?? "");
                 if (!res.statusCode || res.statusCode < 200 || res.statusCode >= 400) {
                     res.resume();
-                    try {
-                        validate_download_response(res.statusCode ?? null, contentType, urlHost);
-                    } catch (e) {
-                        cleanup();
-                        reject(e);
-                    }
+                    void this._head_diagnostics(
+                        url,
+                        res.statusCode ?? 0,
+                        contentType,
+                        node_response_diagnostics(res, url),
+                        signal,
+                    )
+                        .then((diagnostics) =>
+                            validate_download_response(res.statusCode ?? null, contentType, urlHost, diagnostics),
+                        )
+                        .catch((error) => {
+                            cleanup();
+                            reject(error);
+                        });
                     return;
                 }
 
@@ -925,14 +1020,19 @@ export class DownloadEngine {
                     reject(new Error(`Invalid final range-check URL: ${url}`));
                     return;
                 }
-                if (this._is_unauthorized_page(parsedUrl)) {
+                if (res.statusCode !== 403 && this._is_unauthorized_page(parsedUrl)) {
                     res.resume();
                     cleanup();
                     reject(new Error("HTTP 401"));
                     return;
                 }
                 try {
-                    validate_download_response(res.statusCode ?? null, contentType, urlHost);
+                    validate_download_response(
+                        res.statusCode ?? null,
+                        contentType,
+                        urlHost,
+                        node_response_diagnostics(res, url),
+                    );
                 } catch (e) {
                     res.resume();
                     cleanup();
@@ -1063,13 +1163,20 @@ export class DownloadEngine {
                     }
 
                     if (!res.statusCode || res.statusCode < 200 || res.statusCode >= 400) {
-                        res.resume();
-                        try {
-                            validate_download_response(res.statusCode ?? null, contentType, urlHost);
-                        } catch (e) {
-                            cleanup();
-                            reject(e);
-                        }
+                        void (async () => {
+                            const snippet = await read_node_body_snippet(res);
+                            try {
+                                validate_download_response(
+                                    res.statusCode ?? null,
+                                    contentType,
+                                    urlHost,
+                                    node_response_diagnostics(res, url, snippet),
+                                );
+                            } catch (e) {
+                                cleanup();
+                                reject(e as Error);
+                            }
+                        })();
                         return;
                     }
 
@@ -1082,14 +1189,19 @@ export class DownloadEngine {
                         reject(new Error(`Invalid final URL: ${url}`));
                         return;
                     }
-                    if (this._is_unauthorized_page(parsedFinalUrl)) {
+                    if (res.statusCode !== 403 && this._is_unauthorized_page(parsedFinalUrl)) {
                         res.resume();
                         cleanup();
                         reject(new Error("HTTP 401"));
                         return;
                     }
                     try {
-                        validate_download_response(res.statusCode ?? null, contentType, urlHost);
+                        validate_download_response(
+                            res.statusCode ?? null,
+                            contentType,
+                            urlHost,
+                            node_response_diagnostics(res, url),
+                        );
                     } catch (e) {
                         res.resume();
                         cleanup();
@@ -1214,6 +1326,18 @@ export class DownloadEngine {
     }
 
     private async _solve_cf_challenge(url: string, signal: AbortSignal): Promise<void> {
+        if (signal.aborted) throw new Error("aborted");
+        if (!this._cfSolvePromise) {
+            const controller = new AbortController();
+            this._cfSolvePromise = this._run_cf_challenge_window(url, controller).finally(() => {
+                this._cfSolvePromise = null;
+            });
+        }
+        return wait_for_shared_promise(this._cfSolvePromise, signal);
+    }
+
+    private _run_cf_challenge_window(url: string, controller: AbortController): Promise<void> {
+        const signal = controller.signal;
         return new Promise((resolve, reject) => {
             const win = new BrowserWindow({
                 width: 900,
@@ -1226,61 +1350,94 @@ export class DownloadEngine {
                 },
             });
 
-            let resolved = false;
+            let settled = false;
+            let probeTimer: NodeJS.Timeout | null = null;
+            let probing = false;
 
-            const cleanup = (fn: () => void) => {
-                if (resolved) return;
-                resolved = true;
-                clearTimeout(timer);
-                win.destroy();
-                fn();
-            };
+            const preventWindowDownload = (event: Electron.Event) => event.preventDefault();
+            session.defaultSession.on("will-download", preventWindowDownload);
 
             const timer = setTimeout(() => {
                 cleanup(() => reject(new Error("CF challenge timeout")));
             }, 120_000);
+
+            const cleanup = (fn: () => void) => {
+                if (settled) return;
+                settled = true;
+                clearTimeout(timer);
+                if (probeTimer) clearInterval(probeTimer);
+                session.defaultSession.removeListener("will-download", preventWindowDownload);
+                signal.removeEventListener("abort", abortHandler);
+                controller.abort();
+                win.destroy();
+                fn();
+            };
 
             const abortHandler = () => {
                 cleanup(() => reject(new Error("aborted")));
             };
             signal.addEventListener("abort", abortHandler);
 
-            win.webContents.on("did-navigate", async (_event, navUrl) => {
-                let navHost = "";
+            const probeCleared = async (): Promise<boolean> => {
+                if (settled) return false;
                 try {
-                    navHost = new URL(navUrl).hostname;
-                } catch {
-                    // ignore malformed URLs
+                    const response = await session.defaultSession.fetch(url, {
+                        method: "HEAD",
+                        headers: this._browser_headers(),
+                        redirect: "manual",
+                        cache: "no-store",
+                        signal: AbortSignal.any([signal, AbortSignal.timeout(10_000)]),
+                    });
+                    const contentType = response.headers.get("content-type") ?? "";
+                    const server = response.headers.get("server") ?? "";
+                    const mitigated = response.headers.get("cf-mitigated") ?? "";
+                    await (response.body?.cancel() ?? Promise.resolve()).catch(() => {});
+                    log.info(
+                        `CF probe: ${response.status} server=${server || "-"} cf-mitigated=${mitigated || "-"} content-type=${contentType || "-"}`,
+                    );
+                    const diagnostics = await this._head_diagnostics(
+                        url,
+                        response.status,
+                        contentType,
+                        fetch_response_diagnostics(response, url),
+                        signal,
+                    );
+                    return (
+                        classify_download_response(response.status, contentType, new URL(url).hostname, diagnostics) !==
+                        "challenge"
+                    );
+                } catch (error) {
+                    log.warn(`CF probe failed: ${String(error)}`);
+                    return false;
                 }
-                if (is_official_osu_host(navHost) && (navUrl.includes("/d/") || navUrl.includes(".osz"))) {
-                    await new Promise((r) => setTimeout(r, 500));
-                    cleanup(() => resolve());
-                }
-            });
+            };
+
+            const startProbing = () => {
+                if (settled || probeTimer) return;
+                probeTimer = setInterval(async () => {
+                    if (settled || probing) return;
+                    probing = true;
+                    try {
+                        if (await probeCleared()) cleanup(() => resolve());
+                    } finally {
+                        probing = false;
+                    }
+                }, 2000);
+            };
 
             win.webContents.on("did-finish-load", async () => {
-                const currentUrl = win.webContents.getURL();
-                let currentHost = "";
+                log.info(`CF window loaded: ${win.webContents.getURL()}`);
                 try {
-                    currentHost = new URL(currentUrl).hostname;
-                } catch {
-                    // ignore malformed URLs
-                }
-                if (is_official_osu_host(currentHost)) {
-                    try {
-                        const hasChallenge = await win.webContents.executeJavaScript(`
-                            document.querySelector('iframe[src*="challenges"]') !== null ||
-                            document.querySelector('#cf-turnstile') !== null ||
-                            document.title.includes('Just a moment')
-                        `);
-                        if (!hasChallenge) {
-                            await new Promise((r) => setTimeout(r, 500));
-                            cleanup(() => resolve());
-                        }
-                    } catch {
-                        /* ignore JS errors */
+                    const title = await win.webContents.executeJavaScript("document.title");
+                    if (typeof title === "string" && title.length > 0) log.info(`CF window title: ${title}`);
+                    if (typeof title === "string" && /blocked|attention required/i.test(title)) {
+                        cleanup(() => reject(new Error(`CF block page: ${title}`)));
+                        return;
                     }
+                } catch {
+                    /* ignore JS errors */
                 }
+                startProbing();
             });
 
             win.on("closed", () => {

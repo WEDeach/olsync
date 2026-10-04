@@ -107,14 +107,184 @@ export function task_hostname(task: DownloadTask | { url: string }): string {
     return new URL(task.url).hostname;
 }
 
-export function validate_download_response(statusCode: number | null, contentType?: string, host?: string): void {
-    if (contentType?.includes("text/html") && statusCode !== 401 && statusCode !== 403) {
-        if (host && is_official_osu_host(host)) {
-            throw new Error("CF_CHALLENGE");
-        }
-        throw new Error("Unexpected HTML response");
+export interface DownloadResponseDiagnostics {
+    url?: string | null;
+    contentType?: string | null;
+    server?: string | null;
+    cfRay?: string | null;
+    cfMitigated?: string | null;
+    location?: string | null;
+    wwwAuthenticate?: string | null;
+    bodySnippet?: string | null;
+}
+
+export function format_diagnostics(diagnostics?: DownloadResponseDiagnostics): string {
+    if (!diagnostics) return "";
+    const parts: string[] = [];
+    if (diagnostics.server) parts.push(`server=${diagnostics.server}`);
+    if (diagnostics.cfMitigated) parts.push(`cf-mitigated=${diagnostics.cfMitigated}`);
+    if (diagnostics.cfRay) parts.push(`cf-ray=${diagnostics.cfRay}`);
+    if (diagnostics.contentType) parts.push(`content-type=${diagnostics.contentType}`);
+    if (diagnostics.wwwAuthenticate) parts.push(`www-authenticate=${diagnostics.wwwAuthenticate}`);
+    if (diagnostics.location) parts.push(`location=${diagnostics.location}`);
+    if (diagnostics.url) parts.push(`url=${diagnostics.url}`);
+    if (diagnostics.bodySnippet) parts.push(`body=${JSON.stringify(diagnostics.bodySnippet)}`);
+    return parts.length > 0 ? ` (${parts.join("; ")})` : "";
+}
+
+export function fetch_response_diagnostics(
+    response: Response,
+    url?: string | null,
+    bodySnippet?: string | null,
+): DownloadResponseDiagnostics {
+    return {
+        url: url ?? response.url,
+        contentType: response.headers.get("content-type"),
+        server: response.headers.get("server"),
+        cfRay: response.headers.get("cf-ray"),
+        cfMitigated: response.headers.get("cf-mitigated"),
+        location: response.headers.get("location"),
+        wwwAuthenticate: response.headers.get("www-authenticate"),
+        bodySnippet,
+    };
+}
+
+export function node_response_diagnostics(
+    res: http.IncomingMessage,
+    url?: string | null,
+    bodySnippet?: string | null,
+): DownloadResponseDiagnostics {
+    const header = (name: string): string | null => {
+        const value = res.headers[name];
+        return Array.isArray(value) ? value.join(", ") : (value ?? null);
+    };
+    return {
+        url,
+        contentType: header("content-type"),
+        server: header("server"),
+        cfRay: header("cf-ray"),
+        cfMitigated: header("cf-mitigated"),
+        location: header("location"),
+        wwwAuthenticate: header("www-authenticate"),
+        bodySnippet,
+    };
+}
+
+export async function read_response_snippet(response: Response, maxLength = 512): Promise<string> {
+    const reader = response.body?.getReader();
+    if (!reader) return "";
+    try {
+        const { value } = await reader.read();
+        if (!value) return "";
+        return new TextDecoder().decode(value.slice(0, maxLength)).replace(/\s+/g, " ").trim();
+    } catch {
+        return "";
+    } finally {
+        await reader.cancel().catch(() => {});
+        reader.releaseLock();
     }
-    if (!statusCode || statusCode >= 400) throw new Error(`HTTP ${statusCode}`);
+}
+
+export function read_node_body_snippet(res: http.IncomingMessage, maxLength = 512): Promise<string> {
+    return new Promise((resolve) => {
+        const chunks: Buffer[] = [];
+        let size = 0;
+        let settled = false;
+        const finish = () => {
+            if (settled) return;
+            settled = true;
+            res.removeListener("data", onData);
+            res.removeListener("end", onEnd);
+            res.removeListener("error", onError);
+            const text = Buffer.concat(chunks).toString("utf8").slice(0, maxLength).replace(/\s+/g, " ").trim();
+            res.resume();
+            resolve(text);
+        };
+        const onData = (chunk: Buffer) => {
+            if (settled) return;
+            if (size < maxLength) {
+                chunks.push(chunk);
+                size += chunk.length;
+                if (size >= maxLength) finish();
+            }
+        };
+        const onEnd = () => finish();
+        const onError = () => finish();
+        res.on("data", onData);
+        res.on("end", onEnd);
+        res.on("error", onError);
+    });
+}
+
+export type DownloadResponseKind = "ok" | "challenge" | "unauthorized" | "html-error" | "http-error";
+
+export function classify_download_response(
+    statusCode: number | null,
+    contentType?: string,
+    host?: string,
+    diagnostics?: DownloadResponseDiagnostics,
+): DownloadResponseKind {
+    const isHtml = Boolean(contentType?.toLowerCase().includes("text/html"));
+    const isOfficial = Boolean(host && is_official_osu_host(host));
+    const mitigated = diagnostics?.cfMitigated?.toLowerCase() ?? "";
+    const body = diagnostics?.bodySnippet ?? "";
+    if (
+        isOfficial &&
+        (mitigated.includes("challenge") ||
+            (isHtml && /just a moment|challenge-platform|cf-chl/i.test(body)) ||
+            (isHtml && statusCode !== 401 && statusCode !== 403))
+    ) {
+        return "challenge";
+    }
+    if (statusCode === 401) return "unauthorized";
+    if (!statusCode || statusCode >= 400) return "http-error";
+    if (isHtml) return "html-error";
+    return "ok";
+}
+
+export function get_browser_headers(userAgent: string, extra?: Record<string, string>): Record<string, string> {
+    const headers = get_chrome_headers(extra);
+    headers["User-Agent"] = userAgent;
+    delete headers["sec-ch-ua"];
+    delete headers["sec-ch-ua-mobile"];
+    delete headers["sec-ch-ua-platform"];
+    return headers;
+}
+
+export function wait_for_shared_promise<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
+    if (signal.aborted) return Promise.reject(new Error("aborted"));
+    return new Promise<T>((resolve, reject) => {
+        const onAbort = () => {
+            signal.removeEventListener("abort", onAbort);
+            reject(new Error("aborted"));
+        };
+        signal.addEventListener("abort", onAbort, { once: true });
+        promise.then(
+            (value) => {
+                signal.removeEventListener("abort", onAbort);
+                resolve(value);
+            },
+            (error) => {
+                signal.removeEventListener("abort", onAbort);
+                reject(error);
+            },
+        );
+    });
+}
+
+export function validate_download_response(
+    statusCode: number | null,
+    contentType?: string,
+    host?: string,
+    diagnostics?: DownloadResponseDiagnostics,
+): void {
+    const detail = format_diagnostics(diagnostics);
+    const kind = classify_download_response(statusCode, contentType, host, diagnostics);
+    // Cloudflare now answers challenges with 403 + `cf-mitigated: challenge`
+    // instead of the old 200/503 HTML page, so status alone cannot decide.
+    if (kind === "challenge") throw new Error(`CF_CHALLENGE${detail}`);
+    if (kind === "html-error") throw new Error(`Unexpected HTML response${detail}`);
+    if (kind === "unauthorized" || kind === "http-error") throw new Error(`HTTP ${statusCode}${detail}`);
 }
 
 export function match_task(

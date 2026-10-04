@@ -17,6 +17,7 @@ import Config from "./config";
 import { DownloadEngine, DownloadEngineContext } from "./download/downloadEngine";
 import {
     build_cache_entry,
+    get_browser_headers,
     is_official_osu_host,
     is_private_ip,
     match_task,
@@ -657,6 +658,25 @@ export default class DownloadManager extends SingletonBase {
         this._emit({ type: "auth_required", payload: { hostname } });
     }
 
+    private _pause_queued_downloads(reason: string): void {
+        let paused = 0;
+        const pauseQueue = (queue: string[]) => {
+            for (const id of queue) {
+                const task = this._tasks.get(id);
+                if (!task || task.status !== "queued") continue;
+                task.status = "paused";
+                task.speedBps = 0;
+                this._pausedTasks.add(id);
+                this._emit_task_updated(task);
+                paused += 1;
+            }
+            queue.length = 0;
+        };
+        pauseQueue(this._queue);
+        pauseQueue(this._mirrorQueue);
+        if (paused > 0) log.warn(`Paused ${paused} queued downloads after ${reason}`);
+    }
+
     private async _release_held_tasks(): Promise<void> {
         if (this._heldQueue.length === 0) return;
 
@@ -736,9 +756,17 @@ export default class DownloadManager extends SingletonBase {
                     task.status = "error";
                     task.error = err.message;
                     task.finishedAt = Date.now();
-                    if (err.message.includes("401")) {
+                    log.warn(`Download failed: ${task.url} :: ${err.message}`);
+                    if (/^HTTP 401\b/.test(err.message)) {
                         const hostname = task_hostname(task);
                         this._block_domain_and_hold_tasks(hostname);
+                    } else if (/^HTTP 403\b/.test(err.message) || /^CF[_ ]/.test(err.message)) {
+                        // 403 is not fixed by logging in again (Cloudflare block or
+                        // a permission problem), so pause the queue instead of
+                        // letting every remaining task fail one by one.
+                        this._pause_queued_downloads(
+                            err.message.startsWith("HTTP 403") ? "an HTTP 403 response" : "a Cloudflare challenge",
+                        );
                     }
                     this._cleanup_temp_files(task.savePath);
                     this._cache.set(task.id, build_cache_entry(task, "error", task.finishedAt, err.message));
@@ -888,22 +916,7 @@ export default class DownloadManager extends SingletonBase {
             if (this._loginSuccess) return;
             try {
                 const resp = await ses.fetch("https://osu.ppy.sh/notifications", {
-                    headers: {
-                        "User-Agent":
-                            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36",
-                        Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
-                        "Accept-Language": "zh-TW,zh;q=0.9,en;q=0.8",
-                        "Accept-Encoding": "gzip, deflate, br",
-                        Referer: "https://osu.ppy.sh/",
-                        "sec-ch-ua": '"Chromium";v="134", "Not:A-Brand";v="24", "Google Chrome";v="134"',
-                        "sec-ch-ua-mobile": "?0",
-                        "sec-ch-ua-platform": "Windows",
-                        "Sec-Fetch-Dest": "document",
-                        "Sec-Fetch-Mode": "navigate",
-                        "Sec-Fetch-Site": "same-origin",
-                        "Sec-Fetch-User": "?1",
-                        "Upgrade-Insecure-Requests": "1",
-                    },
+                    headers: get_browser_headers(ses.getUserAgent(), { "Sec-Fetch-Site": "same-origin" }),
                     redirect: "follow",
                 });
                 await (resp.body?.cancel() ?? Promise.resolve()).catch(() => {});
