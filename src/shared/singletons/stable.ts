@@ -7,6 +7,7 @@ import { StableBeatmapDetail, StableBeatmapFilter } from "../../defines/stable_s
 import { IOsuCollection } from "../../defines/types";
 import { pathJoin, pBackupData } from "../../utils/file";
 import { createLogger } from "../../utils/logger";
+import { DefaultObjectWithOffset } from "../../utils/reader";
 import SingletonBase from "./base";
 
 const log = createLogger("StableReader");
@@ -276,8 +277,12 @@ export default class StableReader extends SingletonBase {
         return this._send("beatmaps", { offset, limit });
     }
 
-    async query_beatmaps(filter: StableBeatmapFilter, offset: number = 0, limit: number = 0) {
-        return this._send("query_beatmaps", { filter, offset, limit });
+    async query_beatmaps(
+        filter: StableBeatmapFilter,
+        offset: number = 0,
+        limit: number = 0,
+    ): Promise<DefaultObjectWithOffset> {
+        return this._send<DefaultObjectWithOffset>("query_beatmaps", { filter, offset, limit });
     }
 
     count_beatmaps(): Promise<number> {
@@ -314,18 +319,39 @@ export default class StableReader extends SingletonBase {
         return this.base_path;
     }
 
+    is_ready(): boolean {
+        return this._utilProc !== null && this.base_path !== undefined;
+    }
+
     async get_beatmap_index(offset: number = 0, limit: number = 0) {
         return this._send("get_beatmap_index", { offset, limit });
     }
 
-    async collections(offset: number = 0, limit: number = 10) {
-        return this._send("collections", { offset, limit });
+    async collections(offset: number = 0, limit: number = 10): Promise<DefaultObjectWithOffset> {
+        return this._send<DefaultObjectWithOffset>("collections", { offset, limit });
     }
 
-    set_collections(collections: IOsuCollection[]): Promise<number> {
+    set_collections(collections: IOsuCollection[], options?: { backup?: boolean }) {
         const collectionPath = this.get_path(PathType.Collection);
-        const backupPath = this.get_path(PathType.CollectionBackup);
-        return this._send<number>("set_collections", { collections, collectionPath, backupPath });
+        const backupPath = options?.backup === false ? undefined : this.get_path(PathType.CollectionBackup);
+        return this._send<{ backupPath?: string; collectionCount: number }>("set_collections", {
+            collections,
+            collectionPath,
+            backupPath,
+        });
+    }
+
+    backup_beatmap_files(hashes: string[], backupDir: string) {
+        return this._send<Array<{ hash: string; ok: boolean; relative?: string; reason?: string }>>(
+            "backup_beatmap_files",
+            { hashes, backupDir },
+        );
+    }
+
+    remove_beatmap_files(entries: Array<{ hash: string; relative: string }>) {
+        return this._send<Array<{ hash: string; ok: boolean; reason?: string }>>("remove_beatmap_files", {
+            entries,
+        });
     }
 
     async scores(offset: number = 0, limit: number = 10) {

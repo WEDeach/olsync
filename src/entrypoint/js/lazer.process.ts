@@ -3,6 +3,7 @@ import * as fs from "fs";
 import * as path from "path";
 import Realm from "realm";
 import { OsuFileObjectCounts, parseOsuObjectCounts } from "../../shared/utils/lazerObjectCounts";
+import { computeLazerSetHash, LazerHashableFile } from "../../shared/utils/lazerSetHash";
 import { parseLazerStatistics } from "../../shared/utils/lazerStats";
 import { createLogger } from "../../utils/logger";
 import { readWithOffset } from "../../utils/reader";
@@ -219,6 +220,19 @@ function readStoredObjectCounts(realmPath: string, contentHash: string): OsuFile
     return countsFromRosu(bytes) ?? parseOsuObjectCounts(bytes.toString("utf8")) ?? undefined;
 }
 
+/** `BeatmapOnlineStatus.LocallyModified`; set on a set that lost one difficulty. */
+const LOCALLY_MODIFIED_STATUS = -4;
+
+function sameStringList(values: unknown, expected: string[]): boolean {
+    if (!Array.isArray(values) && typeof (values as { length?: unknown })?.length !== "number") return false;
+    const list = values as ArrayLike<unknown>;
+    if (list.length !== expected.length) return false;
+    for (let i = 0; i < expected.length; i++) {
+        if (list[i] !== expected[i]) return false;
+    }
+    return true;
+}
+
 /** Normalized Beatmap DTO. Pure Realm field access — never touches the filesystem. */
 function normalizeBeatmap(b: any) {
     const d = b.Difficulty;
@@ -370,7 +384,148 @@ async function handle(msg: any): Promise<unknown> {
         }
 
         case "set_collections": {
-            throw new Error("LazerReader's set_collections is not implemented.");
+            const realm = _realm;
+            if (realm === undefined) {
+                throw new Error("LazerReader has not been initialized.");
+            }
+
+            const desired = new Map<string, string[]>();
+            for (const entry of Array.isArray(msg.collections) ? msg.collections : []) {
+                const name = typeof entry?.name === "string" ? entry.name.trim() : "";
+                if (name.length === 0) continue;
+                const maps = Array.isArray(entry?.maps)
+                    ? entry.maps.filter((hash: unknown): hash is string => typeof hash === "string" && hash.length > 0)
+                    : [];
+                desired.set(name, Array.from(new Set(maps)));
+            }
+
+            const existingByName = new Map<string, any>();
+            for (const col of realm.objects("BeatmapCollection")) {
+                const name = typeof (col as any).Name === "string" ? (col as any).Name : "";
+                if (name.length > 0) existingByName.set(name, col);
+            }
+
+            let created = 0;
+            let updated = 0;
+            let removed = 0;
+            realm.write(() => {
+                for (const [name, hashes] of desired) {
+                    const col = existingByName.get(name) as any;
+                    if (col) {
+                        if (!sameStringList(col.BeatmapMD5Hashes, hashes)) {
+                            col.BeatmapMD5Hashes.splice(0, col.BeatmapMD5Hashes.length, ...hashes);
+                            col.LastModified = new Date();
+                            updated += 1;
+                        }
+                        existingByName.delete(name);
+                        continue;
+                    }
+                    realm.create("BeatmapCollection", {
+                        ID: new Realm.BSON.UUID(),
+                        Name: name,
+                        BeatmapMD5Hashes: hashes,
+                        LastModified: new Date(),
+                    });
+                    created += 1;
+                }
+                for (const [, col] of existingByName) {
+                    realm.delete(col);
+                    removed += 1;
+                }
+            });
+
+            log.info(`set_collections: total=${desired.size} created=${created} updated=${updated} removed=${removed}`);
+            return { created, updated, removed, total: desired.size };
+        }
+
+        case "delete_beatmap_difficulties": {
+            const realm = _realm;
+            if (realm === undefined) {
+                throw new Error("LazerReader has not been initialized.");
+            }
+
+            const results: Array<Record<string, unknown>> = [];
+            for (const hash of stringList(msg.hashes)) {
+                const beatmap = realm.objects("Beatmap").filtered(`MD5Hash == ${q(hash)}`)[0] as any;
+                if (!beatmap) {
+                    results.push({ hash, ok: false, reason: "not_found" });
+                    continue;
+                }
+                const set = beatmap.BeatmapSet;
+                if (!set) {
+                    results.push({ hash, ok: false, reason: "set_missing" });
+                    continue;
+                }
+                if (set.Protected === true) {
+                    results.push({ hash, ok: false, reason: "protected" });
+                    continue;
+                }
+                if (set.DeletePending === true) {
+                    results.push({ hash, ok: true, mode: "set", reason: "already_pending" });
+                    continue;
+                }
+
+                let siblingCount = 0;
+                for (const sibling of set.Beatmaps) {
+                    if (sibling.MD5Hash !== hash) siblingCount += 1;
+                }
+
+                if (siblingCount === 0) {
+                    realm.write(() => {
+                        set.DeletePending = true;
+                    });
+                    results.push({ hash, ok: true, mode: "set" });
+                    continue;
+                }
+
+                const contentHash = typeof beatmap.Hash === "string" ? beatmap.Hash : "";
+                let usage: any;
+                if (contentHash.length > 0) {
+                    for (const candidate of set.Files) {
+                        if (candidate?.File?.Hash === contentHash) {
+                            usage = candidate;
+                            break;
+                        }
+                    }
+                }
+                const usageIndex = usage ? set.Files.indexOf(usage) : -1;
+                const beatmapIndex = set.Beatmaps.indexOf(beatmap);
+                if (usageIndex < 0) {
+                    log.warn(`delete_beatmap_difficulties: file reference missing for ${hash}`);
+                    results.push({ hash, ok: false, reason: "file_reference_missing" });
+                    continue;
+                }
+                let nextHash: string;
+                try {
+                    const realmPath = _realmPath;
+                    if (!realmPath) throw new Error("Lazer Realm path is unavailable.");
+                    const remaining = Array.from(set.Files as Iterable<LazerHashableFile>).filter(
+                        (_, index) => index !== usageIndex,
+                    );
+                    nextHash = computeLazerSetHash(remaining, set.Hash, (digest) =>
+                        readVerifiedOsuFile(realmPath, digest),
+                    );
+                } catch (error) {
+                    const reason = error instanceof Error ? error.message : String(error);
+                    log.warn(`delete_beatmap_difficulties: hash recalculation failed for ${hash}: ${reason}`);
+                    results.push({ hash, ok: false, reason });
+                    continue;
+                }
+
+                realm.write(() => {
+                    // Mirrors `ModelManager.DeleteFile`: only the reference is dropped.
+                    // The stored file stays content-addressed and is reclaimed by
+                    // osu!lazer's `RealmFileStore.Cleanup()` on its next startup.
+                    if (usage && usageIndex >= 0) set.Files.remove(usageIndex);
+                    if (beatmapIndex >= 0) set.Beatmaps.remove(beatmapIndex);
+                    if (beatmap.Metadata) realm.delete(beatmap.Metadata);
+                    realm.delete(beatmap);
+                    set.Hash = nextHash;
+                    set.StatusInt = LOCALLY_MODIFIED_STATUS;
+                });
+                results.push({ hash, ok: true, mode: "difficulty" });
+            }
+            return results;
         }
 
         case "query_beatmaps": {

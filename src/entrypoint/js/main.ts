@@ -16,7 +16,9 @@ import { setDefaultLang, setI18n } from "../../utils/i18n";
 import { createLogger } from "../../utils/logger";
 import { ConfigKey } from "../../utils/typed/config";
 import { register as ipcAcCmdRegister } from "./ipc/ac";
+import { register as ipcCmCmdRegister } from "./ipc/cm";
 import { register as ipcCnCmdRegister } from "./ipc/cn";
+import { register as ipcCsCmdRegister } from "./ipc/cs";
 import { register as ipcDlCmdRegister } from "./ipc/dl";
 import { register as ipcFsCmdRegister } from "./ipc/fs";
 import { register as ipcLaCmdRegister } from "./ipc/la";
@@ -293,6 +295,8 @@ app.whenReady().then(async () => {
     ipcOdCmdRegister();
     ipcUpCmdRegister();
     ipcPkCmdRegister();
+    ipcCsCmdRegister();
+    ipcCmCmdRegister();
     ipcTrCmdRegister();
 
     try {

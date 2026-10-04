@@ -176,6 +176,35 @@ class OnlineDbReader extends SingletonBase {
         };
     }
 
+    get_set_ids_by_checksums(checksums: string[]): Map<string, number> {
+        const resolved = new Map<string, number>();
+        if (!this._db) return resolved;
+
+        const unique = Array.from(
+            new Set(
+                checksums
+                    .filter((checksum): checksum is string => typeof checksum === "string" && checksum.length > 0)
+                    .map((checksum) => checksum.toLowerCase()),
+            ),
+        );
+
+        const BATCH = 400;
+        for (let index = 0; index < unique.length; index += BATCH) {
+            const batch = unique.slice(index, index + BATCH);
+            const placeholders = batch.map(() => "?").join(",");
+            const rows = this._db
+                .prepare(`SELECT checksum, beatmapset_id FROM osu_beatmaps WHERE checksum IN (${placeholders})`)
+                .all(...batch) as Array<{ checksum: string; beatmapset_id: number }>;
+            for (const row of rows) {
+                const setIds = Number(row.beatmapset_id);
+                if (Number.isInteger(setIds) && setIds > 0) {
+                    resolved.set(String(row.checksum).toLowerCase(), setIds);
+                }
+            }
+        }
+        return resolved;
+    }
+
     get_all_beatmaps(
         offset = 0,
         limit = 500,

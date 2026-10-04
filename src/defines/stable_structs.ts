@@ -122,6 +122,7 @@ export interface StableBeatmapFilter {
     modes?: number[];
     includedHashes?: string[];
     excludedHashes?: string[];
+    includedIds?: number[];
 }
 
 export interface StableBeatmapIndex {

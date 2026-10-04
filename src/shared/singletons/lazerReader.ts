@@ -14,6 +14,7 @@ export default class LazerReader extends SingletonBase {
     private _pending = new Map<number, { resolve: (r: unknown) => void; reject: (e: Error) => void }>();
     private _nextMsgId = 0;
     private _onNotification: ((type: string) => void) | null = null;
+    private _initPath: string | undefined;
 
     private _ensure_proc() {
         if (this._utilProc) return;
@@ -41,6 +42,7 @@ export default class LazerReader extends SingletonBase {
             }
             this._pending.clear();
             this._utilProc = null;
+            this._initPath = undefined;
         });
     }
 
@@ -53,8 +55,18 @@ export default class LazerReader extends SingletonBase {
         });
     }
 
+    is_ready(): boolean {
+        return this._initPath !== undefined;
+    }
+
+    get_init_path(): string | undefined {
+        return this._initPath;
+    }
+
     async init(fpath: string) {
+        if (this._initPath === fpath) return;
         await this._send("init", { path: fpath });
+        this._initPath = fpath;
         log.debug(`LazerReader init: ${fpath}`);
     }
 
@@ -75,8 +87,8 @@ export default class LazerReader extends SingletonBase {
         return this._send("get_objects", { objType, limit, offset });
     }
 
-    async get_collections(offset: number = 0, limit: number = 10) {
-        return this._send("get_collections", { offset, limit });
+    async get_collections(offset: number = 0, limit: number = 10): Promise<DefaultObjectWithOffset> {
+        return this._send<DefaultObjectWithOffset>("get_collections", { offset, limit });
     }
 
     async get_scores(offset: number = 0, limit: number = 10) {
@@ -144,11 +156,25 @@ export default class LazerReader extends SingletonBase {
         return this._send<{ data: string[]; total: number }>("query_lazer_users", {});
     }
 
-    async set_collections(_collections: IOsuCollection[]) {
-        return this._send("set_collections", { collections: _collections });
+    async set_collections(collections: IOsuCollection[]) {
+        return this._send<{
+            created: number;
+            updated: number;
+            removed: number;
+            total: number;
+        }>("set_collections", { collections });
+    }
+
+    async delete_beatmap_difficulties(hashes: string[]) {
+        return this._send<Array<{ hash: string; ok: boolean; mode?: "difficulty" | "set"; reason?: string }>>(
+            "delete_beatmap_difficulties",
+            { hashes },
+        );
     }
 
     async close() {
-        return this._send("close");
+        const result = await this._send("close");
+        this._initPath = undefined;
+        return result;
     }
 }

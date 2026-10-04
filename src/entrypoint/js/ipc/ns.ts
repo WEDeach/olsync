@@ -146,6 +146,32 @@ export enum IPC_PK_NAMES {
     ROLL_LAZER_BEATMAP = "ipc:pk:roll_lazer_beatmap",
 }
 
+// COLLECTION MERGE
+export enum IPC_CM_NAMES {
+    GET_STATE = "ipc:cm:get_state",
+    BUILD_PLAN = "ipc:cm:build_plan",
+    EXECUTE = "ipc:cm:execute",
+    INVALIDATE_PLAN = "ipc:cm:invalidate_plan",
+}
+
+// COLLECTION SYNC
+export enum IPC_CS_NAMES {
+    GET_STATE = "ipc:cs:get_state",
+    SET_COLLECTION_TYPE = "ipc:cs:set_collection_type",
+    SET_EXCLUDE_NOT_FOUND = "ipc:cs:set_exclude_not_found",
+    BUILD_PLAN = "ipc:cs:build_plan",
+    CHECK_MISSING = "ipc:cs:check_missing",
+    /** main -> renderer: missing-beatmap ID resolution progress. */
+    MISSING_PROGRESS = "ipc:cs:missing_progress",
+    EXECUTE = "ipc:cs:execute",
+    INVALIDATE_PLAN = "ipc:cs:invalidate_plan",
+    RESET_BASELINE = "ipc:cs:reset_baseline",
+    EXPORT_SETTINGS = "ipc:cs:export_settings",
+    IMPORT_SETTINGS = "ipc:cs:import_settings",
+    EXPORT_CONTENT = "ipc:cs:export_content",
+    IMPORT_CONTENT = "ipc:cs:import_content",
+}
+
 // ONLINE DB
 export enum IPC_OD_NAMES {
     DOWNLOAD = "ipc:od:download",

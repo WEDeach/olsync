@@ -33,6 +33,10 @@ export default class Api extends SingletonBase {
         return this._client;
     }
 
+    is_ready(): boolean {
+        return this._client !== undefined;
+    }
+
     async get_user_most_played_beatmaps(user_id: number, limit: number = 200, offset: number = 0) {
         if (this._client === undefined) {
             throw new Error("API client has not been initialized.");

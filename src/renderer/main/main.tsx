@@ -5,8 +5,10 @@ import {
     Inventory2Outlined,
     LibraryMusicOutlined,
     ManageSearchOutlined,
+    MergeTypeOutlined,
     QueryStatsOutlined,
     ShuffleOutlined,
+    SyncOutlined,
 } from "@mui/icons-material";
 import {
     Alert,
@@ -14,9 +16,7 @@ import {
     Backdrop,
     Box,
     Button,
-    Card,
-    CardHeader,
-    Checkbox,
+    ButtonBase,
     Collapse,
     Container,
     CssBaseline,
@@ -29,8 +29,6 @@ import {
     Grid,
     InputAdornment,
     List,
-    ListItemButton,
-    ListItemIcon,
     ListItemText,
     Slide,
     Stack,
@@ -51,6 +49,8 @@ import { BeatmapList } from "../components/beatmapList";
 import { BeatmapPackDownloadView } from "../components/beatmapPackDownload";
 import { BeatmapPickerView } from "../components/beatmapPicker";
 import { BeatmapRestorerView } from "../components/beatmapRestorer";
+import { CollectionMergeView } from "../components/collectionMerge";
+import { CollectionSyncView } from "../components/collectionSync";
 import CompareList from "../components/compareList";
 import { DownloadHistoryView } from "../components/downloadHistory";
 import { DownloadIndicator } from "../components/downloadIndicator";
@@ -448,119 +448,6 @@ export default class Main extends React.Component {
         );
     }
 
-    renderSelectGroups() {
-        const SGA = this.controller.VSelectGroupA;
-        const SGB = this.controller.VSelectGroupB;
-        const SGC = (SGV: any[] | undefined, title: string) => {
-            const count_max = SGV?.length ?? 0;
-            const count_selected = SGV?.filter((v) => v.is_selected).length ?? 0;
-            return (
-                <Card
-                    sx={{
-                        height: "100%",
-                        display: "flex",
-                        flexDirection: "column",
-                    }}
-                >
-                    <CardHeader
-                        sx={{ px: 2, py: 1 }}
-                        avatar={<Checkbox checked={count_max === count_selected && count_max !== 0} />}
-                        title={title}
-                        subheader={__(I18nStrings.MAIN_COLLECTION_SELECTED_COUNT, {
-                            selected: count_selected,
-                            total: count_max,
-                        })}
-                        disabled={count_max === 0}
-                        onClick={() =>
-                            SGV?.forEach((v) => {
-                                this.controller.onBtnSelectItemClicked(v, count_max !== count_selected);
-                            })
-                        }
-                    />
-                    <Divider />
-                    <List
-                        sx={{
-                            width: "100%",
-                            bgcolor: "background.paper",
-                            overflow: "auto",
-                            minHeight: "16rem",
-                            flexGrow: 1,
-                            height: 0, // idk why, but it works :v
-                        }}
-                        dense
-                        component="div"
-                        role="list"
-                    >
-                        {SGI(SGV)}
-                    </List>
-                </Card>
-            );
-        };
-        const SGI = (SGV: any[] | undefined) => {
-            return SGV?.map((value) => {
-                const labelId = value.key ?? value;
-                const count_subs = value.subs?.length ?? 0;
-
-                return (
-                    <Stack direction={"column"} key={labelId}>
-                        <Stack direction={"row"}>
-                            <ListItemButton
-                                onClick={() => this.controller.onBtnSelectItemClicked(value)}
-                                onContextMenu={(event) => {
-                                    event.preventDefault();
-                                    this.controller.onSelectItemContextMenu(value);
-                                }}
-                            >
-                                <ListItemIcon>
-                                    <Checkbox checked={value.is_selected} tabIndex={-1} disableRipple />
-                                </ListItemIcon>
-                                <ListItemText
-                                    id={labelId}
-                                    primary={labelId}
-                                    secondary={
-                                        count_subs > 0 &&
-                                        __(I18nStrings.MAIN_COLLECTION_SUBS_COUNT, { count: count_subs })
-                                    }
-                                />
-                            </ListItemButton>
-                            {false && count_subs > 0 && (
-                                <Button
-                                    variant="outlined"
-                                    onClick={() => this.controller.onBtnSelectItemSubClicked(value)}
-                                >
-                                    +
-                                </Button>
-                            )}
-                        </Stack>
-                        {false && count_subs > 0 && (
-                            <Collapse
-                                in={value.is_sub_selected}
-                                timeout="auto"
-                                unmountOnExit
-                                sx={{ width: "100%", pl: 2 }}
-                            >
-                                {SGI(value.subs)}
-                            </Collapse>
-                        )}
-                    </Stack>
-                );
-            });
-        };
-        return (
-            <Grid
-                container
-                spacing={1}
-                columns={2}
-                sx={{
-                    flexGrow: 1,
-                }}
-            >
-                <Grid size={1}>{SGC(SGA, "Lazer")}</Grid>
-                <Grid size={1}>{SGC(SGB, "Osu!Stable")}</Grid>
-            </Grid>
-        );
-    }
-
     renderCachedVals() {
         const cv = this.controller.SCachedVals;
         const renderObj = (v: any, p?: string) =>
@@ -585,41 +472,81 @@ export default class Main extends React.Component {
         );
     }
 
+    renderCollectionEntry(
+        icon: React.ReactNode,
+        title: string,
+        description: string,
+        onClick: () => void,
+        disabled: boolean,
+    ) {
+        return (
+            <ButtonBase
+                onClick={onClick}
+                disabled={disabled}
+                sx={{
+                    flex: 1,
+                    minWidth: 0,
+                    minHeight: 280,
+                    p: 3,
+                    borderRadius: 3,
+                    border: "1px solid",
+                    borderColor: "divider",
+                    bgcolor: "background.paper",
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: 1.5,
+                    textAlign: "center",
+                    "&:hover": { transform: "translateY(-2px)", boxShadow: 3 },
+                    "&.Mui-focusVisible": {
+                        outline: "2px solid",
+                        outlineColor: "primary.main",
+                        outlineOffset: 2,
+                    },
+                    "&.Mui-disabled": { opacity: 0.5 },
+                }}
+            >
+                <Box sx={{ display: "flex", fontSize: 56, color: "primary.main" }}>{icon}</Box>
+                <Typography variant="h6">{title}</Typography>
+                <Typography variant="body2" color="text.secondary">
+                    {description}
+                </Typography>
+            </ButtonBase>
+        );
+    }
+
     renderCollection() {
+        const noPath = !this.controller.LazerPath && !this.controller.StablePath;
         return (
             <>
                 {this.controller.SMain === MainViewState.COLLECTION_IDLE && (
-                    <Tooltip
-                        title={
-                            !this.controller.LazerPath && !this.controller.StablePath
-                                ? __(I18nStrings.BTN_PATH_REQUIRED_TOOLTIP)
-                                : ""
-                        }
-                        arrow
-                        placement="top"
-                    >
-                        <span>
-                            <Button
-                                variant="contained"
-                                onClick={this.controller.onBtnCollectionReadClicked}
-                                fullWidth
-                                disabled={!this.controller.LazerPath && !this.controller.StablePath}
-                            >
-                                {__(I18nStrings.BTN_COLLECTION_READ)}
-                            </Button>
-                        </span>
-                    </Tooltip>
+                    <Stack spacing={2} sx={{ flex: 1, minHeight: 0 }}>
+                        {noPath && <Alert severity="warning">{__(I18nStrings.BTN_PATH_REQUIRED_TOOLTIP)}</Alert>}
+                        <Stack direction="row" spacing={2} sx={{ flex: 1, minHeight: 0 }}>
+                            {this.renderCollectionEntry(
+                                <MergeTypeOutlined />,
+                                __(I18nStrings.BTN_COLLECTION_MERGE),
+                                __(I18nStrings.MAIN_COLLECTION_MERGE_DESC),
+                                this.controller.onBtnCollectionMergeClicked,
+                                noPath,
+                            )}
+                            {this.renderCollectionEntry(
+                                <SyncOutlined />,
+                                __(I18nStrings.BTN_COLLECTION_SYNC),
+                                __(I18nStrings.MAIN_COLLECTION_SYNC_DESC),
+                                this.controller.onBtnCollectionSyncClicked,
+                                noPath,
+                            )}
+                        </Stack>
+                    </Stack>
                 )}
-                {[MainViewState.COLLECTION_SELECT, MainViewState.COLLECTION_MERGE_CONFIRM].includes(
-                    this.controller.SMain,
-                ) ? (
-                    <>
-                        {this.renderSelectGroups()}
-                        <Button variant="contained" onClick={this.controller.onBtnCollectionMergeClicked}>
-                            {__(I18nStrings.BTN_COLLECTION_MERGE)}
-                        </Button>
-                    </>
-                ) : null}
+                {this.controller.SMain === MainViewState.COLLECTION_SYNC && (
+                    <CollectionSyncView onBack={this.controller.onBtnCollectionBackClicked} />
+                )}
+                {this.controller.SMain === MainViewState.COLLECTION_MERGE && (
+                    <CollectionMergeView onBack={this.controller.onBtnCollectionBackClicked} />
+                )}
             </>
         );
     }

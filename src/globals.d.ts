@@ -85,6 +85,34 @@ declare global {
             lazerRoll: (
                 req: import("./defines/lazer_picker").LazerRollRequest,
             ) => Promise<import("./defines/lazer_picker").LazerRollResponse>;
+            cmGetState: () => Promise<IPCR<import("./defines/collection_sync").CollectionMergeState>>;
+            cmBuildPlan: (
+                selections: import("./defines/collection_sync").CollectionMergeSelections,
+            ) => Promise<IPCR<import("./defines/collection_sync").CollectionMergePlan>>;
+            cmExecute: () => Promise<IPCR<import("./defines/collection_sync").CollectionMergeExecuteResponse>>;
+            cmInvalidatePlan: () => Promise<void>;
+            csGetState: () => Promise<IPCR<import("./defines/collection_sync").CollectionSyncState>>;
+            csSetCollectionType: (
+                name: string,
+                type: import("./defines/collection_sync").CollectionSyncType,
+            ) => Promise<IPCR<import("./defines/collection_sync").CollectionSyncSettings>>;
+            csSetExcludeNotFound: (
+                enabled: boolean,
+            ) => Promise<IPCR<import("./defines/collection_sync").CollectionSyncState>>;
+            csBuildPlan: (
+                resolutions: import("./defines/collection_sync").CollectionSyncResolution[],
+            ) => Promise<IPCR<import("./defines/collection_sync").CollectionSyncPlan>>;
+            csCheckMissing: () => Promise<IPCR<import("./defines/collection_sync").MissingBeatmapReport>>;
+            onCsMissingProgress: (listener: (resolved: number, total: number) => void) => () => void;
+            csExecute: () => Promise<IPCR<import("./defines/collection_sync").CollectionSyncExecuteResponse>>;
+            csInvalidatePlan: () => Promise<void>;
+            csResetBaseline: () => Promise<IPCR<import("./defines/collection_sync").CollectionSyncBaseline>>;
+            csExportSettings: () => Promise<string | null>;
+            csImportSettings: () => Promise<IPCR<import("./defines/collection_sync").CollectionSyncSettings> | null>;
+            csExportContent: () => Promise<{ filePath: string; collectionCount: number } | null>;
+            csImportContent: () => Promise<IPCR<
+                import("./defines/collection_sync").CollectionSyncImportSummary
+            > | null>;
             queryLazerScoresByHashes: (
                 hashes: string[],
                 stableDedupKeys?: string[],

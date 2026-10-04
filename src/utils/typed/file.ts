@@ -15,4 +15,5 @@ export enum SpaceId {
     PickerLog = "pl",
     TrackerUserData = "ud",
     TrackerUserLog = "ul",
+    CollectionSync = "cs",
 }

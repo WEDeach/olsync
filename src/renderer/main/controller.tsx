@@ -10,7 +10,7 @@ import { getApiPreDelayMs, InitApi } from "../../utils/api";
 import { getUseLazerModeExperiment } from "../../utils/experiments";
 import __ from "../../utils/i18n";
 import { LogError } from "../../utils/log";
-import { lazerScoreToOsuScore, makeScoreDedupKey, OsuData } from "../../utils/osu";
+import { lazerScoreToOsuScore, makeScoreDedupKey } from "../../utils/osu";
 import { readAllWithOffset } from "../../utils/reader";
 import { sleep } from "../../utils/time";
 import { ConfigKey } from "../../utils/typed/config";
@@ -45,6 +45,7 @@ export enum MainViewState {
     COLLECTION_SELECT = 12,
     COLLECTION_MERGE_CONFIRM = 13,
     COLLECTION_MERGE = 14,
+    COLLECTION_SYNC = 15,
     //
     SRS_IDLE = 20,
     SRS_READ = 21,
@@ -59,13 +60,6 @@ interface LoadingState {
     loading: boolean;
     message?: string;
     aborter?: AbortController;
-}
-
-interface SelectState {
-    key: string;
-    is_selected: boolean;
-    is_sub_selected?: boolean;
-    subs?: SelectState[];
 }
 
 interface ListItem {
@@ -98,8 +92,6 @@ interface State {
     s_loading?: LoadingState;
     s_cached_vals?: CachedVal[];
     v_sub?: React.ComponentType<any>;
-    v_select_group_a?: SelectState[];
-    v_select_group_b?: SelectState[];
     v_list?: ListItem[];
     s_show_user_dialog?: boolean;
     s_show_api_secret?: boolean;
@@ -247,14 +239,6 @@ export default class Controller {
 
     get SCachedVals() {
         return this.state.s_cached_vals ?? [];
-    }
-
-    get VSelectGroupA() {
-        return this.state.v_select_group_a;
-    }
-
-    get VSelectGroupB() {
-        return this.state.v_select_group_b;
     }
 
     get VList() {
@@ -560,169 +544,21 @@ export default class Controller {
         });
     };
 
-    onBtnCollectionReadClicked = async () => {
+    onBtnCollectionMergeClicked = () => {
         runInAction(() => {
-            this.state.s_main = MainViewState.COLLECTION_READ;
-            this.SetLoadingState(true, __(I18nStrings.MAIN_DATA_READING));
+            this.state.s_main = MainViewState.COLLECTION_MERGE;
         });
-
-        try {
-            // lazer
-            this.SetLoadingState(true, __(I18nStrings.MAIN_COLLECTION_READING_OL));
-            if (this.LazerPath.length > 0 && getUseLazerModeExperiment()) {
-                const ol_collections = await OsuData.getLazerCollections();
-                runInAction(() => {
-                    this.state.v_select_group_a = ol_collections.map((data) => ({
-                        key: data.name,
-                        is_selected: false,
-                        subs: data.maps.map((map) => ({ key: map, is_selected: false })),
-                    }));
-                    this.state.s_main = MainViewState.COLLECTION_SELECT;
-                    this.SetLoadingState(false);
-                });
-            }
-
-            // stable
-            this.SetLoadingState(true, __(I18nStrings.MAIN_COLLECTION_READING_OS));
-            if (this.StablePath.length > 0) {
-                const os_collections = await OsuData.getCollections();
-                runInAction(() => {
-                    this.state.v_select_group_b = os_collections.map((data) => ({
-                        key: data.name,
-                        is_selected: false,
-                        subs: data.maps.map((map) => ({ key: map, is_selected: false })),
-                    }));
-                    this.state.s_main = MainViewState.COLLECTION_SELECT;
-                });
-            }
-        } catch (error) {
-            LogError(error);
-        } finally {
-            runInAction(() => {
-                this.SetLoadingState(false);
-            });
-        }
     };
 
-    onBtnCollectionMergeClicked = async () => {
-        const group_a = this.VSelectGroupA ?? [];
-        const group_b = this.VSelectGroupB ?? [];
-        const group_a_selected = group_a.filter((item) => item.is_selected);
-        const group_b_selected = group_b.filter((item) => item.is_selected);
-        const collection_names = Array.from(
-            new Set(group_a?.map((item) => item.key).concat(group_b?.map((item) => item.key))),
-        );
-        const collection_name_selecteds = Array.from(
-            new Set(group_a_selected?.map((item) => item.key).concat(group_b_selected?.map((item) => item.key))),
-        );
-        const collection_values = new Map();
-        const collection_value_selecteds = new Map();
-        collection_names.forEach((name) => {
-            let a = group_a?.find((item) => item.key === name);
-            let b = group_b?.find((item) => item.key === name);
-            const v = (state: SelectState) => state.subs?.map((item) => item.key);
-
-            if (a && b) {
-                const _a = v(a) ?? [];
-                const _b = v(b) ?? [];
-                collection_values.set(name, _a.concat(_b.filter((item) => !_a.includes(item))));
-            } else if (a) {
-                collection_values.set(name, v(a));
-            } else if (b) {
-                collection_values.set(name, v(b));
-            }
-
-            a = group_a_selected?.find((item) => item.key === name);
-            b = group_b_selected?.find((item) => item.key === name);
-            if (a && b) {
-                const _a = v(a) ?? [];
-                const _b = v(b) ?? [];
-                collection_value_selecteds.set(name, _a.concat(_b.filter((item) => !_a.includes(item))));
-            } else if (a) {
-                collection_value_selecteds.set(name, v(a));
-            } else if (b) {
-                collection_value_selecteds.set(name, v(b));
-            }
-        });
-
+    onBtnCollectionSyncClicked = () => {
         runInAction(() => {
-            this.state.s_main = MainViewState.COLLECTION_MERGE_CONFIRM;
-
-            this.SetDialogState(true, {
-                title: __(I18nStrings.MAIN_COLLECTION_MERGE_CONFIRM),
-                compares: {
-                    source: collection_names.reduce(
-                        (acc, name) => {
-                            acc[name] = collection_values.get(name) ?? [];
-                            return acc;
-                        },
-                        {} as Record<string, any>,
-                    ),
-                    target: collection_name_selecteds.reduce(
-                        (acc, name) => {
-                            acc[name] = collection_value_selecteds.get(name) ?? [];
-                            return acc;
-                        },
-                        {} as Record<string, any>,
-                    ),
-                },
-                actions: [
-                    {
-                        label: __(I18nStrings.BTN_COLLECTION_MERGE),
-                        callback: async () => {
-                            this.SetLoadingState(true, __(I18nStrings.MAIN_COLLECTION_MERGING));
-                            await window.olsCore.setCollections(
-                                OsuClients.Stable,
-                                collection_name_selecteds.map((name) => {
-                                    return {
-                                        name,
-                                        maps: collection_value_selecteds.get(name)?.map((checksum: string) => {
-                                            return checksum;
-                                        }),
-                                    };
-                                }),
-                            );
-                            setTimeout(() => {
-                                this.SetLoadingState(false);
-                            }, 2000);
-                        },
-                    },
-                ],
-            });
+            this.state.s_main = MainViewState.COLLECTION_SYNC;
         });
     };
 
-    @action
-    onBtnSelectItemClicked = (selecte_item: SelectState, force_select?: boolean) => {
-        selecte_item.is_selected = force_select ?? !selecte_item.is_selected;
-        if (selecte_item.subs) {
-            selecte_item.subs.forEach((sub) => {
-                this.onBtnSelectItemClicked(sub, selecte_item.is_selected);
-            });
-        }
-    };
-
-    @action
-    onBtnSelectItemSubClicked = (selecte_item: SelectState, force_select?: boolean) => {
-        selecte_item.is_sub_selected = force_select ?? !(selecte_item.is_sub_selected ?? false);
-    };
-
-    onSelectItemContextMenu = (selecte_item: SelectState) => {
-        const beatmaps =
-            selecte_item.subs?.map((sub) => {
-                return {
-                    checksum: sub.key,
-                    is_selected: {
-                        get value() {
-                            return sub.is_selected;
-                        },
-                        callback: (value: boolean) => this.onBtnSelectItemClicked(sub, value),
-                    },
-                };
-            }) ?? [];
-        this.SetDialogState(true, {
-            title: selecte_item.key,
-            beatmaps: { beatmaps: beatmaps },
+    onBtnCollectionBackClicked = () => {
+        runInAction(() => {
+            this.state.s_main = MainViewState.COLLECTION_IDLE;
         });
     };
 
@@ -784,8 +620,6 @@ export default class Controller {
 
         // clear state values
         this.state.v_sub = undefined;
-        this.state.v_select_group_a = undefined;
-        this.state.v_select_group_b = undefined;
         this.state.v_list = undefined;
 
         // clear bulky cached collections/scores so they don't stay in renderer memory

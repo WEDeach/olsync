@@ -1,4 +1,5 @@
 import Api from "./singletons/api";
+import CollectionSync from "./singletons/collectionSync";
 import Config from "./singletons/config";
 import DownloadManager from "./singletons/downloadManager";
 import LazerReader from "./singletons/lazerReader";
@@ -22,6 +23,7 @@ const SharedManager = {
     tracker: Tracker.getInstance as Tracker,
     downloadManager: DownloadManager.getInstance as DownloadManager,
     onlineDbReader: OnlineDbReader.getInstance as OnlineDbReader,
+    collectionSync: CollectionSync.getInstance as CollectionSync,
 } as const;
 
 export default SharedManager;

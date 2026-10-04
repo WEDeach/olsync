@@ -12,17 +12,53 @@ const Parser = require("binary-parser").Parser;
 const log = createLogger("StableProcess");
 
 function backup_file_by_sha256(in_path: string, out_path: string) {
+    if (!fs.existsSync(in_path)) return undefined;
     const data = fs.readFileSync(in_path);
     const hash = crypto.createHash("sha256").update(data).digest("hex").slice(0, 8);
     const info = path.parse(out_path);
     const p_out = path.join(info.dir, `${info.name}.${hash}${info.ext}`);
     fs.mkdirSync(path.dirname(p_out), { recursive: true });
     fs.writeFileSync(p_out, data);
+    return p_out;
 }
 
 function save_file(data: Buffer, out_path: string) {
     fs.mkdirSync(path.dirname(out_path), { recursive: true });
     fs.writeFileSync(out_path, data);
+}
+
+/** Resolves `<Songs>/<folder>/<fileName>` and rejects anything escaping `Songs`. */
+function resolve_songs_file(songs_root: string, folder: unknown, file_name: unknown): string | undefined {
+    if (typeof folder !== "string" || typeof file_name !== "string") return undefined;
+    if (folder.trim() === "" || folder === "." || file_name.trim() === "") return undefined;
+    const candidate = path.resolve(songs_root, folder, file_name);
+    const relative = path.relative(songs_root, candidate);
+    if (relative.length === 0 || relative.startsWith("..") || path.isAbsolute(relative)) return undefined;
+    return candidate;
+}
+
+/**
+ * Resolves one beatmap difficulty to a verified regular `.osu` file inside
+ * `Songs`. Every rejection reason is explicit so a caller never guesses why a
+ * path was refused.
+ */
+function resolve_verified_osu_file(
+    songs_root: string,
+    detail: { path?: unknown; osuFileName?: unknown } | undefined,
+): { path: string } | { reason: string } {
+    if (!detail) return { reason: "not_found" };
+    const source = resolve_songs_file(songs_root, detail.path, detail.osuFileName);
+    if (source === undefined) return { reason: "invalid_path" };
+    if (path.extname(source).toLowerCase() !== ".osu") return { reason: "not_osu_file" };
+    if (!fs.existsSync(source)) return { reason: "file_missing" };
+    let stats: fs.Stats;
+    try {
+        stats = fs.statSync(source);
+    } catch (error) {
+        return { reason: error instanceof Error ? error.message : String(error) };
+    }
+    if (!stats.isFile()) return { reason: "not_a_file" };
+    return { path: source };
 }
 
 const parentPort: {
@@ -365,6 +401,13 @@ async function _do_parse_collections(): Promise<void> {
     if (!_basePath) return;
 
     const dp = path.join(_basePath, "collection.db");
+    if (!fs.existsSync(dp)) {
+        // Readers (including osu!lazer) discard the version field, so a fresh
+        // file uses the conventional legacy value.
+        log.info(`collection.db does not exist: ${dp}`);
+        _collections = { version: 1, collectionCount: 0, collections: [] };
+        return;
+    }
     const t0 = Date.now();
     log.info("Reading collection.db...");
     const buf = await fs.promises.readFile(dp);
@@ -452,6 +495,8 @@ async function handle(msg: any): Promise<unknown> {
                 filter.excludedHashes !== undefined
                     ? new Set(filter.excludedHashes.filter((h) => h).map((h) => h.toLowerCase()))
                     : null;
+            const includedIdsSet =
+                filter.includedIds !== undefined && filter.includedIds.length > 0 ? new Set(filter.includedIds) : null;
             const srMin = filter.starRatingMin ?? null;
             const srMax = filter.starRatingMax ?? null;
 
@@ -468,6 +513,7 @@ async function handle(msg: any): Promise<unknown> {
                     if (srMax !== null && sr > srMax) return false;
                 }
                 if (modeSet && !modeSet.has(m.mode)) return false;
+                if (includedIdsSet && !includedIdsSet.has(m.beatmapId)) return false;
                 const hash = m.md5Hash ? m.md5Hash.toLowerCase() : "";
                 if (includedSet && !includedSet.has(hash)) return false;
                 if (excludedSet?.has(hash)) return false;
@@ -560,6 +606,9 @@ async function handle(msg: any): Promise<unknown> {
         }
 
         case "collections": {
+            if (!_basePath) {
+                throw new Error("StableReader has not been initialized.");
+            }
             await parse_collections();
             return readWithOffset(_collections?.collections ?? [], msg.offset, msg.limit);
         }
@@ -600,9 +649,95 @@ async function handle(msg: any): Promise<unknown> {
             }
 
             const buf = Buffer.concat(buffers);
-            backup_file_by_sha256(msg.collectionPath, msg.backupPath);
+            const backupPath =
+                typeof msg.backupPath === "string" && msg.backupPath.length > 0
+                    ? backup_file_by_sha256(msg.collectionPath, msg.backupPath)
+                    : undefined;
             save_file(buf, msg.collectionPath);
-            return 1;
+            return { backupPath, collectionCount: _collections.collectionCount };
+        }
+
+        case "backup_beatmap_files": {
+            await parse_osu_db();
+            if (!_basePath) {
+                throw new Error("StableReader has not been initialized.");
+            }
+            const hashes = Array.isArray(msg.hashes) ? (msg.hashes as string[]) : [];
+            if (typeof msg.backupDir !== "string" || msg.backupDir.length === 0) {
+                throw new Error("A backup directory is required to back up beatmap files.");
+            }
+            const songs_root = path.resolve(_basePath, "Songs");
+            const backup_root = path.resolve(msg.backupDir);
+            const results: Array<Record<string, unknown>> = [];
+
+            for (const hash of hashes) {
+                if (typeof hash !== "string" || hash.length === 0) continue;
+                const resolved = resolve_verified_osu_file(songs_root, _detail_map?.get(hash));
+                if ("reason" in resolved) {
+                    results.push({ hash, ok: false, reason: resolved.reason });
+                    continue;
+                }
+                const relative = path.relative(songs_root, resolved.path);
+                const target = path.join(backup_root, relative);
+                try {
+                    fs.mkdirSync(path.dirname(target), { recursive: true });
+                    fs.copyFileSync(resolved.path, target);
+                    results.push({ hash, ok: true, relative, backupPath: target });
+                } catch (error) {
+                    results.push({
+                        hash,
+                        ok: false,
+                        reason: error instanceof Error ? error.message : String(error),
+                    });
+                }
+            }
+
+            log.info(`backup_beatmap_files: requested=${hashes.length}`);
+            return results;
+        }
+
+        case "remove_beatmap_files": {
+            await parse_osu_db();
+            if (!_basePath) {
+                throw new Error("StableReader has not been initialized.");
+            }
+            const entries = Array.isArray(msg.entries) ? msg.entries : [];
+            const songs_root = path.resolve(_basePath, "Songs");
+            const results: Array<Record<string, unknown>> = [];
+
+            for (const entry of entries as Array<{ hash?: unknown; relative?: unknown }>) {
+                const hash = typeof entry?.hash === "string" ? entry.hash : "";
+                const relative = typeof entry?.relative === "string" ? entry.relative : "";
+                if (hash.length === 0 || relative.length === 0) continue;
+
+                const source = path.resolve(songs_root, relative);
+                const within = path.relative(songs_root, source);
+                if (within.length === 0 || within.startsWith("..") || path.isAbsolute(within)) {
+                    results.push({ hash, ok: false, reason: "invalid_path" });
+                    continue;
+                }
+                const resolved = resolve_verified_osu_file(songs_root, {
+                    path: path.dirname(within),
+                    osuFileName: path.basename(within),
+                });
+                if ("reason" in resolved) {
+                    results.push({ hash, ok: false, reason: resolved.reason });
+                    continue;
+                }
+                try {
+                    fs.unlinkSync(resolved.path);
+                    results.push({ hash, ok: true, mode: "difficulty" });
+                } catch (error) {
+                    results.push({
+                        hash,
+                        ok: false,
+                        reason: error instanceof Error ? error.message : String(error),
+                    });
+                }
+            }
+
+            log.info(`remove_beatmap_files: requested=${(entries as unknown[]).length}`);
+            return results;
         }
 
         case "get_username": {

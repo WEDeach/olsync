@@ -4,7 +4,9 @@ import { StableIpcClientData } from "../../defines/stable_structs";
 import { HostType, IOsuCollection, OsuClients } from "../../defines/types";
 import {
     IPC_AC_NAMES,
+    IPC_CM_NAMES,
     IPC_CN_NAMES,
+    IPC_CS_NAMES,
     IPC_DL_NAMES,
     IPC_FS_NAMES,
     IPC_LA_NAMES,
@@ -101,6 +103,30 @@ contextBridge.exposeInMainWorld("olsCore", {
     countLazerBeatmaps: (spec: any) => ipcInvoke(IPC_RD_NAMES.COUNT_LAZER_BEATMAPS, spec),
     getLazerBeatmapDetail: (request: any) => ipcInvoke(IPC_RD_NAMES.GET_LAZER_BEATMAP_DETAIL, request),
     lazerRoll: (req: any) => ipcInvoke(IPC_PK_NAMES.ROLL_LAZER_BEATMAP, req),
+    // collection merge
+    cmGetState: () => ipcInvoke(IPC_CM_NAMES.GET_STATE),
+    cmBuildPlan: (choices: any) => ipcInvoke(IPC_CM_NAMES.BUILD_PLAN, choices),
+    cmExecute: () => ipcInvoke(IPC_CM_NAMES.EXECUTE),
+    cmInvalidatePlan: () => ipcInvoke(IPC_CM_NAMES.INVALIDATE_PLAN),
+    // collection sync
+    csGetState: () => ipcInvoke(IPC_CS_NAMES.GET_STATE),
+    csSetCollectionType: (name: string, type: string) => ipcInvoke(IPC_CS_NAMES.SET_COLLECTION_TYPE, name, type),
+    csSetExcludeNotFound: (enabled: boolean) => ipcInvoke(IPC_CS_NAMES.SET_EXCLUDE_NOT_FOUND, enabled),
+    csBuildPlan: (resolutions: any[]) => ipcInvoke(IPC_CS_NAMES.BUILD_PLAN, resolutions),
+    csCheckMissing: () => ipcInvoke(IPC_CS_NAMES.CHECK_MISSING),
+    onCsMissingProgress: (listener: (resolved: number, total: number) => void) => {
+        const handler = (_event: Electron.IpcRendererEvent, resolved: number, total: number) =>
+            listener(resolved, total);
+        ipcRenderer.on(IPC_CS_NAMES.MISSING_PROGRESS, handler);
+        return () => ipcRenderer.removeListener(IPC_CS_NAMES.MISSING_PROGRESS, handler);
+    },
+    csExecute: () => ipcInvoke(IPC_CS_NAMES.EXECUTE),
+    csInvalidatePlan: () => ipcInvoke(IPC_CS_NAMES.INVALIDATE_PLAN),
+    csResetBaseline: () => ipcInvoke(IPC_CS_NAMES.RESET_BASELINE),
+    csExportSettings: () => ipcInvoke(IPC_CS_NAMES.EXPORT_SETTINGS),
+    csImportSettings: () => ipcInvoke(IPC_CS_NAMES.IMPORT_SETTINGS),
+    csExportContent: () => ipcInvoke(IPC_CS_NAMES.EXPORT_CONTENT),
+    csImportContent: () => ipcInvoke(IPC_CS_NAMES.IMPORT_CONTENT),
     queryLazerScoresByHashes: (hashes: string[], stableDedupKeys?: string[]) =>
         ipcInvoke(IPC_RD_NAMES.QUERY_LAZER_SCORES_BY_HASHES, hashes, stableDedupKeys),
     queryLazerScoresByUser: (
