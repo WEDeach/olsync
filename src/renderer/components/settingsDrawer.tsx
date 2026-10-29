@@ -483,13 +483,16 @@ export const SettingsDrawer: React.FC = () => {
                                         }
                                     />
                                     <PackRulesetByBnToggle />
-                                    <FormControlLabel
-                                        control={<Switch checked={getUseLazerModeExperiment()} />}
-                                        label={__(I18nStrings.MAIN_SETTINGS_USE_LAZER_MODE)}
-                                        onChange={(_, checked) =>
-                                            g.saveConfig(ConfigKey.EXPERIMENT_USE_LAZER_MODE, Boolean(checked))
-                                        }
-                                    />
+                                    <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
+                                        <FormControlLabel
+                                            control={<Switch checked={getUseLazerModeExperiment()} />}
+                                            label={__(I18nStrings.MAIN_SETTINGS_USE_LAZER_MODE)}
+                                            onChange={(_, checked) =>
+                                                g.saveConfig(ConfigKey.EXPERIMENT_USE_LAZER_MODE, Boolean(checked))
+                                            }
+                                        />
+                                        <InfoLinkTooltip title={__(I18nStrings.MAIN_SETTINGS_USE_LAZER_MODE_DESC)} />
+                                    </Stack>
                                     <FormControlLabel
                                         control={
                                             <Switch

@@ -36,7 +36,7 @@ export const OnboardingDialog: React.FC<{
             open={open}
             onClose={onClose}
             title={__(data.titleKey)}
-            maxWidth="md"
+            maxWidth="lg"
             fullWidth
             actions={
                 <Box sx={{ display: "flex", justifyContent: "space-between", width: "100%" }}>
@@ -59,6 +59,7 @@ export const OnboardingDialog: React.FC<{
                 spacing={2}
                 sx={{
                     alignItems: "center",
+                    width: "100%",
                 }}
             >
                 <Stepper activeStep={step} alternativeLabel sx={{ width: "100%" }}>
@@ -69,20 +70,41 @@ export const OnboardingDialog: React.FC<{
                     ))}
                 </Stepper>
                 {current.image && (
-                    <ZoomableImage
-                        src={current.image}
-                        alt={__(current.titleKey)}
+                    <Box
                         sx={{
                             width: "100%",
-                            maxHeight: "50vh",
-                            objectFit: "contain",
+                            aspectRatio: "16 / 9",
+                            maxHeight: "52vh",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            overflow: "hidden",
                             borderRadius: 1,
-                            boxShadow: 1,
+                            bgcolor: "background.default",
                         }}
-                    />
+                    >
+                        <ZoomableImage
+                            src={current.image}
+                            alt={__(current.titleKey)}
+                            sx={{
+                                display: "block",
+                                width: "auto",
+                                height: "auto",
+                                maxWidth: "100%",
+                                maxHeight: "100%",
+                                objectFit: "contain",
+                                borderRadius: 1,
+                                boxShadow: 1,
+                            }}
+                        />
+                    </Box>
                 )}
-                <Typography variant="h6">{__(current.titleKey)}</Typography>
-                <Typography variant="body1">{__(current.descriptionKey)}</Typography>
+                <Typography variant="h6" sx={{ textAlign: "center" }}>
+                    {__(current.titleKey)}
+                </Typography>
+                <Typography variant="body1" sx={{ whiteSpace: "pre-line", textAlign: "center", minHeight: "3em" }}>
+                    {__(current.descriptionKey)}
+                </Typography>
                 {(() => {
                     const link = current.link;
                     if (!link) return null;

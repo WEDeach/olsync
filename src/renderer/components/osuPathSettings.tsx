@@ -92,6 +92,22 @@ export const OsuPathSettings: React.FC<IOsuPathSettingsProps> = ({ showStable = 
                                     onChange={(event: React.ChangeEvent<HTMLInputElement>) => {
                                         onOsuPathChanged(event.target.value, undefined);
                                     }}
+                                    slotProps={{
+                                        input: {
+                                            endAdornment: (
+                                                <InputAdornment position="end">
+                                                    <Tooltip title={__(I18nStrings.MAIN_SETTINGS_PATH_STABLE_HELP)}>
+                                                        <IconButton
+                                                            size="small"
+                                                            onClick={() => g.setOnboarding(true, "path_stable")}
+                                                        >
+                                                            <HelpOutlined fontSize="small" />
+                                                        </IconButton>
+                                                    </Tooltip>
+                                                </InputAdornment>
+                                            ),
+                                        },
+                                    }}
                                 />
                                 <Button variant="contained" onClick={onBtnStablePathClicked}>
                                     {__(I18nStrings.MAIN_SETTINGS_SELECT_FILE)}

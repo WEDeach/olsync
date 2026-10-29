@@ -6,6 +6,7 @@ import {
     Chip,
     Divider,
     FormControl,
+    FormControlLabel,
     IconButton,
     InputLabel,
     MenuItem,
@@ -16,12 +17,18 @@ import {
     Tooltip,
     Typography,
 } from "@mui/material";
-import React, { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useDeferredValue, useEffect, useId, useMemo, useRef, useState } from "react";
 import { DefaultObject } from "realm/dist/public-types/schema/types";
 import { IOsuCollection } from "../../defines/types";
+import {
+    CANDIDATE_SAME_OPERATOR,
+    isCandidateComparableField,
+    isValidPickerDateCondition,
+} from "../../shared/utils/pickerLogic";
 import __ from "../../utils/i18n";
 import { formatDateTime, formatTimeAgo, useNowAdaptive } from "../../utils/time";
 import { I18nStrings } from "../../utils/typed/i18n";
+import { PickerDrawerSection } from "./beatmapPickerDrawerSection";
 import {
     BeatmapDataField,
     BoolCondition,
@@ -87,6 +94,7 @@ const BEATMAP_FIELD_KIND: Record<BeatmapDataField, FieldKind> = {
     [BeatmapDataField.Artist]: "string",
     [BeatmapDataField.Title]: "string",
     [BeatmapDataField.Creator]: "string",
+    [BeatmapDataField.DifficultyName]: "string",
     [BeatmapDataField.RankedStatus]: "number",
     [BeatmapDataField.DrainSeconds]: "number",
     [BeatmapDataField.Tags]: "string",
@@ -120,6 +128,7 @@ const BEATMAP_FIELD_I18N: Record<BeatmapDataField, I18nStrings> = {
     [BeatmapDataField.Artist]: I18nStrings.MAIN_PICKER_WEIGHT_BM_ARTIST,
     [BeatmapDataField.Title]: I18nStrings.MAIN_PICKER_WEIGHT_BM_TITLE,
     [BeatmapDataField.Creator]: I18nStrings.MAIN_PICKER_WEIGHT_BM_CREATOR,
+    [BeatmapDataField.DifficultyName]: I18nStrings.MAIN_PICKER_WEIGHT_BM_DIFFICULTY,
     [BeatmapDataField.RankedStatus]: I18nStrings.MAIN_PICKER_WEIGHT_BM_RANKED,
     [BeatmapDataField.DrainSeconds]: I18nStrings.MAIN_PICKER_WEIGHT_BM_DRAIN,
     [BeatmapDataField.Tags]: I18nStrings.MAIN_PICKER_WEIGHT_BM_TAGS,
@@ -181,6 +190,17 @@ const getDefaultOp = (kind: FieldKind): string => {
     return StringCondition.Contains;
 };
 
+const TYPE_I18N: Record<PickerTargetType, I18nStrings> = {
+    [PickerTargetType.Map]: I18nStrings.MAIN_PICKER_WEIGHT_TYPE_MAP,
+    [PickerTargetType.Set]: I18nStrings.MAIN_PICKER_WEIGHT_TYPE_SET,
+    [PickerTargetType.Collection]: I18nStrings.MAIN_PICKER_WEIGHT_TYPE_COLLECTION,
+    [PickerTargetType.BeatmapData]: I18nStrings.MAIN_PICKER_WEIGHT_TYPE_BEATMAP,
+    [PickerTargetType.ScoreRecord]: I18nStrings.MAIN_PICKER_WEIGHT_TYPE_SCORE,
+    [PickerTargetType.History]: I18nStrings.MAIN_PICKER_WEIGHT_TYPE_HISTORY,
+};
+
+const getTypeLabel = (type: PickerTargetType): string => __(TYPE_I18N[type]);
+
 interface WeightDraft {
     type: PickerTargetType;
     id: string;
@@ -189,6 +209,8 @@ interface WeightDraft {
     field: string;
     operator: string;
     value: string;
+    historyTimeCondition?: IWeightHistoryCondition["timeCondition"];
+    historyBeatmapCondition?: IWeightBeatmapCondition;
 }
 
 const initDraft = (): WeightDraft => ({
@@ -234,6 +256,8 @@ const draftFromEntry = (entry: IWeightEntry): WeightDraft => {
             field: "",
             operator: entry.historyCondition.operator,
             value: entry.historyCondition.value,
+            historyTimeCondition: entry.historyCondition.timeCondition,
+            historyBeatmapCondition: entry.historyCondition.beatmapCondition,
         };
     }
     return {
@@ -284,6 +308,8 @@ const draftToEntry = (draft: WeightDraft): IWeightEntry => {
             historyCondition: {
                 operator: draft.operator as HistoryCondition,
                 value: draft.value,
+                timeCondition: draft.historyTimeCondition,
+                beatmapCondition: draft.historyBeatmapCondition,
             } as IWeightHistoryCondition,
         };
     }
@@ -294,24 +320,19 @@ const isValidDraft = (draft: WeightDraft): boolean => {
     if (draft.type === PickerTargetType.BeatmapData || draft.type === PickerTargetType.ScoreRecord) {
         const kind = getFieldKind(draft.type, draft.field);
         if (kind === "boolean") return true;
-        if (kind === "date") {
-            const op = draft.operator as DateCondition;
-            if (op === DateCondition.Before || op === DateCondition.After) return draft.value.trim() !== "";
-            if (op === DateCondition.Between) {
-                const [from, to] = draft.value.split("~");
-                return !!from?.trim() && !!to?.trim();
-            }
-            if (op === DateCondition.WithinSecs) return (parseInt(draft.value, 10) || 0) > 0;
-            return false;
-        }
+        if (draft.operator === CANDIDATE_SAME_OPERATOR)
+            return isCandidateComparableField(draft.field as BeatmapDataField);
+        if (kind === "date") return isValidPickerDateCondition(draft.operator, draft.value);
         return draft.value.trim() !== "";
     }
     if (draft.type === PickerTargetType.History) {
         const op = draft.operator as HistoryCondition;
-        if (op === HistoryCondition.WithinLast || op === HistoryCondition.NotWithinLast) {
-            return (parseInt(draft.value, 10) || 0) > 0;
-        }
-        return true;
+        if ((op === HistoryCondition.WithinLast || op === HistoryCondition.NotWithinLast) && !(Number(draft.value) > 0))
+            return false;
+        const time = draft.historyTimeCondition;
+        if (time && !isValidPickerDateCondition(time.operator, time.value)) return false;
+        const filter = draft.historyBeatmapCondition;
+        return !filter || isValidDraft({ ...initDraft(), type: PickerTargetType.BeatmapData, ...filter });
     }
     return draft.id.trim() !== "";
 };
@@ -341,6 +362,8 @@ const getEntryCondDesc = (w: IWeightEntry): string => {
         const { field, operator, value } = w.beatmapCondition;
         const kind = BEATMAP_FIELD_KIND[field] ?? "string";
         const fieldLabel = __(BEATMAP_FIELD_I18N[field]);
+        if (operator === CANDIDATE_SAME_OPERATOR)
+            return `${fieldLabel} ${__(I18nStrings.MAIN_PICKER_WEIGHT_OP_SAME_AS_CANDIDATE)}`;
         if (kind === "boolean") {
             const boolLabel =
                 operator === BoolCondition.IsTrue
@@ -400,13 +423,32 @@ const getEntryCondDesc = (w: IWeightEntry): string => {
         return `${fieldLabel} ${opLabel} "${value}"`;
     }
     if (w.type === PickerTargetType.History && w.historyCondition) {
-        const { operator, value } = w.historyCondition;
-        if (operator === HistoryCondition.Appeared) return __(I18nStrings.MAIN_PICKER_WEIGHT_HIST_APPEARED);
-        if (operator === HistoryCondition.NotAppeared) return __(I18nStrings.MAIN_PICKER_WEIGHT_HIST_NOT_APPEARED);
-        if (operator === HistoryCondition.WithinLast)
-            return `${__(I18nStrings.MAIN_PICKER_WEIGHT_HIST_WITHIN_LAST)} (${value})`;
-        if (operator === HistoryCondition.NotWithinLast)
-            return `${__(I18nStrings.MAIN_PICKER_WEIGHT_HIST_NOT_WITHIN_LAST)} (${value})`;
+        const { operator, value, timeCondition, beatmapCondition } = w.historyCondition;
+        const labels: Record<HistoryCondition, I18nStrings> = {
+            [HistoryCondition.Appeared]: I18nStrings.MAIN_PICKER_WEIGHT_HIST_APPEARED,
+            [HistoryCondition.NotAppeared]: I18nStrings.MAIN_PICKER_WEIGHT_HIST_NOT_APPEARED,
+            [HistoryCondition.WithinLast]: I18nStrings.MAIN_PICKER_WEIGHT_HIST_WITHIN_LAST,
+            [HistoryCondition.NotWithinLast]: I18nStrings.MAIN_PICKER_WEIGHT_HIST_NOT_WITHIN_LAST,
+        };
+        const limited = operator === HistoryCondition.WithinLast || operator === HistoryCondition.NotWithinLast;
+        const parts = [`${__(labels[operator])}${limited ? ` (${value})` : ""}`];
+        if (timeCondition) {
+            const dateLabels: Record<DateCondition, I18nStrings> = {
+                [DateCondition.Before]: I18nStrings.MAIN_PICKER_WEIGHT_OP_DATE_BEFORE,
+                [DateCondition.After]: I18nStrings.MAIN_PICKER_WEIGHT_OP_DATE_AFTER,
+                [DateCondition.Between]: I18nStrings.MAIN_PICKER_WEIGHT_OP_DATE_BETWEEN,
+                [DateCondition.WithinSecs]: I18nStrings.MAIN_PICKER_WEIGHT_OP_DATE_WITHIN,
+            };
+            parts.push(
+                `${__(I18nStrings.MAIN_PICKER_WEIGHT_HIST_TIME)}: ${__(dateLabels[timeCondition.operator])} ${timeCondition.value}${timeCondition.operator === DateCondition.WithinSecs ? "s" : ""}`,
+            );
+        }
+        if (beatmapCondition) {
+            parts.push(
+                `${__(I18nStrings.MAIN_PICKER_WEIGHT_TYPE_BEATMAP)}: ${getEntryCondDesc({ ...w, type: PickerTargetType.BeatmapData, beatmapCondition })}`,
+            );
+        }
+        return parts.join(" → ");
     }
     return w.id;
 };
@@ -416,6 +458,7 @@ const DateConditionEditor: React.FC<{
     value: string;
     onChange: (op: string, val: string) => void;
 }> = ({ operator, value, onChange }) => {
+    const operatorLabelId = useId();
     const mode = (operator as DateCondition) || DateCondition.After;
     const secs = parseInt(value, 10) || 0;
     const years = Math.floor(secs / 31536000);
@@ -427,8 +470,9 @@ const DateConditionEditor: React.FC<{
     return (
         <Stack spacing={2} sx={{ flexGrow: 1 }}>
             <FormControl size="small">
-                <InputLabel>{__(I18nStrings.MAIN_PICKER_WEIGHT_OPERATOR)}</InputLabel>
+                <InputLabel id={operatorLabelId}>{__(I18nStrings.MAIN_PICKER_WEIGHT_OPERATOR)}</InputLabel>
                 <Select
+                    labelId={operatorLabelId}
                     label={__(I18nStrings.MAIN_PICKER_WEIGHT_OPERATOR)}
                     value={mode}
                     onChange={(e) => onChange(e.target.value, "")}
@@ -449,9 +493,13 @@ const DateConditionEditor: React.FC<{
                 <TextField
                     size="small"
                     type="date"
+                    label={__(I18nStrings.MAIN_PICKER_WEIGHT_COND_VALUE)}
                     value={value}
                     onChange={(e) => onChange(mode, e.target.value)}
-                    slotProps={{ htmlInput: { style: { colorScheme: "dark" } } }}
+                    sx={{ "& input": { colorScheme: (theme) => theme.palette.mode } }}
+                    slotProps={{
+                        inputLabel: { shrink: true },
+                    }}
                 />
             )}
             {mode === DateCondition.Between && (
@@ -465,10 +513,13 @@ const DateConditionEditor: React.FC<{
                     <TextField
                         size="small"
                         type="date"
-                        sx={{ flex: 1 }}
+                        label={__(I18nStrings.MAIN_PICKER_WEIGHT_DATE_FROM)}
+                        sx={{ flex: 1, "& input": { colorScheme: (theme) => theme.palette.mode } }}
                         value={from ?? ""}
                         onChange={(e) => onChange(mode, `${e.target.value}~${to ?? ""}`)}
-                        slotProps={{ htmlInput: { style: { colorScheme: "dark" } } }}
+                        slotProps={{
+                            inputLabel: { shrink: true },
+                        }}
                     />
                     <Typography variant="caption" sx={{ flexShrink: 0 }}>
                         {__(I18nStrings.MAIN_PICKER_WEIGHT_DATE_TO)}
@@ -476,10 +527,13 @@ const DateConditionEditor: React.FC<{
                     <TextField
                         size="small"
                         type="date"
-                        sx={{ flex: 1 }}
+                        label={__(I18nStrings.MAIN_PICKER_WEIGHT_DATE_TO)}
+                        sx={{ flex: 1, "& input": { colorScheme: (theme) => theme.palette.mode } }}
                         value={to ?? ""}
                         onChange={(e) => onChange(mode, `${from ?? ""}~${e.target.value}`)}
-                        slotProps={{ htmlInput: { style: { colorScheme: "dark" } } }}
+                        slotProps={{
+                            inputLabel: { shrink: true },
+                        }}
                     />
                 </Stack>
             )}
@@ -531,6 +585,7 @@ const HistoryConditionEditor: React.FC<{
     weight: number;
     onChange: (op: string, val: string, weight: number) => void;
 }> = ({ operator, value, hideWeight, weight, onChange }) => {
+    const operatorLabelId = useId();
     const op = (operator as HistoryCondition) || HistoryCondition.Appeared;
     const needsN = op === HistoryCondition.WithinLast || op === HistoryCondition.NotWithinLast;
     return (
@@ -544,8 +599,9 @@ const HistoryConditionEditor: React.FC<{
             }}
         >
             <FormControl size="small" sx={{ flexGrow: 1, minWidth: 160 }}>
-                <InputLabel>{__(I18nStrings.MAIN_PICKER_WEIGHT_OPERATOR)}</InputLabel>
+                <InputLabel id={operatorLabelId}>{__(I18nStrings.MAIN_PICKER_WEIGHT_OPERATOR)}</InputLabel>
                 <Select
+                    labelId={operatorLabelId}
                     label={__(I18nStrings.MAIN_PICKER_WEIGHT_OPERATOR)}
                     value={op}
                     onChange={(e) => onChange(e.target.value, "", weight)}
@@ -636,8 +692,11 @@ const WeightEntryFormFields: React.FC<{
     draft: WeightDraft;
     collections: IOsuCollection[];
     hideWeight?: boolean;
+    beatmapOnly?: boolean;
     onChange: (d: WeightDraft) => void;
-}> = ({ draft, collections, hideWeight, onChange }) => {
+}> = ({ draft, collections, hideWeight, beatmapOnly, onChange }) => {
+    const fieldLabelId = useId();
+    const operatorLabelId = useId();
     const isCond = draft.type === PickerTargetType.BeatmapData || draft.type === PickerTargetType.ScoreRecord;
     const isHistory = draft.type === PickerTargetType.History;
     const fieldKind = isCond ? getFieldKind(draft.type, draft.field) : "string";
@@ -646,10 +705,21 @@ const WeightEntryFormFields: React.FC<{
     ) as Record<string, I18nStrings>;
     const fieldValues: string[] =
         draft.type === PickerTargetType.BeatmapData ? Object.values(BeatmapDataField) : Object.values(ScoreRecordField);
+    const candidateComparable = Boolean(beatmapOnly) && isCandidateComparableField(draft.field as BeatmapDataField);
+    const candidateOperatorActive = draft.operator === CANDIDATE_SAME_OPERATOR;
 
     const handleTypeChange = (newType: PickerTargetType) => {
         if (newType === PickerTargetType.History) {
-            onChange({ ...draft, type: newType, id: "", field: "", operator: HistoryCondition.Appeared, value: "" });
+            onChange({
+                ...draft,
+                type: newType,
+                id: "",
+                field: "",
+                operator: HistoryCondition.Appeared,
+                value: "",
+                historyTimeCondition: undefined,
+                historyBeatmapCondition: undefined,
+            });
             return;
         }
         const newField =
@@ -679,24 +749,34 @@ const WeightEntryFormFields: React.FC<{
                     alignItems: "flex-start",
                 }}
             >
-                <FormControl size="small" sx={{ minWidth: 100, flexShrink: 0 }}>
-                    <Select value={draft.type} onChange={(e) => handleTypeChange(e.target.value as PickerTargetType)}>
-                        <MenuItem value={PickerTargetType.Map}>{__(I18nStrings.MAIN_PICKER_WEIGHT_TYPE_MAP)}</MenuItem>
-                        <MenuItem value={PickerTargetType.Set}>{__(I18nStrings.MAIN_PICKER_WEIGHT_TYPE_SET)}</MenuItem>
-                        <MenuItem value={PickerTargetType.Collection}>
-                            {__(I18nStrings.MAIN_PICKER_WEIGHT_TYPE_COLLECTION)}
-                        </MenuItem>
-                        <MenuItem value={PickerTargetType.BeatmapData}>
-                            {__(I18nStrings.MAIN_PICKER_WEIGHT_TYPE_BEATMAP)}
-                        </MenuItem>
-                        <MenuItem value={PickerTargetType.ScoreRecord}>
-                            {__(I18nStrings.MAIN_PICKER_WEIGHT_TYPE_SCORE)}
-                        </MenuItem>
-                        <MenuItem value={PickerTargetType.History}>
-                            {__(I18nStrings.MAIN_PICKER_WEIGHT_TYPE_HISTORY)}
-                        </MenuItem>
-                    </Select>
-                </FormControl>
+                {!beatmapOnly && (
+                    <FormControl size="small" sx={{ minWidth: 100, flexShrink: 0 }}>
+                        <Select
+                            value={draft.type}
+                            inputProps={{ "aria-label": getTypeLabel(draft.type) }}
+                            onChange={(e) => handleTypeChange(e.target.value as PickerTargetType)}
+                        >
+                            <MenuItem value={PickerTargetType.Map}>
+                                {__(I18nStrings.MAIN_PICKER_WEIGHT_TYPE_MAP)}
+                            </MenuItem>
+                            <MenuItem value={PickerTargetType.Set}>
+                                {__(I18nStrings.MAIN_PICKER_WEIGHT_TYPE_SET)}
+                            </MenuItem>
+                            <MenuItem value={PickerTargetType.Collection}>
+                                {__(I18nStrings.MAIN_PICKER_WEIGHT_TYPE_COLLECTION)}
+                            </MenuItem>
+                            <MenuItem value={PickerTargetType.BeatmapData}>
+                                {__(I18nStrings.MAIN_PICKER_WEIGHT_TYPE_BEATMAP)}
+                            </MenuItem>
+                            <MenuItem value={PickerTargetType.ScoreRecord}>
+                                {__(I18nStrings.MAIN_PICKER_WEIGHT_TYPE_SCORE)}
+                            </MenuItem>
+                            <MenuItem value={PickerTargetType.History}>
+                                {__(I18nStrings.MAIN_PICKER_WEIGHT_TYPE_HISTORY)}
+                            </MenuItem>
+                        </Select>
+                    </FormControl>
+                )}
                 {!isCond && !isHistory && draft.type !== PickerTargetType.Collection && (
                     <TextField
                         size="small"
@@ -724,8 +804,9 @@ const WeightEntryFormFields: React.FC<{
                 )}
                 {isCond && (
                     <FormControl size="small" sx={{ flexGrow: 1, minWidth: 100 }}>
-                        <InputLabel>{__(I18nStrings.MAIN_PICKER_WEIGHT_FIELD)}</InputLabel>
+                        <InputLabel id={fieldLabelId}>{__(I18nStrings.MAIN_PICKER_WEIGHT_FIELD)}</InputLabel>
                         <Select
+                            labelId={fieldLabelId}
                             label={__(I18nStrings.MAIN_PICKER_WEIGHT_FIELD)}
                             value={draft.field}
                             onChange={(e) => handleFieldChange(e.target.value)}
@@ -753,12 +834,104 @@ const WeightEntryFormFields: React.FC<{
                     <HistoryConditionEditor
                         operator={draft.operator}
                         value={draft.value}
-                        hideWeight={hideWeight}
+                        hideWeight
                         weight={draft.weight}
                         onChange={(op, val, w) => onChange({ ...draft, operator: op, value: val, weight: w })}
                     />
                 )}
             </Stack>
+            {isHistory && (
+                <Stack spacing={2} sx={{ minWidth: 0 }}>
+                    <Stack spacing={1}>
+                        <FormControlLabel
+                            control={
+                                <Switch
+                                    size="small"
+                                    checked={draft.historyTimeCondition !== undefined}
+                                    onChange={(_, checked) =>
+                                        onChange({
+                                            ...draft,
+                                            historyTimeCondition: checked
+                                                ? { operator: DateCondition.WithinSecs, value: "86400" }
+                                                : undefined,
+                                        })
+                                    }
+                                />
+                            }
+                            label={__(I18nStrings.MAIN_PICKER_WEIGHT_HIST_TIME)}
+                        />
+                        {draft.historyTimeCondition && (
+                            <DateConditionEditor
+                                operator={draft.historyTimeCondition.operator}
+                                value={draft.historyTimeCondition.value}
+                                onChange={(operator, value) =>
+                                    onChange({
+                                        ...draft,
+                                        historyTimeCondition: { operator: operator as DateCondition, value },
+                                    })
+                                }
+                            />
+                        )}
+                    </Stack>
+                    <Stack spacing={1}>
+                        <FormControlLabel
+                            control={
+                                <Switch
+                                    size="small"
+                                    checked={draft.historyBeatmapCondition !== undefined}
+                                    onChange={(_, checked) =>
+                                        onChange({
+                                            ...draft,
+                                            historyBeatmapCondition: checked
+                                                ? {
+                                                      field: BeatmapDataField.Artist,
+                                                      operator: StringCondition.Contains,
+                                                      value: "",
+                                                  }
+                                                : undefined,
+                                        })
+                                    }
+                                />
+                            }
+                            label={__(I18nStrings.MAIN_PICKER_WEIGHT_HIST_FILTER)}
+                        />
+                        {draft.historyBeatmapCondition && (
+                            <WeightEntryFormFields
+                                draft={{
+                                    ...initDraft(),
+                                    type: PickerTargetType.BeatmapData,
+                                    ...draft.historyBeatmapCondition,
+                                }}
+                                collections={collections}
+                                hideWeight
+                                beatmapOnly
+                                onChange={(filter) =>
+                                    onChange({
+                                        ...draft,
+                                        historyBeatmapCondition: {
+                                            field: filter.field as BeatmapDataField,
+                                            operator: filter.operator,
+                                            value: filter.value,
+                                        },
+                                    })
+                                }
+                            />
+                        )}
+                    </Stack>
+                    {!hideWeight && (
+                        <TextField
+                            size="small"
+                            label={__(I18nStrings.MAIN_PICKER_WEIGHT_VALUE)}
+                            type="number"
+                            value={draft.weight}
+                            onChange={(event) =>
+                                onChange({ ...draft, weight: Math.max(0, Number(event.target.value) || 0) })
+                            }
+                            slotProps={{ htmlInput: { min: 0, step: 0.1 } }}
+                        />
+                    )}
+                </Stack>
+            )}
             {isCond && (
                 <Stack
                     direction="row"
@@ -776,11 +949,20 @@ const WeightEntryFormFields: React.FC<{
                     ) : (
                         <>
                             <FormControl size="small" sx={{ minWidth: 110, flexShrink: 0 }}>
-                                <InputLabel>{__(I18nStrings.MAIN_PICKER_WEIGHT_OPERATOR)}</InputLabel>
+                                <InputLabel id={operatorLabelId}>
+                                    {__(I18nStrings.MAIN_PICKER_WEIGHT_OPERATOR)}
+                                </InputLabel>
                                 <Select
+                                    labelId={operatorLabelId}
                                     label={__(I18nStrings.MAIN_PICKER_WEIGHT_OPERATOR)}
                                     value={draft.operator}
-                                    onChange={(e) => onChange({ ...draft, operator: e.target.value })}
+                                    onChange={(e) =>
+                                        onChange({
+                                            ...draft,
+                                            operator: e.target.value,
+                                            value: e.target.value === CANDIDATE_SAME_OPERATOR ? "" : draft.value,
+                                        })
+                                    }
                                 >
                                     {fieldKind === "string" &&
                                         Object.entries(
@@ -806,18 +988,25 @@ const WeightEntryFormFields: React.FC<{
                                             {__(I18nStrings.MAIN_PICKER_WEIGHT_OP_BOOL_FALSE)}
                                         </MenuItem>,
                                     ]}
+                                    {candidateComparable && (
+                                        <MenuItem value={CANDIDATE_SAME_OPERATOR}>
+                                            {__(I18nStrings.MAIN_PICKER_WEIGHT_OP_SAME_AS_CANDIDATE)}
+                                        </MenuItem>
+                                    )}
                                 </Select>
                             </FormControl>
-                            {fieldKind !== "boolean" && draft.field !== BeatmapDataField.PlayerTags && (
-                                <TextField
-                                    size="small"
-                                    sx={{ flexGrow: 1 }}
-                                    label={__(I18nStrings.MAIN_PICKER_WEIGHT_COND_VALUE)}
-                                    type={fieldKind === "number" ? "number" : "text"}
-                                    value={draft.value}
-                                    onChange={(e) => onChange({ ...draft, value: e.target.value })}
-                                />
-                            )}
+                            {fieldKind !== "boolean" &&
+                                !candidateOperatorActive &&
+                                draft.field !== BeatmapDataField.PlayerTags && (
+                                    <TextField
+                                        size="small"
+                                        sx={{ flexGrow: 1 }}
+                                        label={__(I18nStrings.MAIN_PICKER_WEIGHT_COND_VALUE)}
+                                        type={fieldKind === "number" ? "number" : "text"}
+                                        value={draft.value}
+                                        onChange={(e) => onChange({ ...draft, value: e.target.value })}
+                                    />
+                                )}
                             {draft.field === BeatmapDataField.PlayerTags && (
                                 <PlayerTagsValueEditor
                                     value={draft.value}
@@ -911,55 +1100,23 @@ const WeightSection: React.FC<{
         setEditDraft(null);
     };
 
-    const getTypeLabel = (type: PickerTargetType): string => {
-        switch (type) {
-            case PickerTargetType.Map:
-                return __(I18nStrings.MAIN_PICKER_WEIGHT_TYPE_MAP);
-            case PickerTargetType.Set:
-                return __(I18nStrings.MAIN_PICKER_WEIGHT_TYPE_SET);
-            case PickerTargetType.Collection:
-                return __(I18nStrings.MAIN_PICKER_WEIGHT_TYPE_COLLECTION);
-            case PickerTargetType.BeatmapData:
-                return __(I18nStrings.MAIN_PICKER_WEIGHT_TYPE_BEATMAP);
-            case PickerTargetType.ScoreRecord:
-                return __(I18nStrings.MAIN_PICKER_WEIGHT_TYPE_SCORE);
-            case PickerTargetType.History:
-                return __(I18nStrings.MAIN_PICKER_WEIGHT_TYPE_HISTORY);
-        }
-    };
-
     return (
-        <Box sx={{ display: "flex", flexDirection: "column", height: "100%" }}>
-            <Typography
-                variant="subtitle2"
-                sx={{
-                    color: "text.secondary",
-                    textAlign: "center",
-                }}
-            >
-                {__(I18nStrings.MAIN_PICKER_WEIGHT_TITLE)}
-            </Typography>
-            <Divider />
-            <Box
-                sx={{
-                    mt: 1.5,
-                }}
-            >
+        <PickerDrawerSection title={I18nStrings.MAIN_PICKER_WEIGHT_TITLE} fill>
+            <Stack spacing={1}>
                 <WeightEntryFormFields draft={newDraft} collections={collections} onChange={setNewDraft} />
                 <Button
                     variant="outlined"
                     size="small"
                     startIcon={<Add />}
                     fullWidth
-                    sx={{ mt: 1 }}
                     onClick={handleAdd}
                     disabled={!isValidDraft(newDraft)}
                 >
                     {__(I18nStrings.MAIN_PICKER_WEIGHT_ADD)}
                 </Button>
-            </Box>
-            <Divider sx={{ my: 1.5 }} />
-            <Box sx={{ flex: 1, overflowY: "auto" }}>
+            </Stack>
+            <Divider />
+            <Box sx={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
                 <Stack spacing={2}>
                     {weights.length === 0 && (
                         <Typography
@@ -1092,7 +1249,7 @@ const WeightSection: React.FC<{
                     ))}
                 </Stack>
             </Box>
-        </Box>
+        </PickerDrawerSection>
     );
 };
 
@@ -1136,6 +1293,8 @@ const wishlistDraftToCondItem = (draft: WeightDraft): IWishlistConditionItem => 
             historyCondition: {
                 operator: draft.operator as HistoryCondition,
                 value: draft.value,
+                timeCondition: draft.historyTimeCondition,
+                beatmapCondition: draft.historyBeatmapCondition,
             } as IWeightHistoryCondition,
         };
     }
@@ -1174,6 +1333,8 @@ const condItemToDraft = (item: IWishlistConditionItem): WeightDraft => {
             field: "",
             operator: item.historyCondition.operator,
             value: item.historyCondition.value,
+            historyTimeCondition: item.historyCondition.timeCondition,
+            historyBeatmapCondition: item.historyCondition.beatmapCondition,
         };
     }
     return {
@@ -1351,23 +1512,9 @@ const WishlistSection: React.FC<{
     };
 
     return (
-        <Box sx={{ display: "flex", flexDirection: "column", height: "100%" }}>
-            <Typography
-                variant="subtitle2"
-                sx={{
-                    color: "text.secondary",
-                    textAlign: "center",
-                }}
-            >
-                {__(I18nStrings.MAIN_PICKER_WISHLIST_TITLE)}
-            </Typography>
-            <Divider />
-            <Box
-                sx={{
-                    mt: 1.5,
-                }}
-            >
-                <Stack direction="row" spacing={1} sx={{ mb: 1 }}>
+        <PickerDrawerSection title={I18nStrings.MAIN_PICKER_WISHLIST_TITLE} fill>
+            <Stack spacing={1}>
+                <Stack direction="row" spacing={1}>
                     <TextField
                         size="small"
                         fullWidth
@@ -1417,13 +1564,7 @@ const WishlistSection: React.FC<{
                         </Stack>
                     ))}
                 </Stack>
-                <Stack
-                    direction="row"
-                    spacing={1}
-                    sx={{
-                        mt: 1,
-                    }}
-                >
+                <Stack direction="row" spacing={1}>
                     <Button variant="text" size="small" startIcon={<Add />} onClick={addNewCond}>
                         {__(I18nStrings.MAIN_PICKER_WISHLIST_ADD_COND)}
                     </Button>
@@ -1438,9 +1579,9 @@ const WishlistSection: React.FC<{
                         {__(I18nStrings.MAIN_PICKER_WISHLIST_ADD)}
                     </Button>
                 </Stack>
-            </Box>
-            <Divider sx={{ my: 1.5 }} />
-            <Box sx={{ flex: 1, overflowY: "auto" }}>
+            </Stack>
+            <Divider />
+            <Box sx={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
                 <Stack spacing={2}>
                     {wishlist.length === 0 && (
                         <Typography
@@ -1655,7 +1796,7 @@ const WishlistSection: React.FC<{
                     ))}
                 </Stack>
             </Box>
-        </Box>
+        </PickerDrawerSection>
     );
 };
 
@@ -1703,46 +1844,23 @@ export const BeatmapPickerAdvancedPanel: React.FC<IBeatmapPickerAdvancedPanelPro
             sx={{
                 display: "flex",
                 flexDirection: "column",
-                p: 1,
-                gap: 1,
                 height: "100%",
+                ...(section ? {} : { overflowY: "auto" }),
             }}
         >
             {(!section || section === "weight") && (
                 <WeightSection weights={settings.weights} collections={collections} onChange={handleWeightsChanged} />
             )}
             {(!section || section === "wishlist") && (
-                <>
-                    {!section && <Divider />}
-                    <WishlistSection
-                        wishlist={settings.wishlist}
-                        collections={collections}
-                        onChange={handleWishlistChanged}
-                    />
-                </>
+                <WishlistSection
+                    wishlist={settings.wishlist}
+                    collections={collections}
+                    onChange={handleWishlistChanged}
+                />
             )}
             {(!section || section === "history") && (
-                <Box
-                    sx={{
-                        display: "flex",
-                        flexDirection: "column",
-                        flexGrow: 1,
-                        overflow: "hidden",
-                        ...(section !== "history" && { height: "100%" }),
-                    }}
-                >
-                    <Typography
-                        variant="subtitle2"
-                        sx={{
-                            color: "text.secondary",
-                            textAlign: "center",
-                            flexShrink: 0,
-                        }}
-                    >
-                        {__(I18nStrings.MAIN_PICKER_HISTORY_TITLE)}
-                    </Typography>
-                    <Divider sx={{ flexShrink: 0 }} />
-                    <Box sx={{ flexGrow: 1, overflow: "hidden", mt: 1 }}>
+                <PickerDrawerSection title={I18nStrings.MAIN_PICKER_HISTORY_TITLE} fill={!!section}>
+                    <Box sx={{ flexGrow: 1, minHeight: 0, overflow: "hidden" }}>
                         {history.length === 0 ? (
                             <Typography
                                 variant="caption"
@@ -1770,13 +1888,13 @@ export const BeatmapPickerAdvancedPanel: React.FC<IBeatmapPickerAdvancedPanelPro
                         variant="outlined"
                         color="error"
                         fullWidth
-                        sx={{ mt: 1, flexShrink: 0 }}
+                        sx={{ flexShrink: 0 }}
                         onClick={onClearHistory}
                         disabled={history.length === 0}
                     >
                         {__(I18nStrings.BTN_PICKER_CLEAR_HISTORY)}
                     </Button>
-                </Box>
+                </PickerDrawerSection>
             )}
         </Box>
     );

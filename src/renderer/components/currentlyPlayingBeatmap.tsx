@@ -679,8 +679,9 @@ export const CurrentlyPlayingBeatmap = observer(({ maps, osuPath, onOpenMap }: C
         BeatmapChecksum: activeBeatmapChecksum,
     };
     const dataKey = getDataKey(activeBeatmapData);
+    // Lookups run against the caller's loaded maps; OsuData's shared cache is not filled by the picker's stable read.
     const hasBeatmap =
-        data.Connected && OsuData.hasData && ((activeBeatmapId ?? 0) > 0 || activeBeatmapChecksum.length > 0);
+        data.Connected && maps.length > 0 && ((activeBeatmapId ?? 0) > 0 || activeBeatmapChecksum.length > 0);
     const isPlaying = data.Mode === StableIpcMode.Play || (isRankingMode(data.Mode) && inPlaySequence);
     const lastPlayMatchesCurrent =
         lastPlayingStatus.BeatmapId > 0 &&

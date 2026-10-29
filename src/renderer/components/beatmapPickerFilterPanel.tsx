@@ -1,20 +1,35 @@
-import {
-    Box,
-    Chip,
-    Divider,
-    FormControl,
-    InputLabel,
-    MenuItem,
-    OutlinedInput,
-    Select,
-    Stack,
-    Typography,
-} from "@mui/material";
+import { Box, Chip, FormControl, InputLabel, MenuItem, OutlinedInput, Select } from "@mui/material";
 import React from "react";
 import { IOsuCollection } from "../../defines/types";
 import __ from "../../utils/i18n";
 import { I18nStrings } from "../../utils/typed/i18n";
 import { BeatmapFilterView, FilterType, TFilterSetting, TSubFilterSetting } from "./beatmapFilter";
+import { PickerDrawerSection } from "./beatmapPickerDrawerSection";
+
+const PICKER_FILTER_TYPES: FilterType[] = [
+    FilterType.Title,
+    FilterType.Artist,
+    FilterType.Creator,
+    FilterType.DifficultyName,
+    FilterType.Source,
+    FilterType.RankStateLocal,
+    FilterType.RankedDate,
+    FilterType.StarRating,
+    FilterType.Mode,
+    FilterType.PlayerTags,
+    FilterType.ApproachRate,
+    FilterType.CircleSize,
+    FilterType.HpDrain,
+    FilterType.OverallDifficulty,
+    FilterType.DrainTime,
+    FilterType.SliderVelocity,
+    FilterType.StackLeniency,
+    FilterType.CircleCount,
+    FilterType.SliderCount,
+    FilterType.SpinnerCount,
+    FilterType.PlayedState,
+    FilterType.LastPlayed,
+];
 
 interface IBeatmapPickerFilterPanelProps {
     collections: IOsuCollection[];
@@ -23,10 +38,13 @@ interface IBeatmapPickerFilterPanelProps {
     generalSubFilter: TSubFilterSetting;
     includedCollections: string[];
     excludedCollections: string[];
+    disabledFilterTypes?: FilterType[];
     onGeneralFilterChanged: (settings: TFilterSetting) => void;
     onGeneralSubFilterChanged: (settings: TSubFilterSetting) => void;
     onIncludedCollectionsChanged: (cols: string[]) => void;
     onExcludedCollectionsChanged: (cols: string[]) => void;
+    source: "stable" | "lazer";
+    rankedDateQueryFailed?: boolean;
 }
 
 export const BeatmapPickerFilterPanel: React.FC<IBeatmapPickerFilterPanelProps> = ({
@@ -36,6 +54,9 @@ export const BeatmapPickerFilterPanel: React.FC<IBeatmapPickerFilterPanelProps> 
     generalSubFilter,
     includedCollections,
     excludedCollections,
+    disabledFilterTypes,
+    source,
+    rankedDateQueryFailed,
     onGeneralFilterChanged,
     onGeneralSubFilterChanged,
     onIncludedCollectionsChanged,
@@ -53,49 +74,27 @@ export const BeatmapPickerFilterPanel: React.FC<IBeatmapPickerFilterPanelProps> 
     };
 
     return (
-        <Stack spacing={2} sx={{ p: 1 }}>
+        <>
             {showFilter && (
-                <>
-                    <Typography
-                        variant="subtitle2"
-                        sx={{
-                            color: "text.secondary",
-                            textAlign: "center",
-                        }}
-                    >
-                        {__(I18nStrings.MAIN_PICKER_FILTER_TITLE)}
-                    </Typography>
-                    <Divider />
+                <PickerDrawerSection title={I18nStrings.MAIN_PICKER_FILTER_TITLE}>
                     <BeatmapFilterView
                         inline
+                        grouped
                         show={false}
-                        allowedFilterTypes={[
-                            FilterType.Title,
-                            FilterType.RankStateLocal,
-                            FilterType.StarRating,
-                            FilterType.Mode,
-                            FilterType.PlayerTags,
-                        ]}
+                        allowedFilterTypes={PICKER_FILTER_TYPES}
+                        disabledFilterTypes={disabledFilterTypes}
                         initialSettings={generalFilter}
                         initialSubFilter={generalSubFilter}
                         onClose={() => {}}
                         onFilterChanged={onGeneralFilterChanged}
                         onSubFilterChanged={onGeneralSubFilterChanged}
+                        rankedDateSource={source === "lazer" ? "lazer" : "onlineDb"}
+                        rankedDateQueryFailed={rankedDateQueryFailed}
                     />
-                </>
+                </PickerDrawerSection>
             )}
             {showCollection && (
-                <>
-                    {showFilter && <Divider />}
-                    <Typography
-                        variant="subtitle2"
-                        sx={{
-                            color: "text.secondary",
-                            textAlign: "center",
-                        }}
-                    >
-                        {__(I18nStrings.MAIN_PICKER_FILTER_COLLECTION_TITLE)}
-                    </Typography>
+                <PickerDrawerSection title={I18nStrings.MAIN_PICKER_FILTER_COLLECTION_TITLE}>
                     <FormControl size="small" fullWidth>
                         <InputLabel id="picker-collection-include-label">
                             {__(I18nStrings.BTN_PICKER_FILTER_COLLECTION)}
@@ -153,8 +152,8 @@ export const BeatmapPickerFilterPanel: React.FC<IBeatmapPickerFilterPanelProps> 
                             ))}
                         </Select>
                     </FormControl>
-                </>
+                </PickerDrawerSection>
             )}
-        </Stack>
+        </>
     );
 };

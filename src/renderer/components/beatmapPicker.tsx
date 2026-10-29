@@ -8,6 +8,7 @@ import {
     DriveFileRenameOutline,
     FilterList,
     FolderSpecial,
+    HelpOutlined,
     History,
     KeyboardArrowDown,
     KeyboardArrowUp,
@@ -40,16 +41,23 @@ import type { LazerBeatmapDetailRequest, LazerBeatmapQuerySpec } from "../../def
 import { LazerMod } from "../../defines/lazer_structs";
 import { StableBeatmapDetail } from "../../defines/stable_structs";
 import { IOsuCollection } from "../../defines/types";
-import { apply_beatmap_filter, create_osu_beatmap_accessor } from "../../shared/utils/beatmapFilterUtils";
+import { dateRangeBounds, formatDrainSeconds, MATCH_NOTHING_BOUNDS } from "../../shared/utils/beatmapFilterRules";
+import {
+    apply_beatmap_filter,
+    create_osu_beatmap_accessor,
+    lastPlayedBoundsOf,
+} from "../../shared/utils/beatmapFilterUtils";
 import { lazerBeatmapToOsuBeatmap, lazerLightweightToOsuBeatmap } from "../../shared/utils/osuConvert";
 import {
     buildWeightedPool,
     checkWishlist,
+    createPickerHistoryEntry,
     get_effective_sr,
     normalizeAdvancedSettings,
     pickRandomWeighted,
 } from "../../shared/utils/pickerLogic";
 import { type PickerSource, shouldRestorePickerSession } from "../../shared/utils/pickerSession";
+import { lastPlayedMs, resolvePlayState, summarizeScores } from "../../shared/utils/playState";
 import {
     getClassicScoreExperiment,
     getUseLazerModeExperiment,
@@ -73,18 +81,34 @@ import { ConfigKey } from "../../utils/typed/config";
 import { I18nStrings } from "../../utils/typed/i18n";
 import g from "../state";
 import { AudioPlayer } from "./audioPlayer";
-import { FilterType, SubFilterType, TFilterSetting, TSubFilterSetting } from "./beatmapFilter";
+import {
+    FilterType,
+    hasActiveBeatmapFilter,
+    LAZER_UNSUPPORTED_FILTER_TYPES,
+    numericConditionRange,
+    SubFilterType,
+    TFilterSetting,
+    TSubFilterSetting,
+} from "./beatmapFilter";
 import { BeatmapPickerAdvancedPanel } from "./beatmapPickerAdvancedPanel";
+import { PickerDrawerSection } from "./beatmapPickerDrawerSection";
 import { BeatmapPickerFilterPanel } from "./beatmapPickerFilterPanel";
 import type {
     IPickerAdvancedSettings,
     IPickerHistory,
     IPickerProfile,
     IWeightBeatmapCondition,
+    IWeightHistoryCondition,
 } from "./beatmapPickerTypes";
-import { BeatmapDataField, PickerTargetType } from "./beatmapPickerTypes";
+import { BeatmapDataField, DateCondition, PickerTargetType } from "./beatmapPickerTypes";
 import { BaseDialog } from "./common/BaseDialog";
 import { guessMimeTypeFromPath, loadBeatmapBackground } from "./common/beatmapMedia";
+import {
+    getRankedDateCountLabel,
+    isRankedDateQueryBlocked,
+    RankedDateQueryErrorDialog,
+} from "./common/RankedDateQueryFeedback";
+import { useStableRankedDateFilter } from "./common/useStableRankedDateFilter";
 import { CurrentlyPlayingBeatmap } from "./currentlyPlayingBeatmap";
 import { DataViewer } from "./dataViewer";
 import { InfoDialog } from "./infoDialog";
@@ -251,18 +275,18 @@ const MODE_LABELS: Record<number, string> = {
     3: "osu!mania",
 };
 
-const formatDrain = (secs: number) => {
-    const m = Math.floor(secs / 60);
-    const s = secs % 60;
-    return `${m}:${String(s).padStart(2, "0")}`;
-};
+const LAZER_RANGE_SPEC_KEYS = [
+    [FilterType.ApproachRate, "ar"],
+    [FilterType.CircleSize, "cs"],
+    [FilterType.HpDrain, "hp"],
+    [FilterType.OverallDifficulty, "od"],
+    [FilterType.SliderVelocity, "sv"],
+] as const;
 
-// Stable stores "never played" as epoch 0 (and occasionally an invalid date), which
-// would otherwise render as a ~55 year old relative timestamp.
-const toPlayedDate = (value: Date | null | undefined): Date | null => {
-    if (!value) return null;
-    const time = value.getTime();
-    return Number.isFinite(time) && time > 0 ? value : null;
+/** Played state is resolved against merged scores in the main process, so it never goes into the Realm query. */
+const playedStateOf = (filter: TFilterSetting): "played" | "unplayed" | undefined => {
+    const raw = filter[FilterType.PlayedState];
+    return raw === "played" || raw === "unplayed" ? raw : undefined;
 };
 
 const extractHashes = (maps: any[]): Set<string> =>
@@ -945,16 +969,14 @@ export const BeatmapResultDrawer: React.FC<IBeatmapResultDrawerProps> = ({
         () => mapScores.map((s) => ({ ...s, md5Hash: map?.md5Hash ?? s.md5Hash })),
         [mapScores, map?.md5Hash],
     );
-    const latestScoreDate =
-        mapScores.length > 0 ? mapScores.reduce((best, s) => (s.date > best ? s.date : best), mapScores[0].date) : null;
-    const effectiveUnplayed = map ? (mapScores.length > 0 ? false : map.unplayed) : false;
-    const playedScoreDate = toPlayedDate(latestScoreDate);
-    const mapLastPlayedTime = toPlayedDate(map?.lastPlayedTime);
-    const effectiveLastPlayedTime = map
-        ? playedScoreDate && (!mapLastPlayedTime || playedScoreDate > mapLastPlayedTime)
-            ? playedScoreDate
-            : mapLastPlayedTime
+    const playState = map
+        ? resolvePlayState(
+              { unplayed: map.unplayed, storedLastPlayedMs: lastPlayedMs(map.lastPlayedTime) },
+              summarizeScores(mapScores),
+          )
         : null;
+    const effectiveUnplayed = playState ? !playState.played : false;
+    const effectiveLastPlayedTime = playState && playState.lastPlayedMs > 0 ? new Date(playState.lastPlayedMs) : null;
     const inCollections = map
         ? collections.filter((c) => extractHashes(c.maps).has(map.md5Hash)).map((c) => c.name)
         : [];
@@ -1242,7 +1264,7 @@ export const BeatmapResultDrawer: React.FC<IBeatmapResultDrawerProps> = ({
                                     label={__(I18nStrings.MAIN_PICKER_RESULT_STACK)}
                                     value={map.stackLeniency.toFixed(2)}
                                 />
-                                <InfoRow label="Drain" value={formatDrain(map.drainSeconds)} />
+                                <InfoRow label="Drain" value={formatDrainSeconds(map.drainSeconds)} />
                                 <InfoRow
                                     label="PP"
                                     value={
@@ -1576,6 +1598,8 @@ const filterMaps = (
     excludedCollections: string[],
     collections: IOsuCollection[],
     playerTagBeatmapIds: Set<number> | null,
+    approvedSetIds: Set<number> | null,
+    scoresByHash: Map<string, OsuScore[]>,
 ): IBeatmapData[] => {
     const includedHashes =
         includedCollections.length > 0
@@ -1604,24 +1628,24 @@ const filterMaps = (
     const hasActiveFilter =
         includedHashes ||
         excludedHashes ||
-        generalFilter[FilterType.Title] ||
-        generalFilter[FilterType.RankStateLocal] ||
-        generalFilter[FilterType.RankState] ||
-        generalFilter[FilterType.StarRating] ||
-        generalFilter[FilterType.Mode] ||
-        generalFilter[FilterType.PlayCount] != null ||
-        generalFilter[FilterType.Language] != null ||
-        playerTagBeatmapIds;
+        playerTagBeatmapIds ||
+        approvedSetIds ||
+        hasActiveBeatmapFilter(generalFilter, generalSubFilter);
 
     if (!hasActiveFilter) return maps.filter((m) => m.beatmapId !== 0);
 
     return maps.filter((m) =>
-        apply_beatmap_filter(create_osu_beatmap_accessor(m), generalFilter, {
-            playerTagBeatmapIds,
-            includedHashes,
-            excludedHashes,
-            subFilter: generalSubFilter,
-        }),
+        apply_beatmap_filter(
+            create_osu_beatmap_accessor(m, summarizeScores(scoresByHash.get(m.md5Hash))),
+            generalFilter,
+            {
+                playerTagBeatmapIds,
+                includedHashes,
+                excludedHashes,
+                approvedSetIds,
+                subFilter: generalSubFilter,
+            },
+        ),
     );
 };
 
@@ -1800,7 +1824,7 @@ export const BeatmapPickerView: React.FC<IBeatmapPickerViewProps> = () => {
     const [maps, setMaps] = useState<IBeatmapData[]>([]);
     const [collections, setCollections] = useState<IOsuCollection[]>([]);
     const [scoresByHash, setScoresByHash] = useState<Map<string, OsuScore[]>>(new Map());
-    const scoresByHashRef = useRef(scoresByHash);
+    const [infoScoresByHash, setInfoScoresByHash] = useState<Map<string, OsuScore[]>>(new Map());
     const loadedLazerScoreHashesRef = useRef<Set<string>>(new Set());
 
     const [generalFilter, setGeneralFilter] = useState<TFilterSetting>({});
@@ -1869,10 +1893,6 @@ export const BeatmapPickerView: React.FC<IBeatmapPickerViewProps> = () => {
     }, [history]);
 
     useEffect(() => {
-        scoresByHashRef.current = scoresByHash;
-    }, [scoresByHash]);
-
-    useEffect(() => {
         filterStateRef.current = {
             generalFilter,
             generalSubFilter,
@@ -1938,11 +1958,11 @@ export const BeatmapPickerView: React.FC<IBeatmapPickerViewProps> = () => {
         const hasPlayerTags = (cond?: IWeightBeatmapCondition) => cond?.field === BeatmapDataField.PlayerTags;
         const usesPlayerTags =
             advancedSettings.weights.some(
-                (w) => w.type === PickerTargetType.BeatmapData && hasPlayerTags(w.beatmapCondition),
+                (w) => hasPlayerTags(w.beatmapCondition) || hasPlayerTags(w.historyCondition?.beatmapCondition),
             ) ||
             advancedSettings.wishlist.some((entry) =>
                 entry.conditions.some(
-                    (c) => c.type === PickerTargetType.BeatmapData && hasPlayerTags(c.beatmapCondition),
+                    (c) => hasPlayerTags(c.beatmapCondition) || hasPlayerTags(c.historyCondition?.beatmapCondition),
                 ),
             );
         if (!usesPlayerTags) {
@@ -2046,23 +2066,24 @@ export const BeatmapPickerView: React.FC<IBeatmapPickerViewProps> = () => {
         load();
     }, []);
 
-    const ensureAllScoresForMap = useCallback(async (map: IBeatmapData) => {
-        const hashes = [map.md5Hash, map._contentHash].filter(
-            (hash): hash is string => !!hash && !loadedLazerScoreHashesRef.current.has(hash),
-        );
+    const mergeInfoScores = useCallback(async (hashes: string[]) => {
         if (hashes.length === 0) return;
-        const mapScores = await OsuData.getScoresForMap(undefined, hashes);
-        setScoresByHash((prev) => {
-            const merged = new Map(prev);
-            mapScores.forEach((scores, hash) => {
-                merged.set(hash, scores);
-                loadedLazerScoreHashesRef.current.add(hash);
-            });
-            for (const hash of hashes) loadedLazerScoreHashesRef.current.add(hash);
-            scoresByHashRef.current = merged;
-            return merged;
+        const mapScores = await OsuData.getScoresForMap(undefined, hashes, {
+            watchLazer: sourceRef.current === "lazer",
         });
+        for (const hash of hashes) loadedLazerScoreHashesRef.current.add(hash);
+        setInfoScoresByHash((prev) => new Map([...prev, ...mapScores]));
     }, []);
+
+    const ensureAllScoresForMap = useCallback(
+        (map: IBeatmapData) =>
+            mergeInfoScores(
+                [map.md5Hash, map._contentHash].filter(
+                    (hash): hash is string => !!hash && !loadedLazerScoreHashesRef.current.has(hash),
+                ),
+            ),
+        [mergeInfoScores],
+    );
 
     const buildLazerSpec = useCallback((): LazerBeatmapQuerySpec => {
         // lazer BeatmapOnlineStatus: Graveyard=-2, WIP=-1, Pending=0, Ranked=1,
@@ -2081,6 +2102,10 @@ export const BeatmapPickerView: React.FC<IBeatmapPickerViewProps> = () => {
         if (typeof title === "string" && title.trim()) spec.title = title.trim();
         const artist = generalFilter[FilterType.Artist];
         if (typeof artist === "string" && artist.trim()) spec.artist = artist.trim();
+        const creator = generalFilter[FilterType.Creator];
+        if (typeof creator === "string" && creator.trim()) spec.creator = creator.trim();
+        const difficultyName = generalFilter[FilterType.DifficultyName];
+        if (typeof difficultyName === "string" && difficultyName.trim()) spec.difficultyName = difficultyName.trim();
         const rankRaw = generalFilter[FilterType.RankState] ?? generalFilter[FilterType.RankStateLocal];
         if (Array.isArray(rankRaw)) {
             const statuses = rankRaw
@@ -2112,11 +2137,24 @@ export const BeatmapPickerView: React.FC<IBeatmapPickerViewProps> = () => {
             if (min !== 0) spec.srMin = min;
             if (max !== 15) spec.srMax = max;
         }
+        const sourceRaw = generalFilter[FilterType.Source];
+        if (typeof sourceRaw === "string" && sourceRaw.trim()) spec.source = sourceRaw.trim();
+        if (source === "lazer") {
+            const rankedFrom = (generalFilter[FilterType.RankedDate] as string[] | undefined)?.[0] ?? "";
+            const rankedTo = (generalFilter[FilterType.RankedDate] as string[] | undefined)?.[1] ?? "";
+            if (rankedFrom || rankedTo) {
+                spec.rankedDates = dateRangeBounds(rankedFrom, rankedTo) ?? MATCH_NOTHING_BOUNDS;
+            }
+        }
+        for (const [type, key] of LAZER_RANGE_SPEC_KEYS) {
+            const range = numericConditionRange(type, generalFilter[type], generalSubFilter[type]);
+            if (range) spec[key] = range;
+        }
         if (includedCollections.length > 0) spec.includedCollectionNames = includedCollections;
         if (excludedCollections.length > 0) spec.excludedCollectionNames = excludedCollections;
-        if (playerTagBeatmapIds && playerTagBeatmapIds.size > 0) spec.playerTagBeatmapIds = [...playerTagBeatmapIds];
+        if (playerTagBeatmapIds) spec.playerTagBeatmapIds = [...playerTagBeatmapIds];
         return spec;
-    }, [generalFilter, generalSubFilter, includedCollections, excludedCollections, playerTagBeatmapIds]);
+    }, [generalFilter, generalSubFilter, includedCollections, excludedCollections, playerTagBeatmapIds, source]);
 
     const lazerRollRequest = useCallback(
         (mode: "count" | "preview" | "roll", previewLimit?: number): LazerRollRequest => {
@@ -2126,14 +2164,14 @@ export const BeatmapPickerView: React.FC<IBeatmapPickerViewProps> = () => {
             const usesPlayerTags =
                 advancedSettings.weights.some(
                     (w) =>
-                        w.type === PickerTargetType.BeatmapData &&
-                        w.beatmapCondition?.field === BeatmapDataField.PlayerTags,
+                        w.beatmapCondition?.field === BeatmapDataField.PlayerTags ||
+                        w.historyCondition?.beatmapCondition?.field === BeatmapDataField.PlayerTags,
                 ) ||
                 advancedSettings.wishlist.some((e) =>
                     e.conditions.some(
                         (c) =>
-                            c.type === PickerTargetType.BeatmapData &&
-                            c.beatmapCondition?.field === BeatmapDataField.PlayerTags,
+                            c.beatmapCondition?.field === BeatmapDataField.PlayerTags ||
+                            c.historyCondition?.beatmapCondition?.field === BeatmapDataField.PlayerTags,
                     ),
                 );
             return {
@@ -2142,6 +2180,8 @@ export const BeatmapPickerView: React.FC<IBeatmapPickerViewProps> = () => {
                 wishlist: advancedSettings.wishlist,
                 history,
                 onlineTags: usesPlayerTags && onlineTagsCache.size > 0 ? [...onlineTagsCache.entries()] : undefined,
+                lastPlayedRange: lastPlayedBoundsOf(generalFilter[FilterType.LastPlayed]),
+                playedState: playedStateOf(generalFilter),
                 srSubFilter:
                     srSub !== undefined && Array.isArray(srRaw)
                         ? {
@@ -2194,7 +2234,6 @@ export const BeatmapPickerView: React.FC<IBeatmapPickerViewProps> = () => {
                 if (!isCurrent()) return;
                 setCollections(cols);
                 setMaps([]);
-                scoresByHashRef.current = new Map();
                 setScoresByHash(new Map());
                 try {
                     const { count } = await window.olsCore.countLazerBeatmaps({});
@@ -2218,12 +2257,14 @@ export const BeatmapPickerView: React.FC<IBeatmapPickerViewProps> = () => {
             }
             const scores = await OsuData.getScores();
             if (!isCurrent()) return;
+            const previouslyMerged = [...loadedLazerScoreHashesRef.current];
             loadedLazerScoreHashesRef.current.clear();
             setCollections(cols);
-            scoresByHashRef.current = scores;
             setScoresByHash(scores);
+            setInfoScoresByHash(scores);
+            void mergeInfoScores(previouslyMerged);
         },
-        [],
+        [mergeInfoScores],
     );
 
     const loadData = useCallback(
@@ -2290,13 +2331,11 @@ export const BeatmapPickerView: React.FC<IBeatmapPickerViewProps> = () => {
         const onChanged = () => {
             void applyFromCache(sourceRef.current, undefined, requestGenerationRef.current);
         };
-        const unsub1 = OsuData.subscribe("beatmaps", onChanged);
-        const unsub2 = OsuData.subscribe("scores", onChanged);
-        const unsub3 = OsuData.subscribe("collections", onChanged);
+        const unsub1 = OsuData.subscribe("scores", onChanged);
+        const unsub2 = OsuData.subscribe("collections", onChanged);
         return () => {
             unsub1();
             unsub2();
-            unsub3();
         };
     }, [applyFromCache]);
 
@@ -2401,6 +2440,10 @@ export const BeatmapPickerView: React.FC<IBeatmapPickerViewProps> = () => {
         };
     }, [generalFilter]);
 
+    const [rankedFrom = "", rankedTo = ""] = (generalFilter[FilterType.RankedDate] as string[] | undefined) ?? [];
+    const rankedDateQuery = useStableRankedDateFilter(source, rankedFrom, rankedTo, activeProfileId);
+    const approvedSetIds = rankedDateQuery.ids;
+
     const deferredMaps = useDeferredValue(maps);
     const deferredOnlineBeatmaps = useDeferredValue(onlineBeatmaps);
     const localBeatmapIds = useMemo(() => new Set(deferredMaps.map((m) => m.beatmapId)), [deferredMaps]);
@@ -2418,6 +2461,8 @@ export const BeatmapPickerView: React.FC<IBeatmapPickerViewProps> = () => {
             excludedCollections,
             collections,
             playerTagBeatmapIds,
+            approvedSetIds,
+            scoresByHash,
         );
         if (onlineOnlyMaps.length === 0) return localFiltered;
         const onlineFiltered = filterMaps(
@@ -2428,6 +2473,8 @@ export const BeatmapPickerView: React.FC<IBeatmapPickerViewProps> = () => {
             excludedCollections,
             collections,
             playerTagBeatmapIds,
+            approvedSetIds,
+            scoresByHash,
         );
         return [...localFiltered, ...onlineFiltered];
     }, [
@@ -2440,6 +2487,8 @@ export const BeatmapPickerView: React.FC<IBeatmapPickerViewProps> = () => {
         excludedCollections,
         collections,
         playerTagBeatmapIds,
+        approvedSetIds,
+        scoresByHash,
     ]);
 
     const collectionMaps = useMemo(() => {
@@ -2463,6 +2512,23 @@ export const BeatmapPickerView: React.FC<IBeatmapPickerViewProps> = () => {
         [advancedSettings],
     );
     const selectionHistory = historyAffectsSelection ? history : EMPTY_PICKER_HISTORY;
+    const historyHasTimeFilter = useMemo(() => {
+        const timed = (cond?: IWeightHistoryCondition) =>
+            cond?.timeCondition?.operator === DateCondition.WithinSecs ||
+            (cond?.beatmapCondition?.field === BeatmapDataField.LastPlayedTime &&
+                cond.beatmapCondition.operator === DateCondition.WithinSecs);
+        return (
+            advancedSettings.weights.some((entry) => entry.enabled !== false && timed(entry.historyCondition)) ||
+            advancedSettings.wishlist.some(
+                (entry) => entry.enabled !== false && entry.conditions.some((cond) => timed(cond.historyCondition)),
+            )
+        );
+    }, [advancedSettings]);
+    const historyClock = useNowAdaptive(historyHasTimeFilter && isPageVisible && state === IBPState.Loaded ? 0 : null);
+    const selectionNow = useMemo(
+        () => Date.now(),
+        [historyClock, selectionHistory, advancedSettings, state, isPageVisible],
+    );
 
     const weightedPool = useMemo(() => {
         if (state !== IBPState.Loaded || advancedSettings.weights.length === 0) return null;
@@ -2473,8 +2539,18 @@ export const BeatmapPickerView: React.FC<IBeatmapPickerViewProps> = () => {
             scoresByHash,
             selectionHistory,
             onlineTagsCache,
+            selectionNow,
         );
-    }, [state, filteredMaps, advancedSettings, collectionMaps, scoresByHash, selectionHistory, onlineTagsCache]);
+    }, [
+        state,
+        filteredMaps,
+        advancedSettings,
+        collectionMaps,
+        scoresByHash,
+        selectionHistory,
+        onlineTagsCache,
+        selectionNow,
+    ]);
 
     // Wishlist-priority candidates decide the stable selection pool, so the (90k-map)
     // evaluation is shared by the pickable count, the preview list and the roll click.
@@ -2487,6 +2563,7 @@ export const BeatmapPickerView: React.FC<IBeatmapPickerViewProps> = () => {
             collectionMaps,
             selectionHistory,
             onlineTagsCache,
+            selectionNow,
         );
         if (candidates.length === 0) return { pool: null, positivePool: null };
         const pool = buildWeightedPool(
@@ -2496,9 +2573,19 @@ export const BeatmapPickerView: React.FC<IBeatmapPickerViewProps> = () => {
             scoresByHash,
             selectionHistory,
             onlineTagsCache,
+            selectionNow,
         );
         return { pool, positivePool: pool.filter((p) => p.weight > 0) };
-    }, [state, filteredMaps, advancedSettings, collectionMaps, scoresByHash, selectionHistory, onlineTagsCache]);
+    }, [
+        state,
+        filteredMaps,
+        advancedSettings,
+        collectionMaps,
+        scoresByHash,
+        selectionHistory,
+        onlineTagsCache,
+        selectionNow,
+    ]);
 
     // Built on first use and cached until its inputs change, so a roll click never
     // rebuilds a pool the render pass already produced.
@@ -2513,10 +2600,20 @@ export const BeatmapPickerView: React.FC<IBeatmapPickerViewProps> = () => {
                 scoresByHash,
                 selectionHistory,
                 onlineTagsCache,
+                selectionNow,
             );
             return cached;
         };
-    }, [weightedPool, filteredMaps, advancedSettings, collectionMaps, scoresByHash, selectionHistory, onlineTagsCache]);
+    }, [
+        weightedPool,
+        filteredMaps,
+        advancedSettings,
+        collectionMaps,
+        scoresByHash,
+        selectionHistory,
+        onlineTagsCache,
+        selectionNow,
+    ]);
 
     const pickableCount = useMemo(() => {
         if (state !== IBPState.Loaded) return filteredMaps.length;
@@ -2528,8 +2625,11 @@ export const BeatmapPickerView: React.FC<IBeatmapPickerViewProps> = () => {
 
     const effectivePickableCount = source === "lazer" ? lazerRollState.count : pickableCount;
     const effectiveFilteredCount = source === "lazer" ? lazerRollState.poolCount : filteredMaps.length;
-    const countLabel =
+    const fallbackCountLabel =
         source === "lazer" && lazerRollState.loading ? "…" : `${effectivePickableCount} / ${effectiveFilteredCount}`;
+    const countLabel = getRankedDateCountLabel(rankedDateQuery.status, fallbackCountLabel);
+    const rankedDateQueryBlocked = isRankedDateQueryBlocked(rankedDateQuery.status, state === IBPState.Loaded);
+    const showEmptyPool = state === IBPState.Loaded && effectivePickableCount === 0 && !rankedDateQueryBlocked;
 
     useEffect(() => {
         const ring = ringInnerRef.current;
@@ -2574,12 +2674,12 @@ export const BeatmapPickerView: React.FC<IBeatmapPickerViewProps> = () => {
 
     // Stage 2/3 counts for the lazer source (debounced).
     useEffect(() => {
-        if (source !== "lazer" || state !== IBPState.Loaded) return;
+        if (source !== "lazer" || state !== IBPState.Loaded || !isPageVisible) return;
         const timer = setTimeout(() => {
             void performLazerCount();
         }, 400);
         return () => clearTimeout(timer);
-    }, [source, state, performLazerCount]);
+    }, [source, state, performLazerCount, historyClock, isPageVisible]);
 
     // Preview probability rows for the lazer source (backend-weighted pool).
     useEffect(() => {
@@ -2600,7 +2700,7 @@ export const BeatmapPickerView: React.FC<IBeatmapPickerViewProps> = () => {
         return () => {
             cancelled = true;
         };
-    }, [showFilteredList, source, state, lazerRollRequest]);
+    }, [showFilteredList, source, state, lazerRollRequest, historyClock]);
 
     const onBtnRollLazer = async () => {
         if (isRolling) return;
@@ -2613,16 +2713,7 @@ export const BeatmapPickerView: React.FC<IBeatmapPickerViewProps> = () => {
             const picked = res.picked;
             if (picked) {
                 const now = Date.now();
-                const entry: IPickerHistory = {
-                    beatmapId: picked.beatmapId,
-                    md5Hash: picked.md5Hash,
-                    title: `${picked.artist} - ${picked.songTitle} [${picked.difficultyName}]`,
-                    artist: picked.artist,
-                    songTitle: picked.songTitle,
-                    difficultyName: picked.difficultyName,
-                    creatorName: picked.creatorName,
-                    pickedAt: now,
-                };
+                const entry = createPickerHistoryEntry(picked, now, onlineTagsCache.get(picked.beatmapId));
                 setHistory((prev) => {
                     const next = [...prev, entry];
                     if (next.length > HISTORY_MAX) next.splice(0, next.length - HISTORY_MAX);
@@ -2647,8 +2738,39 @@ export const BeatmapPickerView: React.FC<IBeatmapPickerViewProps> = () => {
         await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
         const now = Date.now();
 
-        const wishlistPool = stableWishlistSelection?.positivePool ?? [];
-        const pool = wishlistPool.length > 0 ? wishlistPool : resolveStableFullPool();
+        const wishlistPool = historyHasTimeFilter
+            ? buildWeightedPool(
+                  checkWishlist(
+                      filteredMaps,
+                      advancedSettings,
+                      scoresByHash,
+                      collectionMaps,
+                      selectionHistory,
+                      onlineTagsCache,
+                      now,
+                  ),
+                  advancedSettings,
+                  collectionMaps,
+                  scoresByHash,
+                  selectionHistory,
+                  onlineTagsCache,
+                  now,
+              ).filter((entry) => entry.weight > 0)
+            : (stableWishlistSelection?.positivePool ?? []);
+        const pool =
+            wishlistPool.length > 0
+                ? wishlistPool
+                : historyHasTimeFilter
+                  ? buildWeightedPool(
+                        filteredMaps,
+                        advancedSettings,
+                        collectionMaps,
+                        scoresByHash,
+                        selectionHistory,
+                        onlineTagsCache,
+                        now,
+                    )
+                  : resolveStableFullPool();
         const picked = pickRandom(pool);
 
         if (!picked) {
@@ -2656,16 +2778,7 @@ export const BeatmapPickerView: React.FC<IBeatmapPickerViewProps> = () => {
             return;
         }
 
-        const entry: IPickerHistory = {
-            beatmapId: picked.beatmapId,
-            md5Hash: picked.md5Hash,
-            title: `${picked.artist} - ${picked.songTitle} [${picked.difficultyName}]`,
-            artist: picked.artist,
-            songTitle: picked.songTitle,
-            difficultyName: picked.difficultyName,
-            creatorName: picked.creatorName,
-            pickedAt: now,
-        };
+        const entry = createPickerHistoryEntry(picked, now, onlineTagsCache.get(picked.beatmapId));
 
         setHistory((prev) => {
             const next = [...prev, entry];
@@ -2941,6 +3054,10 @@ export const BeatmapPickerView: React.FC<IBeatmapPickerViewProps> = () => {
                     onChange={(e) => setNameDialog((s) => ({ ...s, newName: e.target.value }))}
                 />
             </BaseDialog>
+            <RankedDateQueryErrorDialog
+                failure={state === IBPState.Loaded ? rankedDateQuery.failure : null}
+                onReviewCondition={() => setActivePanel("filter")}
+            />
             <BaseDialog
                 open={sourceDialogOpen}
                 onClose={() => setSourceDialogOpen(false)}
@@ -3004,7 +3121,7 @@ export const BeatmapPickerView: React.FC<IBeatmapPickerViewProps> = () => {
                 displaySR={pickedMap ? get_effective_sr(pickedMap, selectedModesSet) : 0}
                 osuPath={g.config?.[ConfigKey.PATH_STABLE_DIR] ?? ""}
                 collections={collections}
-                scoresByHash={scoresByHash}
+                scoresByHash={infoScoresByHash}
                 onScoresNeeded={ensureAllScoresForMap}
                 onClose={() => setPickedMap(null)}
             />
@@ -3013,7 +3130,7 @@ export const BeatmapPickerView: React.FC<IBeatmapPickerViewProps> = () => {
                 displaySR={playingMap ? get_effective_sr(playingMap, selectedModesSet) : 0}
                 osuPath={g.config?.[ConfigKey.PATH_STABLE_DIR] ?? ""}
                 collections={collections}
-                scoresByHash={scoresByHash}
+                scoresByHash={infoScoresByHash}
                 onScoresNeeded={ensureAllScoresForMap}
                 onClose={() => setPlayingMap(null)}
             />
@@ -3022,7 +3139,7 @@ export const BeatmapPickerView: React.FC<IBeatmapPickerViewProps> = () => {
                 displaySR={selectedHistoryMap ? get_effective_sr(selectedHistoryMap, selectedModesSet) : 0}
                 osuPath={g.config?.[ConfigKey.PATH_STABLE_DIR] ?? ""}
                 collections={collections}
-                scoresByHash={scoresByHash}
+                scoresByHash={infoScoresByHash}
                 onScoresNeeded={ensureAllScoresForMap}
                 onClose={() => setSelectedHistoryMap(null)}
             />
@@ -3316,6 +3433,7 @@ export const BeatmapPickerView: React.FC<IBeatmapPickerViewProps> = () => {
                         disabled={
                             state === IBPState.Loading ||
                             (state === IBPState.Loaded && effectivePickableCount === 0) ||
+                            rankedDateQueryBlocked ||
                             (g.config?.[ConfigKey.PATH_STABLE_DIR] ?? "").length === 0
                         }
                         sx={{
@@ -3356,22 +3474,76 @@ export const BeatmapPickerView: React.FC<IBeatmapPickerViewProps> = () => {
                             if (state === IBPState.Loaded) setShowFilteredList(true);
                         }}
                     >
-                        <span
-                            style={{
-                                opacity: state === IBPState.Loaded && effectivePickableCount === 0 ? 0.3 : 1,
-                                transition: "opacity 0.3s ease",
+                        <Box
+                            component="span"
+                            sx={{
+                                position: "relative",
+                                display: "inline-block",
+                                lineHeight: 1,
                             }}
                         >
-                            {state === IBPState.Loaded
-                                ? __(I18nStrings.BTN_PICKER_ROLL)
-                                : __(I18nStrings.BTN_PICKER_READ)}
-                        </span>
+                            <span
+                                style={{
+                                    lineHeight: 1,
+                                    opacity: showEmptyPool ? 0.3 : 1,
+                                    transition: "opacity 0.3s ease",
+                                }}
+                            >
+                                {state === IBPState.Loaded
+                                    ? __(I18nStrings.BTN_PICKER_ROLL)
+                                    : __(I18nStrings.BTN_PICKER_READ)}
+                            </span>
+                            <Tooltip title={__(I18nStrings.ONBOARDING_BEATMAP_PICKER_TITLE)} arrow>
+                                <Box
+                                    component="span"
+                                    role="button"
+                                    tabIndex={0}
+                                    aria-label={__(I18nStrings.ONBOARDING_BEATMAP_PICKER_TITLE)}
+                                    onClick={(event) => {
+                                        event.stopPropagation();
+                                        g.setOnboarding(true, "beatmap_picker");
+                                    }}
+                                    onKeyDown={(event) => {
+                                        if (event.key === "Enter" || event.key === " ") {
+                                            event.preventDefault();
+                                            event.stopPropagation();
+                                            g.setOnboarding(true, "beatmap_picker");
+                                        }
+                                    }}
+                                    sx={{
+                                        position: "absolute",
+                                        left: "100%",
+                                        top: "50%",
+                                        transform: "translateY(-50%)",
+                                        ml: "0.35em",
+                                        display: "inline-flex",
+                                        alignItems: "center",
+                                        justifyContent: "center",
+                                        width: "1.1em",
+                                        height: "1.1em",
+                                        fontSize: "0.95em",
+                                        lineHeight: 1,
+                                        borderRadius: "50%",
+                                        opacity: 0.8,
+                                        cursor: "pointer",
+                                        "&:hover": { opacity: 1 },
+                                    }}
+                                >
+                                    <HelpOutlined sx={{ fontSize: "inherit" }} />
+                                </Box>
+                            </Tooltip>
+                        </Box>
                         {state === IBPState.Loaded && (
                             <Typography
                                 variant="caption"
                                 sx={{
                                     fontSize: "0.65rem",
-                                    opacity: effectivePickableCount === 0 ? 0.3 : 0.8,
+                                    opacity: showEmptyPool ? 0.3 : rankedDateQueryBlocked ? 1 : 0.8,
+                                    color: rankedDateQueryBlocked
+                                        ? rankedDateQuery.status === "error"
+                                            ? "error.main"
+                                            : "text.primary"
+                                        : undefined,
                                     lineHeight: 1,
                                     transition: "opacity 0.3s ease",
                                 }}
@@ -3379,7 +3551,7 @@ export const BeatmapPickerView: React.FC<IBeatmapPickerViewProps> = () => {
                                 {countLabel}
                             </Typography>
                         )}
-                        {state === IBPState.Loaded && effectivePickableCount === 0 && (
+                        {showEmptyPool && (
                             <Box
                                 component="span"
                                 sx={{
@@ -3600,6 +3772,9 @@ export const BeatmapPickerView: React.FC<IBeatmapPickerViewProps> = () => {
                                 onGeneralSubFilterChanged={setGeneralSubFilter}
                                 onIncludedCollectionsChanged={setIncludedCollections}
                                 onExcludedCollectionsChanged={setExcludedCollections}
+                                source={source}
+                                disabledFilterTypes={source === "lazer" ? LAZER_UNSUPPORTED_FILTER_TYPES : undefined}
+                                rankedDateQueryFailed={rankedDateQuery.status === "error"}
                             />
                         </Box>
                         <Box
@@ -3631,142 +3806,131 @@ export const BeatmapPickerView: React.FC<IBeatmapPickerViewProps> = () => {
                         </Box>
                         <Box
                             sx={{
-                                display: activePanel === "profiles" ? "flex" : "none",
-                                flexDirection: "column",
+                                display: activePanel === "profiles" ? "block" : "none",
                                 height: "100%",
-                                p: 1,
-                                gap: 1,
                             }}
                         >
-                            <Typography
-                                variant="subtitle2"
-                                sx={{
-                                    color: "text.secondary",
-                                    textAlign: "center",
-                                    flexShrink: 0,
-                                }}
-                            >
-                                {__(I18nStrings.BTN_PICKER_PROFILES)}
-                            </Typography>
-                            <Divider sx={{ flexShrink: 0 }} />
-                            <Stack direction="row" spacing={1}>
-                                <TextField
-                                    size="small"
-                                    sx={{ flexGrow: 1 }}
-                                    label={__(I18nStrings.MAIN_PICKER_PROFILE_NAME)}
-                                    value={newProfileName}
-                                    onChange={(e) => setNewProfileName(e.target.value)}
-                                />
-                                <Button
-                                    variant="outlined"
-                                    size="small"
-                                    disabled={!newProfileName.trim()}
-                                    onClick={onSaveProfile}
-                                >
-                                    {__(I18nStrings.MAIN_PICKER_PROFILE_SAVE)}
-                                </Button>
-                            </Stack>
-                            <Stack direction="row" spacing={1}>
-                                <Button
-                                    variant="outlined"
-                                    size="small"
-                                    fullWidth
-                                    onClick={onExportProfiles}
-                                    disabled={profiles.length === 0}
-                                >
-                                    {__(I18nStrings.MAIN_PICKER_PROFILE_EXPORT)}
-                                </Button>
-                                <Button variant="outlined" size="small" fullWidth onClick={onImportProfiles}>
-                                    {__(I18nStrings.MAIN_PICKER_PROFILE_IMPORT)}
-                                </Button>
-                            </Stack>
-                            <Divider />
-                            <Box sx={{ flexGrow: 1, overflowY: "auto" }}>
-                                <Stack spacing={2}>
-                                    {profiles.length === 0 && (
-                                        <Typography
-                                            variant="caption"
-                                            sx={{
-                                                color: "text.secondary",
-                                                textAlign: "center",
-                                                display: "block",
-                                            }}
-                                        >
-                                            -
-                                        </Typography>
-                                    )}
-                                    {profiles.map((profileId) => (
-                                        <Stack
-                                            key={profileId}
-                                            direction="row"
-                                            spacing={1}
-                                            sx={{
-                                                alignItems: "center",
-                                                px: 1,
-                                                py: 0.5,
-                                                border: "1px solid",
-                                                borderColor: profileId === activeProfileId ? "primary.main" : "divider",
-                                                borderRadius: 1,
-                                            }}
-                                        >
-                                            <Typography variant="body2" sx={{ flexGrow: 1 }} noWrap>
-                                                {profileId}
-                                            </Typography>
-                                            {profileId === activeProfileId && (
-                                                <Chip
-                                                    label={__(I18nStrings.MAIN_PICKER_PROFILE_ACTIVE)}
-                                                    size="small"
-                                                    color="primary"
-                                                    variant="outlined"
-                                                />
-                                            )}
-                                            <Button
-                                                size="small"
-                                                variant="contained"
-                                                onClick={async () => {
-                                                    await onLoadProfile(profileId);
-                                                    setActivePanel(null);
+                            <PickerDrawerSection title={I18nStrings.BTN_PICKER_PROFILES} fill>
+                                <Stack direction="row" spacing={1}>
+                                    <TextField
+                                        size="small"
+                                        sx={{ flexGrow: 1 }}
+                                        label={__(I18nStrings.MAIN_PICKER_PROFILE_NAME)}
+                                        value={newProfileName}
+                                        onChange={(e) => setNewProfileName(e.target.value)}
+                                    />
+                                    <Button
+                                        variant="outlined"
+                                        size="small"
+                                        disabled={!newProfileName.trim()}
+                                        onClick={onSaveProfile}
+                                    >
+                                        {__(I18nStrings.MAIN_PICKER_PROFILE_SAVE)}
+                                    </Button>
+                                </Stack>
+                                <Stack direction="row" spacing={1}>
+                                    <Button
+                                        variant="outlined"
+                                        size="small"
+                                        fullWidth
+                                        onClick={onExportProfiles}
+                                        disabled={profiles.length === 0}
+                                    >
+                                        {__(I18nStrings.MAIN_PICKER_PROFILE_EXPORT)}
+                                    </Button>
+                                    <Button variant="outlined" size="small" fullWidth onClick={onImportProfiles}>
+                                        {__(I18nStrings.MAIN_PICKER_PROFILE_IMPORT)}
+                                    </Button>
+                                </Stack>
+                                <Divider />
+                                <Box sx={{ flexGrow: 1, minHeight: 0, overflowY: "auto" }}>
+                                    <Stack spacing={2}>
+                                        {profiles.length === 0 && (
+                                            <Typography
+                                                variant="caption"
+                                                sx={{
+                                                    color: "text.secondary",
+                                                    textAlign: "center",
+                                                    display: "block",
                                                 }}
                                             >
-                                                {__(I18nStrings.MAIN_PICKER_PROFILE_LOAD)}
-                                            </Button>
-                                            <IconButton
-                                                size="small"
-                                                onClick={() =>
-                                                    setNameDialog({
-                                                        open: true,
-                                                        mode: "clone",
-                                                        sourceId: profileId,
-                                                        newName: `${profileId}_copy`,
-                                                    })
-                                                }
+                                                -
+                                            </Typography>
+                                        )}
+                                        {profiles.map((profileId) => (
+                                            <Stack
+                                                key={profileId}
+                                                direction="row"
+                                                spacing={1}
+                                                sx={{
+                                                    alignItems: "center",
+                                                    px: 1,
+                                                    py: 0.5,
+                                                    border: "1px solid",
+                                                    borderColor:
+                                                        profileId === activeProfileId ? "primary.main" : "divider",
+                                                    borderRadius: 1,
+                                                }}
                                             >
-                                                <ContentCopy fontSize="small" />
-                                            </IconButton>
-                                            <IconButton
-                                                size="small"
-                                                onClick={() =>
-                                                    setNameDialog({
-                                                        open: true,
-                                                        mode: "rename",
-                                                        sourceId: profileId,
-                                                        newName: profileId,
-                                                    })
-                                                }
-                                            >
-                                                <DriveFileRenameOutline fontSize="small" />
-                                            </IconButton>
-                                            <IconButton
-                                                size="small"
-                                                color="error"
-                                                onClick={() => onDeleteProfile(profileId)}
-                                            >
-                                                <DeleteSweep fontSize="small" />
-                                            </IconButton>
-                                        </Stack>
-                                    ))}
-                                </Stack>
-                            </Box>
+                                                <Typography variant="body2" sx={{ flexGrow: 1 }} noWrap>
+                                                    {profileId}
+                                                </Typography>
+                                                {profileId === activeProfileId && (
+                                                    <Chip
+                                                        label={__(I18nStrings.MAIN_PICKER_PROFILE_ACTIVE)}
+                                                        size="small"
+                                                        color="primary"
+                                                        variant="outlined"
+                                                    />
+                                                )}
+                                                <Button
+                                                    size="small"
+                                                    variant="contained"
+                                                    onClick={async () => {
+                                                        await onLoadProfile(profileId);
+                                                        setActivePanel(null);
+                                                    }}
+                                                >
+                                                    {__(I18nStrings.MAIN_PICKER_PROFILE_LOAD)}
+                                                </Button>
+                                                <IconButton
+                                                    size="small"
+                                                    onClick={() =>
+                                                        setNameDialog({
+                                                            open: true,
+                                                            mode: "clone",
+                                                            sourceId: profileId,
+                                                            newName: `${profileId}_copy`,
+                                                        })
+                                                    }
+                                                >
+                                                    <ContentCopy fontSize="small" />
+                                                </IconButton>
+                                                <IconButton
+                                                    size="small"
+                                                    onClick={() =>
+                                                        setNameDialog({
+                                                            open: true,
+                                                            mode: "rename",
+                                                            sourceId: profileId,
+                                                            newName: profileId,
+                                                        })
+                                                    }
+                                                >
+                                                    <DriveFileRenameOutline fontSize="small" />
+                                                </IconButton>
+                                                <IconButton
+                                                    size="small"
+                                                    color="error"
+                                                    onClick={() => onDeleteProfile(profileId)}
+                                                >
+                                                    <DeleteSweep fontSize="small" />
+                                                </IconButton>
+                                            </Stack>
+                                        ))}
+                                    </Stack>
+                                </Box>
+                            </PickerDrawerSection>
                         </Box>
                     </Box>
                 )}
