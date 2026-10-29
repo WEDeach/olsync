@@ -39,7 +39,7 @@ export function lazerBeatmapToOsuBeatmap(b: LazerBeatmap): OsuBeatmap {
         numSliders: sliders ?? 0,
         numSpinners: spinners ?? 0,
         objectCountsAvailable,
-        drainSeconds: b.Length,
+        drainSeconds: b.Length / 1000,
         ar: d?.ApproachRate ?? 0,
         cs: d?.CircleSize ?? 0,
         hp: d?.DrainRate ?? 0,
@@ -57,7 +57,7 @@ export function lazerBeatmapToOsuBeatmap(b: LazerBeatmap): OsuBeatmap {
         srTaiko: 0,
         srCtb: 0,
         srMania: 0,
-        totalMilliseconds: b.Length * 1000,
+        totalMilliseconds: b.Length,
         bpm: b.BPM,
     };
 }
@@ -91,7 +91,7 @@ export function lazerLightweightToOsuBeatmap(b: LazerLightweightBeatmap): OsuBea
         unplayed: b.unplayed,
         lastPlayedTime: b.lastPlayed ? new Date(b.lastPlayed) : new Date(0),
         tags: b.tags,
-        source: "",
+        source: b.source,
         srStd: b.starRating,
         srTaiko: 0,
         srCtb: 0,

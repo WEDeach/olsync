@@ -284,6 +284,7 @@ declare global {
             getBeatmapOnlineTags: (beatmapId: number) => Promise<string[]>;
             getAllBeatmapOnlineTags: () => Promise<Array<[number, string[]]>>;
             getBeatmapsByOnlineTag: (tagName: string) => Promise<number[]>;
+            getBeatmapSetIdsByApprovedDate: (since?: number, until?: number) => Promise<number[]>;
             getAllOnlineBeatmaps: (
                 offset?: number,
                 limit?: number,

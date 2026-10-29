@@ -123,6 +123,7 @@ export const BeatmapRestorerView: React.FC<IBeatmapRestorerViewProps> = ({
             playerTagBeatmapIds: null,
             includedHashes: null,
             excludedHashes: null,
+            approvedSetIds: null,
             subFilter: subFilterSettings as Partial<Record<FilterType, SubFilterType>>,
         });
     };

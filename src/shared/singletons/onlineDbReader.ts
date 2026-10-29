@@ -205,6 +205,25 @@ class OnlineDbReader extends SingletonBase {
         return resolved;
     }
 
+    get_beatmapset_ids_by_approved_date(since?: number, until?: number): number[] {
+        if (!this._db) return [];
+        const conditions: string[] = [];
+        const args: number[] = [];
+        if (since !== undefined && Number.isFinite(since)) {
+            conditions.push("CAST(strftime('%s', approved_date) AS INTEGER) >= ?");
+            args.push(Math.floor(since / 1000));
+        }
+        if (until !== undefined && Number.isFinite(until)) {
+            conditions.push("CAST(strftime('%s', approved_date) AS INTEGER) <= ?");
+            args.push(Math.floor(until / 1000));
+        }
+        const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+        const rows = this._db.prepare(`SELECT beatmapset_id FROM osu_beatmapsets ${where}`).all(...args) as Array<{
+            beatmapset_id: number;
+        }>;
+        return rows.map((r) => Number(r.beatmapset_id));
+    }
+
     get_all_beatmaps(
         offset = 0,
         limit = 500,

@@ -42,6 +42,7 @@ export enum ConfigKey {
     BPKS_DL_DATE_RANGE = "bpks:dl:date_range",
     BPKS_DL_MODE = "bpks:dl:mode",
     BPKS_DL_DETECTION_SCOPE = "bpks:dl:detection_scope",
+    BPKS_DL_STATUS = "bpks:dl:status",
 
     /* UPDATE */
     UPDATE_BASE_URL = "update:base_url",

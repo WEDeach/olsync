@@ -5,18 +5,19 @@
  */
 import type { LazerConditionScore, LazerRollRequest, LazerRollResponse } from "../../defines/lazer_picker";
 import type { LazerLightweightBeatmap } from "../../defines/lazer_structs";
+import { BeatmapDataField, PickerTargetType } from "../../renderer/components/beatmapPickerTypes";
 import { createLogger } from "../../utils/logger";
 import type { OsuBeatmap, OsuScore } from "../../utils/osu";
 import SharedManager from "../sharedManager";
+import { lastPlayedInBounds } from "../utils/beatmapFilterRules";
 import { lazerBeatmapToOsuBeatmap, lazerLightweightToOsuBeatmap } from "../utils/osuConvert";
 import { buildWeightedPool, checkWishlist, get_effective_sr, pickRandomWeighted } from "../utils/pickerLogic";
+import { lastPlayedMs, resolvePlayState, summarizeScores } from "../utils/playState";
 
 const log = createLogger("LazerPickerRoll");
 
 const POOL_PAGE_SIZE = 2000;
 const SCORE_CHUNK_SIZE = 2000;
-const SCORE_PAGE_SIZE = 2000;
-
 const SCORE_RECORD = "score_record";
 const COLLECTION = "collection";
 
@@ -38,6 +39,10 @@ interface PoolCacheEntry {
 
 let poolCache: PoolCacheEntry | null = null;
 
+export function invalidateLazerRollPool(): void {
+    poolCache = null;
+}
+
 function canonicalSpecKey(spec: LazerRollRequest["spec"]): string {
     const sorted: Record<string, unknown> = {};
     for (const k of Object.keys(spec).sort()) {
@@ -56,6 +61,29 @@ function wishlistUsesScore(entry: LazerRollRequest["wishlist"][number]): boolean
 
 function wishlistUsesCollection(entry: LazerRollRequest["wishlist"][number]): boolean {
     return entry.enabled !== false && entry.conditions.some((c) => c.type === COLLECTION);
+}
+
+const isPlayStateField = (field: BeatmapDataField | undefined): boolean =>
+    field === BeatmapDataField.Unplayed || field === BeatmapDataField.LastPlayedTime;
+
+function weightUsesPlayState(entry: LazerRollRequest["weights"][number]): boolean {
+    return (
+        entry.enabled !== false &&
+        ((entry.type === PickerTargetType.BeatmapData && isPlayStateField(entry.beatmapCondition?.field)) ||
+            (entry.type === PickerTargetType.History &&
+                isPlayStateField(entry.historyCondition?.beatmapCondition?.field)))
+    );
+}
+
+function wishlistUsesPlayState(entry: LazerRollRequest["wishlist"][number]): boolean {
+    return (
+        entry.enabled !== false &&
+        entry.conditions.some(
+            (c) =>
+                (c.type === PickerTargetType.BeatmapData && isPlayStateField(c.beatmapCondition?.field)) ||
+                (c.type === PickerTargetType.History && isPlayStateField(c.historyCondition?.beatmapCondition?.field)),
+        )
+    );
 }
 
 async function fetchLightweightPool(spec: LazerRollRequest["spec"]): Promise<LazerLightweightBeatmap[]> {
@@ -93,42 +121,18 @@ async function fetchCollectionMaps(): Promise<Map<string, Set<string>>> {
     return collectionMaps;
 }
 
-async function fetchScoresByHashes(hashes: string[]): Promise<Map<string, OsuScore[]>> {
+async function fetchLazerScoresByHashes(hashes: string[]): Promise<Map<string, OsuScore[]>> {
     const map = new Map<string, OsuScore[]>();
     const unique = [...new Set(hashes.filter(Boolean))];
     for (let i = 0; i < unique.length; i += SCORE_CHUNK_SIZE) {
         const chunk = unique.slice(i, i + SCORE_CHUNK_SIZE);
 
-        // Stable scores arrive already converted to OsuScore shape.
-        let stable = (await SharedManager.stableReader.query_scores_by_hashes(chunk, undefined, 0, SCORE_PAGE_SIZE)) as
-            | {
-                  error?: unknown;
-                  offset: number;
-                  next_offset: number;
-                  data?: Array<{ md5Hash?: string; scores?: OsuScore[] }>;
-              }
-            | undefined;
-        while (stable && !("error" in stable)) {
-            const data = stable.data ?? [];
-            for (const d of data) {
-                if (!d?.md5Hash || !d.scores || d.scores.length === 0) continue;
-                const arr = map.get(d.md5Hash);
-                if (arr) arr.push(...d.scores);
-                else map.set(d.md5Hash, [...d.scores]);
-            }
-            const next = stable.next_offset;
-            if (next == null || next <= stable.offset || data.length === 0) break;
-            stable = (await SharedManager.stableReader.query_scores_by_hashes(
-                chunk,
-                undefined,
-                next,
-                SCORE_PAGE_SIZE,
-            )) as typeof stable;
-        }
-
         // Lazer scores: the worker returns the minimal OsuScore shape (returnOsuScore).
         const lazer = await SharedManager.lazerReader.query_scores_by_hashes(chunk, undefined, true);
-        for (const s of (lazer.data as LazerConditionScore[]) ?? []) {
+        if (!lazer || !Array.isArray((lazer as { data?: unknown }).data)) {
+            throw new Error("malformed query_scores_by_hashes response");
+        }
+        for (const s of lazer.data as LazerConditionScore[]) {
             if (!s?.md5Hash) continue;
             const arr = map.get(s.md5Hash);
             if (arr) arr.push(s as unknown as OsuScore);
@@ -140,7 +144,11 @@ async function fetchScoresByHashes(hashes: string[]): Promise<Map<string, OsuSco
 
 export async function rollLazerBeatmap(req: LazerRollRequest): Promise<LazerRollResponse> {
     const reader = SharedManager.lazerReader;
-    const needsScores = req.weights.some(weightUsesScore) || req.wishlist.some(wishlistUsesScore);
+    const needsScores =
+        req.weights.some((w) => weightUsesScore(w) || weightUsesPlayState(w)) ||
+        req.wishlist.some((e) => wishlistUsesScore(e) || wishlistUsesPlayState(e)) ||
+        req.playedState !== undefined ||
+        req.lastPlayedRange !== undefined;
     const needsCollections =
         req.weights.some((w) => w.enabled !== false && w.type === COLLECTION) ||
         req.wishlist.some(wishlistUsesCollection);
@@ -149,7 +157,8 @@ export async function rollLazerBeatmap(req: LazerRollRequest): Promise<LazerRoll
         req.wishlist.length > 0 ||
         req.srSubFilter !== undefined ||
         needsScores ||
-        needsCollections;
+        needsCollections ||
+        req.lastPlayedRange !== undefined;
 
     if (!needsPool) {
         const { count } = await reader.count_beatmaps(req.spec);
@@ -175,7 +184,7 @@ export async function rollLazerBeatmap(req: LazerRollRequest): Promise<LazerRoll
         poolCache = entry;
     }
     if (needsScores && !entry.scoresFetched) {
-        entry.scoresByHash = await fetchScoresByHashes(entry.maps.map((m) => m.md5Hash));
+        entry.scoresByHash = await fetchLazerScoresByHashes(entry.maps.map((m) => m.md5Hash));
         entry.scoresFetched = true;
     }
     if (needsCollections && !entry.collectionsFetched) {
@@ -201,6 +210,18 @@ export async function rollLazerBeatmap(req: LazerRollRequest): Promise<LazerRoll
     }
 
     const scoresByHash = entry.scoresByHash;
+    if (req.playedState !== undefined || req.lastPlayedRange !== undefined) {
+        const range = req.lastPlayedRange;
+        maps = maps.filter((m) => {
+            const state = resolvePlayState(
+                { unplayed: m.unplayed, storedLastPlayedMs: lastPlayedMs(m.lastPlayedTime) },
+                summarizeScores(scoresByHash.get(m.md5Hash)),
+            );
+            if (req.playedState === "played" && !state.played) return false;
+            if (req.playedState === "unplayed" && state.played) return false;
+            return !range || lastPlayedInBounds(state.lastPlayedMs, range);
+        });
+    }
     const collectionMaps = entry.collectionMaps;
     const onlineTagsCache = req.onlineTags && req.onlineTags.length > 0 ? new Map(req.onlineTags) : undefined;
 
@@ -264,9 +285,7 @@ export async function rollLazerBeatmap(req: LazerRollRequest): Promise<LazerRoll
                     log.warn(`roll detail fetch failed for ${picked.md5Hash}: ${String(err)}`);
                     return null;
                 });
-            if (detail) {
-                response.picked = lazerBeatmapToOsuBeatmap(detail);
-            }
+            if (detail) response.picked = lazerBeatmapToOsuBeatmap(detail);
         }
         return response;
     }

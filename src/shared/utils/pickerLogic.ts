@@ -24,6 +24,8 @@ import {
     StringCondition,
 } from "../../renderer/components/beatmapPickerTypes";
 import type { OsuBeatmap, OsuScore } from "../../utils/osu";
+import { preparePickerHistoryEntryForSave } from "./pickerHistorySerialization";
+import { lastPlayedMs, NO_SCORES, resolvePlayState, type ScoreSummary, summarizeScores } from "./playState";
 
 export const evalStringCond = (value: string, op: StringCondition, target: string): boolean => {
     const v = (value ?? "").toLowerCase();
@@ -59,18 +61,38 @@ export const evalNumberCond = (value: number, op: NumberCondition, target: numbe
     }
 };
 
-export const evalDateCond = (date: Date, op: string, value: string): boolean => {
-    if (!date) return false;
-    const t = date.getTime();
-    if (Number.isNaN(t)) return false;
-    if (op === DateCondition.Before) return t < new Date(value).getTime();
-    if (op === DateCondition.After) return t > new Date(value).getTime();
-    if (op === DateCondition.Between) {
-        const [from, to] = value.split("~");
-        return t >= new Date(from?.trim() ?? "").getTime() && t <= new Date(`${to?.trim() ?? ""}T23:59:59`).getTime();
+export function pickerDateTimestamp(value: string, endOfDay = false): number {
+    const trimmed = value.trim();
+    const dateOnly = /^\d{4}-\d{2}-\d{2}$/.test(trimmed);
+    const date = new Date(dateOnly ? `${trimmed}T${endOfDay ? "23:59:59.999" : "00:00:00"}` : trimmed);
+    if (dateOnly) {
+        const [year, month, day] = trimmed.split("-").map(Number);
+        if (date.getFullYear() !== year || date.getMonth() + 1 !== month || date.getDate() !== day) return NaN;
     }
-    if (op === DateCondition.WithinSecs) return (Date.now() - t) / 1000 <= (parseInt(value, 10) || 0);
-    return false;
+    return date.getTime();
+}
+
+export function isValidPickerDateCondition(op: string, value: string): boolean {
+    if (op === DateCondition.Before || op === DateCondition.After) return Number.isFinite(pickerDateTimestamp(value));
+    if (op === DateCondition.Between) {
+        const [from = "", to = ""] = value.split("~");
+        const start = pickerDateTimestamp(from);
+        const end = pickerDateTimestamp(to, true);
+        return Number.isFinite(start) && Number.isFinite(end) && start <= end;
+    }
+    return op === DateCondition.WithinSecs && Number.isFinite(Number(value)) && Number(value) > 0;
+}
+
+export const evalDateCond = (date: Date, op: string, value: string, now = Date.now()): boolean => {
+    const t = date?.getTime();
+    if (!Number.isFinite(t) || !isValidPickerDateCondition(op, value)) return false;
+    if (op === DateCondition.Before) return t < pickerDateTimestamp(value);
+    if (op === DateCondition.After) return t > pickerDateTimestamp(value);
+    if (op === DateCondition.Between) {
+        const [from = "", to = ""] = value.split("~");
+        return t >= pickerDateTimestamp(from) && t <= pickerDateTimestamp(to, true);
+    }
+    return op === DateCondition.WithinSecs && t <= now && now - t <= Number(value) * 1000;
 };
 
 export const get_effective_sr = (m: OsuBeatmap, modes: Set<number> | null): number => {
@@ -84,10 +106,15 @@ export const get_effective_sr = (m: OsuBeatmap, modes: Set<number> | null): numb
     return native;
 };
 
+const playStateOf = (m: OsuBeatmap, scores: ScoreSummary) =>
+    resolvePlayState({ unplayed: m.unplayed, storedLastPlayedMs: lastPlayedMs(m.lastPlayedTime) }, scores);
+
 export const matchesBeatmapCond = (
     m: OsuBeatmap,
     cond: IWeightBeatmapCondition,
     onlineTagsCache?: Map<number, string[]>,
+    now = Date.now(),
+    scores: ScoreSummary = NO_SCORES,
 ): boolean => {
     const { field, operator, value } = cond;
     switch (field) {
@@ -101,16 +128,26 @@ export const matchesBeatmapCond = (
             return evalStringCond(m.songTitle ?? "", operator as StringCondition, value);
         case BeatmapDataField.Creator:
             return evalStringCond(m.creatorName, operator as StringCondition, value);
+        case BeatmapDataField.DifficultyName:
+            return evalStringCond(m.difficultyName, operator as StringCondition, value);
         case BeatmapDataField.RankedStatus:
             return evalNumberCond(m.rankedStatus, operator as NumberCondition, parseFloat(value));
         case BeatmapDataField.DrainSeconds:
             return evalNumberCond(m.drainSeconds, operator as NumberCondition, parseFloat(value));
         case BeatmapDataField.Tags:
             return evalStringCond(m.tags, operator as StringCondition, value);
-        case BeatmapDataField.Unplayed:
-            return m.unplayed === (operator === BoolCondition.IsTrue);
-        case BeatmapDataField.LastPlayedTime:
-            return evalDateCond(m.lastPlayedTime, operator, value);
+        case BeatmapDataField.Unplayed: {
+            // Unknown flag with no score evidence matches neither boolean;
+            // positive scores alone resolve the candidate as played.
+            if (typeof m.unplayed !== "boolean" && scores.count <= 0) return false;
+            const unplayed = !playStateOf(m, scores).played;
+            return unplayed === (operator === BoolCondition.IsTrue);
+        }
+        case BeatmapDataField.LastPlayedTime: {
+            const at = playStateOf(m, scores).lastPlayedMs;
+            // Never played has no date to compare, so it matches no date condition.
+            return evalDateCond(new Date(at > 0 ? at : Number.NaN), operator, value, now);
+        }
         case BeatmapDataField.AR:
             return evalNumberCond(m.ar, operator as NumberCondition, parseFloat(value));
         case BeatmapDataField.CS:
@@ -186,21 +223,169 @@ export const matchesScoreCond = (
     }
 };
 
+const HISTORY_BEATMAP_FIELDS: Record<BeatmapDataField, keyof OsuBeatmap> = {
+    [BeatmapDataField.Id]: "beatmapId",
+    [BeatmapDataField.SetId]: "beatmapSetId",
+    [BeatmapDataField.Artist]: "artist",
+    [BeatmapDataField.Title]: "songTitle",
+    [BeatmapDataField.Creator]: "creatorName",
+    [BeatmapDataField.DifficultyName]: "difficultyName",
+    [BeatmapDataField.RankedStatus]: "rankedStatus",
+    [BeatmapDataField.DrainSeconds]: "drainSeconds",
+    [BeatmapDataField.Tags]: "tags",
+    [BeatmapDataField.Unplayed]: "unplayed",
+    [BeatmapDataField.LastPlayedTime]: "lastPlayedTime",
+    [BeatmapDataField.AR]: "ar",
+    [BeatmapDataField.CS]: "cs",
+    [BeatmapDataField.HP]: "hp",
+    [BeatmapDataField.OD]: "od",
+    [BeatmapDataField.Stack]: "stackLeniency",
+    [BeatmapDataField.SV]: "sliderMultiplier",
+    [BeatmapDataField.PlayerTags]: "beatmapId",
+};
+
+export const CANDIDATE_SAME_OPERATOR = "same_as_candidate";
+
+export const CANDIDATE_COMPARABLE_FIELDS: ReadonlySet<BeatmapDataField> = new Set([
+    BeatmapDataField.SetId,
+    BeatmapDataField.Artist,
+    BeatmapDataField.Title,
+    BeatmapDataField.Creator,
+    BeatmapDataField.DifficultyName,
+    BeatmapDataField.Tags,
+]);
+
+export const isCandidateComparableField = (field: BeatmapDataField): boolean => CANDIDATE_COMPARABLE_FIELDS.has(field);
+
+export function createPickerHistoryEntry(map: OsuBeatmap, pickedAt: number, playerTags?: string[]): IPickerHistory {
+    const lastPlayed = map.lastPlayedTime ? new Date(map.lastPlayedTime) : undefined;
+    return preparePickerHistoryEntryForSave({
+        beatmapId: map.beatmapId,
+        md5Hash: map.md5Hash,
+        title: `${map.artist} - ${map.songTitle} [${map.difficultyName}]`,
+        artist: map.artist,
+        songTitle: map.songTitle,
+        difficultyName: map.difficultyName,
+        creatorName: map.creatorName,
+        pickedAt,
+        beatmapData: {
+            ...(map._onlineOnly
+                ? { beatmapSetId: map.beatmapSetId, rankedStatus: map.rankedStatus }
+                : {
+                      ...map,
+                      lastPlayedTime:
+                          lastPlayed && Number.isFinite(lastPlayed.getTime()) ? lastPlayed.toISOString() : undefined,
+                  }),
+            playerTags: playerTags ? [...playerTags] : undefined,
+        },
+    });
+}
+
+function historyEntryData(entry: IPickerHistory): Record<string, unknown> {
+    const legacy = entry.title.match(/^(.+) - (.+) \[(.+)\]$/);
+    const snapshot = entry.beatmapData;
+    return {
+        ...snapshot,
+        beatmapId: entry.beatmapId,
+        artist: snapshot?.artist ?? entry.artist ?? legacy?.[1],
+        songTitle: snapshot?.songTitle ?? entry.songTitle ?? legacy?.[2],
+        difficultyName: snapshot?.difficultyName ?? entry.difficultyName ?? legacy?.[3],
+        creatorName: snapshot?.creatorName ?? entry.creatorName,
+        lastPlayedTime: snapshot?.lastPlayedTime ? new Date(snapshot.lastPlayedTime) : undefined,
+    };
+}
+
+function comparableFieldValue(field: BeatmapDataField, raw: unknown): string | undefined {
+    if (field === BeatmapDataField.SetId || field === BeatmapDataField.Id) {
+        const id = Number(raw);
+        return Number.isInteger(id) && id > 0 ? String(id) : undefined;
+    }
+    if (typeof raw !== "string") return undefined;
+    const text = raw.trim().toLowerCase();
+    return text.length > 0 ? text : undefined;
+}
+
+function historyComparableValue(entry: IPickerHistory, field: BeatmapDataField): string | undefined {
+    const key = HISTORY_BEATMAP_FIELDS[field];
+    return key ? comparableFieldValue(field, historyEntryData(entry)[key as string]) : undefined;
+}
+
+function candidateComparableValue(map: OsuBeatmap, field: BeatmapDataField): string | undefined {
+    const key = HISTORY_BEATMAP_FIELDS[field];
+    return key ? comparableFieldValue(field, (map as unknown as Record<string, unknown>)[key as string]) : undefined;
+}
+
+export function createHistoryMatcher(
+    history: IPickerHistory[],
+    cond: IWeightHistoryCondition,
+    onlineTagsCache?: Map<number, string[]>,
+    now = Date.now(),
+    scoresByHash?: ReadonlyMap<string, OsuScore[]>,
+): (map: OsuBeatmap) => boolean {
+    const { operator, value, timeCondition, beatmapCondition } = cond;
+    if (!Object.values(HistoryCondition).includes(operator)) return () => false;
+    if (timeCondition && !isValidPickerDateCondition(timeCondition.operator, timeCondition.value)) return () => false;
+    const limited = operator === HistoryCondition.WithinLast || operator === HistoryCondition.NotWithinLast;
+    const records = limited ? history.slice(-Math.max(1, parseInt(value, 10) || 1)) : history;
+    const negative = operator === HistoryCondition.NotAppeared || operator === HistoryCondition.NotWithinLast;
+
+    if (beatmapCondition?.operator === CANDIDATE_SAME_OPERATOR) {
+        const field = beatmapCondition.field;
+        if (!CANDIDATE_COMPARABLE_FIELDS.has(field)) return () => false;
+        const values = new Set<string>();
+        for (const entry of records) {
+            if (
+                timeCondition &&
+                !evalDateCond(new Date(entry.pickedAt), timeCondition.operator, timeCondition.value, now)
+            )
+                continue;
+            const comparable = historyComparableValue(entry, field);
+            if (comparable !== undefined) values.add(comparable);
+        }
+        return (map) => {
+            const comparable = candidateComparableValue(map, field);
+            const appeared = comparable !== undefined && values.has(comparable);
+            return negative ? !appeared : appeared;
+        };
+    }
+
+    const ids = new Set<number>();
+    const hashes = new Set<string>();
+    const localHashes = new Set<string>();
+    for (const entry of records) {
+        if (timeCondition && !evalDateCond(new Date(entry.pickedAt), timeCondition.operator, timeCondition.value, now))
+            continue;
+        const hash = entry.md5Hash?.trim().toLowerCase();
+        if (entry.beatmapId > 0) ids.add(entry.beatmapId);
+        else if (hash) localHashes.add(hash);
+        if (hash) hashes.add(hash);
+    }
+    const childUsesPlayState =
+        beatmapCondition !== undefined &&
+        (beatmapCondition.field === BeatmapDataField.Unplayed ||
+            beatmapCondition.field === BeatmapDataField.LastPlayedTime);
+    return (map) => {
+        const hash = map.md5Hash?.trim().toLowerCase() ?? "";
+        const appeared = map.beatmapId > 0 ? ids.has(map.beatmapId) || localHashes.has(hash) : hashes.has(hash);
+        if (negative ? appeared : !appeared) return false;
+        if (!beatmapCondition) return true;
+        return matchesBeatmapCond(
+            map,
+            beatmapCondition,
+            onlineTagsCache,
+            now,
+            childUsesPlayState ? summarizeScores(scoresByHash?.get(map.md5Hash)) : NO_SCORES,
+        );
+    };
+}
+
 export const matchesHistoryCond = (
     m: OsuBeatmap,
     history: IPickerHistory[],
     cond: IWeightHistoryCondition,
-): boolean => {
-    const { operator, value } = cond;
-    if (operator === HistoryCondition.Appeared) return history.some((h) => h.beatmapId === m.beatmapId);
-    if (operator === HistoryCondition.NotAppeared) return !history.some((h) => h.beatmapId === m.beatmapId);
-    const n = Math.max(1, parseInt(value, 10) || 1);
-    const recent = history.slice(-n);
-    const appeared = recent.some((h) => h.beatmapId === m.beatmapId);
-    if (operator === HistoryCondition.WithinLast) return appeared;
-    if (operator === HistoryCondition.NotWithinLast) return !appeared;
-    return false;
-};
+    onlineTagsCache?: Map<number, string[]>,
+    scoresByHash?: ReadonlyMap<string, OsuScore[]>,
+): boolean => createHistoryMatcher(history, cond, onlineTagsCache, Date.now(), scoresByHash)(m);
 
 export const buildWeightedPool = (
     maps: OsuBeatmap[],
@@ -209,7 +394,17 @@ export const buildWeightedPool = (
     scoresByHash: Map<string, OsuScore[]>,
     history: IPickerHistory[],
     onlineTagsCache?: Map<number, string[]>,
+    now = Date.now(),
 ): { map: OsuBeatmap; weight: number }[] => {
+    const historyMatchers = new Map<IWeightHistoryCondition, (map: OsuBeatmap) => boolean>();
+    for (const entry of advanced.weights) {
+        if (entry.enabled !== false && entry.type === PickerTargetType.History && entry.historyCondition) {
+            historyMatchers.set(
+                entry.historyCondition,
+                createHistoryMatcher(history, entry.historyCondition, onlineTagsCache, now, scoresByHash),
+            );
+        }
+    }
     return maps.map((m) => {
         let weight = 1;
         for (const entry of advanced.weights) {
@@ -223,11 +418,17 @@ export const buildWeightedPool = (
                 const hashes = collectionMaps.get(entry.id);
                 match = !!hashes?.has(m.md5Hash);
             } else if (entry.type === PickerTargetType.BeatmapData && entry.beatmapCondition) {
-                match = matchesBeatmapCond(m, entry.beatmapCondition, onlineTagsCache);
+                match = matchesBeatmapCond(
+                    m,
+                    entry.beatmapCondition,
+                    onlineTagsCache,
+                    now,
+                    summarizeScores(scoresByHash.get(m.md5Hash)),
+                );
             } else if (entry.type === PickerTargetType.ScoreRecord && entry.scoreCondition) {
                 match = matchesScoreCond(m, scoresByHash, entry.scoreCondition);
             } else if (entry.type === PickerTargetType.History && entry.historyCondition) {
-                match = matchesHistoryCond(m, history, entry.historyCondition);
+                match = historyMatchers.get(entry.historyCondition)?.(m) ?? false;
             }
             if (match) weight *= entry.weight;
         }
@@ -271,8 +472,21 @@ export const checkWishlist = (
     collectionMaps: Map<string, Set<string>>,
     history: IPickerHistory[],
     onlineTagsCache?: Map<number, string[]>,
+    now = Date.now(),
 ): OsuBeatmap[] => {
     if (advanced.wishlist.length === 0) return [];
+    const historyMatchers = new Map<IWeightHistoryCondition, (map: OsuBeatmap) => boolean>();
+    for (const entry of advanced.wishlist) {
+        if (entry.enabled === false) continue;
+        for (const cond of entry.conditions) {
+            if (cond.type === PickerTargetType.History && cond.historyCondition) {
+                historyMatchers.set(
+                    cond.historyCondition,
+                    createHistoryMatcher(history, cond.historyCondition, onlineTagsCache, now, scoresByHash),
+                );
+            }
+        }
+    }
 
     const matchesCondItem = (m: OsuBeatmap, cond: (typeof advanced.wishlist)[0]["conditions"][0]): boolean => {
         if (cond.type === PickerTargetType.Map) return String(m.beatmapId) === cond.id;
@@ -282,13 +496,19 @@ export const checkWishlist = (
             return !!hashes?.has(m.md5Hash);
         }
         if (cond.type === PickerTargetType.BeatmapData && cond.beatmapCondition) {
-            return matchesBeatmapCond(m, cond.beatmapCondition, onlineTagsCache);
+            return matchesBeatmapCond(
+                m,
+                cond.beatmapCondition,
+                onlineTagsCache,
+                now,
+                summarizeScores(scoresByHash.get(m.md5Hash)),
+            );
         }
         if (cond.type === PickerTargetType.ScoreRecord && cond.scoreCondition) {
             return matchesScoreCond(m, scoresByHash, cond.scoreCondition);
         }
         if (cond.type === PickerTargetType.History && cond.historyCondition) {
-            return matchesHistoryCond(m, history, cond.historyCondition);
+            return historyMatchers.get(cond.historyCondition)?.(m) ?? false;
         }
         return false;
     };

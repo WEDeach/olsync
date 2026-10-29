@@ -198,6 +198,10 @@ export function register() {
         return SharedManager.onlineDbReader.get_beatmaps_by_tag(tagName);
     });
 
+    ipcMain.handle(IPC_OD_NAMES.GET_BEATMAPSETS_BY_APPROVED_DATE, (_, since?: number, until?: number) => {
+        return SharedManager.onlineDbReader.get_beatmapset_ids_by_approved_date(since, until);
+    });
+
     ipcMain.handle(IPC_OD_NAMES.GET_ALL_BEATMAPS, (_, offset: number = 0, limit: number = 500) => {
         return SharedManager.onlineDbReader.get_all_beatmaps(offset, limit);
     });

@@ -1,14 +1,33 @@
 import type { RespUserMostPlayedBeatmap } from "../../api/v2/types/api_resp";
 import { RankedStatus } from "../../api/v2/types/api_resp";
 import { StableLocalBeatmapStatus } from "../../defines/stable_structs";
-import { FilterType, SubFilterType, TFilterSetting } from "../../renderer/components/beatmapFilter";
+import {
+    FilterType,
+    isBeatmapFilterActive,
+    numericConditionRange,
+    SubFilterType,
+    TFilterSetting,
+} from "../../renderer/components/beatmapFilter";
 import { OsuBeatmap } from "../../utils/osu";
+import {
+    DateBounds,
+    dateRangeBounds,
+    inNumericRange,
+    lastPlayedInBounds,
+    MATCH_NOTHING_BOUNDS,
+} from "./beatmapFilterRules";
+import { lastPlayedMs, NO_SCORES, resolvePlayState, type ScoreSummary } from "./playState";
 
 export interface BeatmapFilterAccessor {
     beatmapId: number;
     md5Hash: string;
     songTitle: string;
     songTitleUnicode: string;
+    beatmapSetId: number;
+    artist: string;
+    artistUnicode: string;
+    creatorName: string;
+    difficultyName: string;
     rankedStatus: number;
     mode: number;
     srStd: number;
@@ -18,12 +37,26 @@ export interface BeatmapFilterAccessor {
     _onlineOnly: boolean;
     playCount: number;
     languageId: number;
+    ar: number;
+    cs: number;
+    hp: number;
+    od: number;
+    sliderMultiplier: number;
+    stackLeniency: number;
+    numCircles: number;
+    numSliders: number;
+    numSpinners: number;
+    drainSeconds: number;
+    source: string;
+    played: boolean;
+    lastPlayedMs: number;
 }
 
 export interface BeatmapFilterOptions {
     playerTagBeatmapIds: Set<number> | null;
     includedHashes: Set<string> | null;
     excludedHashes: Set<string> | null;
+    approvedSetIds: Set<number> | null;
     subFilter: Partial<Record<FilterType, SubFilterType>>;
 }
 
@@ -37,12 +70,22 @@ const RANKED_STATUS_TO_LOCAL: Record<string, number> = {
     [RankedStatus.Loved]: StableLocalBeatmapStatus.Loved,
 };
 
-export function create_osu_beatmap_accessor(m: OsuBeatmap): BeatmapFilterAccessor {
+export function create_osu_beatmap_accessor(m: OsuBeatmap, scores: ScoreSummary = NO_SCORES): BeatmapFilterAccessor {
+    const countsKnown = m.objectCountsAvailable !== false;
+    const state = resolvePlayState(
+        { unplayed: m.unplayed, storedLastPlayedMs: lastPlayedMs(m.lastPlayedTime) },
+        scores,
+    );
     return {
         beatmapId: m.beatmapId,
         md5Hash: m.md5Hash,
         songTitle: m.songTitle ?? "",
         songTitleUnicode: m.songTitleUnicode ?? "",
+        beatmapSetId: m.beatmapSetId,
+        artist: m.artist ?? "",
+        artistUnicode: m.artistUnicode ?? "",
+        creatorName: m.creatorName ?? "",
+        difficultyName: m.difficultyName ?? "",
         rankedStatus: m.rankedStatus,
         mode: m.mode,
         srStd: m.srStd,
@@ -52,6 +95,19 @@ export function create_osu_beatmap_accessor(m: OsuBeatmap): BeatmapFilterAccesso
         _onlineOnly: m._onlineOnly ?? false,
         playCount: 0,
         languageId: -1,
+        ar: m.ar,
+        cs: m.cs,
+        hp: m.hp,
+        od: m.od,
+        sliderMultiplier: m.sliderMultiplier,
+        stackLeniency: m.stackLeniency,
+        numCircles: countsKnown ? m.numCircles : Number.NaN,
+        numSliders: countsKnown ? m.numSliders : Number.NaN,
+        numSpinners: countsKnown ? m.numSpinners : Number.NaN,
+        drainSeconds: m.drainSeconds,
+        source: m.source ?? "",
+        played: state.played,
+        lastPlayedMs: state.lastPlayedMs,
     };
 }
 
@@ -66,6 +122,11 @@ export function create_api_beatmap_accessor(m: RespUserMostPlayedBeatmap): Beatm
         md5Hash: "",
         songTitle: m.beatmapset.title ?? "",
         songTitleUnicode: m.beatmapset.title_unicode ?? "",
+        beatmapSetId: m.beatmap.beatmapset_id,
+        artist: m.beatmapset.artist ?? "",
+        artistUnicode: m.beatmapset.artist_unicode ?? "",
+        creatorName: m.beatmapset.creator ?? "",
+        difficultyName: m.beatmap.version ?? "",
         rankedStatus,
         mode,
         srStd: dr,
@@ -75,6 +136,19 @@ export function create_api_beatmap_accessor(m: RespUserMostPlayedBeatmap): Beatm
         _onlineOnly: true,
         playCount: m.count,
         languageId: m.beatmapset.language_id,
+        ar: Number.NaN,
+        cs: Number.NaN,
+        hp: Number.NaN,
+        od: Number.NaN,
+        sliderMultiplier: Number.NaN,
+        stackLeniency: Number.NaN,
+        numCircles: Number.NaN,
+        numSliders: Number.NaN,
+        numSpinners: Number.NaN,
+        drainSeconds: Number.NaN,
+        source: m.beatmapset.source ?? "",
+        played: m.count > 0,
+        lastPlayedMs: 0,
     };
 }
 
@@ -89,8 +163,37 @@ function get_effective_sr(a: BeatmapFilterAccessor, modes: Set<number> | null): 
     return native;
 }
 
+function text_query(value: unknown): string {
+    return typeof value === "string" ? value.trim().toLowerCase() : "";
+}
+
 function is_all_or_includes(values: any[], target: number): boolean {
     return values.includes("all") || values.includes(target);
+}
+
+const NUMERIC_READERS: [FilterType, (a: BeatmapFilterAccessor) => number][] = [
+    [FilterType.ApproachRate, (a) => a.ar],
+    [FilterType.CircleSize, (a) => a.cs],
+    [FilterType.HpDrain, (a) => a.hp],
+    [FilterType.OverallDifficulty, (a) => a.od],
+    [FilterType.SliderVelocity, (a) => a.sliderMultiplier],
+    [FilterType.StackLeniency, (a) => a.stackLeniency],
+    [FilterType.CircleCount, (a) => a.numCircles],
+    [FilterType.SliderCount, (a) => a.numSliders],
+    [FilterType.SpinnerCount, (a) => a.numSpinners],
+    [FilterType.DrainTime, (a) => a.drainSeconds],
+];
+
+const lastPlayedBoundsCache = new WeakMap<object, DateBounds>();
+
+export function lastPlayedBoundsOf(raw: unknown): DateBounds | undefined {
+    if (!Array.isArray(raw) || !isBeatmapFilterActive(FilterType.LastPlayed, raw)) return undefined;
+    let bounds = lastPlayedBoundsCache.get(raw);
+    if (!bounds) {
+        bounds = dateRangeBounds(raw[0] ?? "", raw[1] ?? "") ?? MATCH_NOTHING_BOUNDS;
+        lastPlayedBoundsCache.set(raw, bounds);
+    }
+    return bounds;
 }
 
 export function apply_beatmap_filter(
@@ -106,6 +209,24 @@ export function apply_beatmap_filter(
         const titleU = a.songTitleUnicode.toLowerCase();
         if (!title.includes(titleQ) && !titleU.includes(titleQ)) return false;
     }
+
+    const artistQ = text_query(filter[FilterType.Artist]);
+    if (artistQ) {
+        const artist = a.artist.toLowerCase();
+        const artistU = a.artistUnicode.toLowerCase();
+        if (!artist.includes(artistQ) && !artistU.includes(artistQ)) return false;
+    }
+
+    const creatorQ = text_query(filter[FilterType.Creator]);
+    if (creatorQ && !a.creatorName.toLowerCase().includes(creatorQ)) return false;
+
+    const difficultyQ = text_query(filter[FilterType.DifficultyName]);
+    if (difficultyQ && !a.difficultyName.toLowerCase().includes(difficultyQ)) return false;
+
+    const sourceQ = text_query(filter[FilterType.Source]);
+    if (sourceQ && !a.source.toLowerCase().includes(sourceQ)) return false;
+
+    if (opts.approvedSetIds && !opts.approvedSetIds.has(a.beatmapSetId)) return false;
 
     const rankLocalRaw = filter[FilterType.RankStateLocal];
     const rankOnlineRaw = filter[FilterType.RankState];
@@ -153,6 +274,11 @@ export function apply_beatmap_filter(
         }
     }
 
+    for (const [type, read] of NUMERIC_READERS) {
+        const range = numericConditionRange(type, filter[type], opts.subFilter[type]);
+        if (range && !inNumericRange(read(a), range)) return false;
+    }
+
     if (filter[FilterType.PlayCount] != null) {
         const pc = Number(filter[FilterType.PlayCount]) || 0;
         const pcfs = opts.subFilter[FilterType.PlayCount] ?? SubFilterType.Greater;
@@ -165,6 +291,13 @@ export function apply_beatmap_filter(
         )
             return false;
     }
+
+    const playedState = filter[FilterType.PlayedState];
+    if (playedState === "unplayed" && a.played) return false;
+    if (playedState === "played" && !a.played) return false;
+
+    const playedBounds = lastPlayedBoundsOf(filter[FilterType.LastPlayed]);
+    if (playedBounds && !lastPlayedInBounds(a.lastPlayedMs, playedBounds)) return false;
 
     if (filter[FilterType.Language] != null) {
         const las = filter[FilterType.Language] as Array<number | "all">;

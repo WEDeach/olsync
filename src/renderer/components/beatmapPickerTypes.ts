@@ -1,3 +1,5 @@
+import type { OsuBeatmap } from "../../utils/osu";
+
 export enum PickerTargetType {
     Map = "map",
     Set = "set",
@@ -47,6 +49,7 @@ export enum BeatmapDataField {
     Artist = "artist",
     Title = "title",
     Creator = "creator",
+    DifficultyName = "difficulty_name",
     RankedStatus = "ranked_status",
     DrainSeconds = "drain_seconds",
     Tags = "tags",
@@ -77,6 +80,8 @@ export enum ScoreRecordField {
 export interface IWeightHistoryCondition {
     operator: HistoryCondition;
     value: string;
+    timeCondition?: { operator: DateCondition; value: string };
+    beatmapCondition?: IWeightBeatmapCondition;
 }
 
 export interface IWeightBeatmapCondition {
@@ -136,6 +141,7 @@ export interface IPickerHistory {
     difficultyName?: string;
     creatorName?: string;
     pickedAt: number;
+    beatmapData?: Partial<Omit<OsuBeatmap, "lastPlayedTime">> & { lastPlayedTime?: string; playerTags?: string[] };
 }
 
 export interface IPickerProfile {

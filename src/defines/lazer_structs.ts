@@ -126,24 +126,28 @@ export interface LazerScore {
     Pauses: number[];
 }
 
-/**
- * Filter spec for Realm-based lazer beatmap queries (lazer.process.ts).
- * `ar`/`cs`/`hp`/`od` use `{ op, val }` comparison objects.
- */
+export interface LazerNumericRange {
+    min?: number;
+    max?: number;
+}
+
 export interface LazerBeatmapQuerySpec {
     title?: string;
     artist?: string;
     creator?: string;
+    difficultyName?: string;
     srMin?: number;
     srMax?: number;
     drainMin?: number;
     drainMax?: number;
     modes?: number[];
     rankStatuses?: number[];
-    ar?: { op: ">" | ">=" | "<" | "<=" | "=="; val: number };
-    cs?: { op: ">" | ">=" | "<" | "<=" | "=="; val: number };
-    hp?: { op: ">" | ">=" | "<" | "<=" | "=="; val: number };
-    od?: { op: ">" | ">=" | "<" | "<=" | "=="; val: number };
+    ar?: LazerNumericRange;
+    cs?: LazerNumericRange;
+    hp?: LazerNumericRange;
+    od?: LazerNumericRange;
+    sv?: LazerNumericRange;
+    source?: string;
     unplayed?: boolean;
     includedHashes?: string[];
     excludedHashes?: string[];
@@ -152,6 +156,7 @@ export interface LazerBeatmapQuerySpec {
     includedCollectionNames?: string[];
     excludedCollectionNames?: string[];
     playerTagBeatmapIds?: number[];
+    rankedDates?: { since?: number; until?: number };
     returnSetIds?: boolean;
     returnLightweight?: boolean;
 }
@@ -175,6 +180,7 @@ export interface LazerLightweightBeatmap {
     artist: string;
     creatorName: string;
     tags: string;
+    source: string;
     ar: number;
     cs: number;
     hp: number;

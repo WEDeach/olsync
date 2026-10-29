@@ -308,6 +308,8 @@ contextBridge.exposeInMainWorld("olsCore", {
     getBeatmapOnlineTags: (beatmapId: number) => ipcInvoke(IPC_OD_NAMES.GET_BEATMAP_TAGS, beatmapId),
     getAllBeatmapOnlineTags: () => ipcInvoke(IPC_OD_NAMES.GET_ALL_BEATMAP_TAGS),
     getBeatmapsByOnlineTag: (tagName: string) => ipcInvoke(IPC_OD_NAMES.GET_BEATMAPS_BY_TAG, tagName),
+    getBeatmapSetIdsByApprovedDate: (since?: number, until?: number) =>
+        ipcInvoke(IPC_OD_NAMES.GET_BEATMAPSETS_BY_APPROVED_DATE, since, until),
     getAllOnlineBeatmaps: (offset = 0, limit = 500) => ipcInvoke(IPC_OD_NAMES.GET_ALL_BEATMAPS, offset, limit),
 
     // Protocol (osu:// deep link)

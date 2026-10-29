@@ -1,4 +1,5 @@
 import type { IPickerHistory, IWeightEntry, IWishlistEntry } from "../renderer/components/beatmapPickerTypes";
+import type { DateBounds } from "../shared/utils/beatmapFilterRules";
 import type { OsuBeatmap } from "../utils/osu";
 import type { LazerBeatmapQuerySpec, LazerLightweightBeatmap } from "./lazer_structs";
 
@@ -15,6 +16,8 @@ export interface LazerRollRequest {
     onlineTags?: Array<[number, string[]]>;
     /** Star rating sub-filter (Greater/Equal/Less) requires pool-side evaluation. */
     srSubFilter?: { op: "greater" | "equal" | "less"; target: number };
+    lastPlayedRange?: DateBounds;
+    playedState?: "played" | "unplayed";
     mode: "count" | "preview" | "roll";
     previewLimit?: number;
 }

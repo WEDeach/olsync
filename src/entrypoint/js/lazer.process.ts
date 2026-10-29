@@ -2,6 +2,7 @@ import * as crypto from "crypto";
 import * as fs from "fs";
 import * as path from "path";
 import Realm from "realm";
+import { buildLazerBeatmapQuery, finiteNumber, q, stringList } from "../../shared/utils/lazerBeatmapQuery";
 import { OsuFileObjectCounts, parseOsuObjectCounts } from "../../shared/utils/lazerObjectCounts";
 import { computeLazerSetHash, LazerHashableFile } from "../../shared/utils/lazerSetHash";
 import { parseLazerStatistics } from "../../shared/utils/lazerStats";
@@ -19,32 +20,6 @@ let _realm: Realm | undefined;
 /** Realm file path captured at init; the detail path derives lazer storage from it. */
 let _realmPath: string | undefined;
 
-function q(value: unknown): string {
-    return `"${String(value).replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
-}
-
-function finiteNumber(value: unknown): number | undefined {
-    const n = Number(value);
-    return Number.isFinite(n) ? n : undefined;
-}
-
-function numberList(values: unknown): number[] {
-    if (!Array.isArray(values)) return [];
-    return values.map((v) => finiteNumber(v)).filter((v): v is number => v !== undefined);
-}
-
-function stringList(values: unknown): string[] {
-    if (!Array.isArray(values)) return [];
-    return values.filter((v): v is string => typeof v === "string" && v.length > 0);
-}
-
-function cmp(field: string, cond: unknown): string | undefined {
-    const c = cond as { op?: unknown; val?: unknown };
-    const op = typeof c?.op === "string" && [">", ">=", "<", "<=", "=="].includes(c.op) ? c.op : undefined;
-    const val = finiteNumber(c?.val);
-    return op && val !== undefined ? `${field} ${op} ${val}` : undefined;
-}
-
 function collectionHashesForNames(names: string[]): string[] {
     const hashes = new Set<string>();
     for (const name of names) {
@@ -56,76 +31,6 @@ function collectionHashesForNames(names: string[]): string[] {
         }
     }
     return Array.from(hashes);
-}
-
-/** Builds the Realm query string for a LazerBeatmapQuerySpec. */
-function buildLazerBeatmapQuery(spec: Record<string, unknown>): string {
-    const parts: string[] = ["Hidden == false"];
-    if (spec.title) parts.push(`Metadata.Title CONTAINS[c] ${q(spec.title)}`);
-    if (spec.artist) parts.push(`Metadata.Artist CONTAINS[c] ${q(spec.artist)}`);
-    if (spec.creator) parts.push(`Metadata.Author.Username CONTAINS[c] ${q(spec.creator)}`);
-    const srMin = finiteNumber(spec.srMin ?? spec.starRatingMin);
-    const srMax = finiteNumber(spec.srMax ?? spec.starRatingMax);
-    const drainMin = finiteNumber(spec.drainMin);
-    const drainMax = finiteNumber(spec.drainMax);
-    if (srMin !== undefined) parts.push(`StarRating >= ${srMin}`);
-    if (srMax !== undefined) parts.push(`StarRating <= ${srMax}`);
-    if (drainMin !== undefined) parts.push(`Length >= ${drainMin}`);
-    if (drainMax !== undefined) parts.push(`Length <= ${drainMax}`);
-    const modes = numberList(spec.modes);
-    if (modes.length > 0) {
-        const modeList = modes.join(",");
-        parts.push(`Ruleset.OnlineID IN {${modeList}}`);
-    }
-    const rankStatuses = numberList(spec.rankStatuses);
-    if (rankStatuses.length > 0) parts.push(`Status IN {${rankStatuses.join(",")}}`);
-    const ar = cmp("Difficulty.ApproachRate", spec.ar);
-    const cs = cmp("Difficulty.CircleSize", spec.cs);
-    const hp = cmp("Difficulty.DrainRate", spec.hp);
-    const od = cmp("Difficulty.OverallDifficulty", spec.od);
-    if (ar) parts.push(ar);
-    if (cs) parts.push(cs);
-    if (hp) parts.push(hp);
-    if (od) parts.push(od);
-    if (spec.unplayed === true) parts.push("LastPlayed == nil");
-    if (spec.unplayed === false) parts.push("LastPlayed != nil");
-    const includedHashes = stringList(spec.includedHashes);
-    if (includedHashes.length > 0) {
-        const hashList = includedHashes.map(q).join(",");
-        parts.push(`MD5Hash IN {${hashList}}`);
-    }
-    const excludedHashes = stringList(spec.excludeHashes ?? spec.excludedHashes);
-    if (excludedHashes.length > 0) {
-        const hashList = excludedHashes.map(q).join(",");
-        parts.push(`NOT (MD5Hash IN {${hashList}})`);
-    }
-    const setIds = numberList(spec.beatmapSetIds);
-    if (setIds.length > 0) {
-        const setList = setIds.join(",");
-        parts.push(`BeatmapSet.OnlineID IN {${setList}}`);
-    }
-    const beatmapIds = numberList(spec.beatmapIds);
-    if (beatmapIds.length > 0) {
-        const idList = beatmapIds.join(",");
-        parts.push(`OnlineID IN {${idList}}`);
-    }
-    const playerTagBeatmapIds = numberList(spec.playerTagBeatmapIds);
-    if (playerTagBeatmapIds.length > 0) {
-        const idList = playerTagBeatmapIds.join(",");
-        parts.push(`OnlineID IN {${idList}}`);
-    }
-    const includedCollectionNames = stringList(spec.includedCollectionNames);
-    if (includedCollectionNames.length > 0) {
-        const hashList = collectionHashesForNames(includedCollectionNames).map(q);
-        if (hashList.length > 0) parts.push(`MD5Hash IN {${hashList.join(",")}}`);
-        else parts.push("OnlineID == -1"); // requested collection has no maps → match nothing
-    }
-    const excludedCollectionNames = stringList(spec.excludedCollectionNames);
-    if (excludedCollectionNames.length > 0) {
-        const hashList = collectionHashesForNames(excludedCollectionNames).map(q);
-        if (hashList.length > 0) parts.push(`NOT (MD5Hash IN {${hashList.join(",")}})`);
-    }
-    return parts.join(" AND ");
 }
 
 type RosuModule = typeof import("rosu-pp-js");
@@ -534,9 +439,9 @@ async function handle(msg: any): Promise<unknown> {
             }
             const _t0 = Date.now();
             const spec = msg.spec as any;
-            const queryStr = buildLazerBeatmapQuery(spec);
-            log.debug(`query_beatmaps: ${queryStr}`);
-            const beatmaps = _realm.objects("Beatmap").filtered(queryStr);
+            const { query, params } = buildLazerBeatmapQuery(spec, collectionHashesForNames);
+            log.debug(`query_beatmaps: ${query}`);
+            const beatmaps = _realm.objects("Beatmap").filtered(query, ...params);
 
             if (spec.returnSetIds) {
                 const ids = new Set<number>();
@@ -563,7 +468,7 @@ async function handle(msg: any): Promise<unknown> {
                         md5Hash: b.MD5Hash ?? b.Hash ?? b.OnlineMD5Hash ?? "",
                         difficultyName: b.DifficultyName ?? "",
                         rankedStatus: b.Status ?? 0,
-                        drainSeconds: b.Length ?? 0,
+                        drainSeconds: (b.Length ?? 0) / 1000,
                         starRating: b.StarRating ?? 0,
                         lastPlayed: b.LastPlayed ? new Date(b.LastPlayed).toISOString() : undefined,
                         unplayed: !b.LastPlayed,
@@ -572,6 +477,7 @@ async function handle(msg: any): Promise<unknown> {
                         artist: m?.Artist ?? "",
                         creatorName: m?.Author?.Username ?? "",
                         tags: m?.Tags ?? "",
+                        source: m?.Source ?? "",
                         ar: d?.ApproachRate ?? 0,
                         cs: d?.CircleSize ?? 0,
                         hp: d?.DrainRate ?? 0,
@@ -642,9 +548,9 @@ async function handle(msg: any): Promise<unknown> {
             }
             const _t0 = Date.now();
             const spec = msg.spec as any;
-            const queryStr = buildLazerBeatmapQuery(spec);
-            const count = _realm.objects("Beatmap").filtered(queryStr).length;
-            log.debug(`count_beatmaps: ${queryStr} count=${count} ${Date.now() - _t0}ms`);
+            const { query, params } = buildLazerBeatmapQuery(spec, collectionHashesForNames);
+            const count = _realm.objects("Beatmap").filtered(query, ...params).length;
+            log.debug(`count_beatmaps: ${query} count=${count} ${Date.now() - _t0}ms`);
             return { count };
         }
 

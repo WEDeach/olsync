@@ -6,6 +6,7 @@ import { LazerBeatmapDetailRequest } from "../../../defines/lazer_structs";
 import { PPCalcArgs, StableBeatmapFilter } from "../../../defines/stable_structs";
 import { IOsuCollection, OsuClients } from "../../../defines/types";
 import SharedManager from "../../../shared/sharedManager";
+import { invalidateLazerRollPool } from "../../../shared/singletons/lazerPickerRoll";
 import { fDevMode } from "../../../utils/common";
 import { createLogger } from "../../../utils/logger";
 import { ConfigKey } from "../../../utils/typed/config";
@@ -220,6 +221,7 @@ export function register() {
         const win = () => BrowserWindow.getAllWindows()[0]?.webContents;
         await SharedManager.lazerReader.startWatch((type) => {
             if (type === "scores_changed") {
+                invalidateLazerRollPool();
                 win()?.send(IPC_RD_NAMES.LAZER_SCORES_CHANGED);
             }
         });

@@ -181,6 +181,7 @@ export enum IPC_OD_NAMES {
     GET_BEATMAP_TAGS = "ipc:od:get_beatmap_tags",
     GET_ALL_BEATMAP_TAGS = "ipc:od:get_all_beatmap_tags",
     GET_BEATMAPS_BY_TAG = "ipc:od:get_beatmaps_by_tag",
+    GET_BEATMAPSETS_BY_APPROVED_DATE = "ipc:od:get_beatmapsets_by_approved_date",
     GET_STATUS = "ipc:od:get_status",
     GET_ALL_BEATMAPS = "ipc:od:get_all_beatmaps",
 }
