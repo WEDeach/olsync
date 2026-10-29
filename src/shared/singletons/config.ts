@@ -6,6 +6,7 @@ import { createLogger } from "../../utils/logger";
 import { sanitizeProfileId } from "../../utils/profileId";
 import { SyncState } from "../../utils/typed/config";
 import { ServiceCode, SpaceId } from "../../utils/typed/file";
+import { preparePickerHistoryEntryForSave } from "../utils/pickerHistorySerialization";
 import SingletonBase from "./base";
 
 const log = createLogger("Config");
@@ -144,7 +145,12 @@ export default class Config extends SingletonBase {
 
     async save_picker_log(profileId: string, data: any[]): Promise<void> {
         const safeProfileId = sanitizeProfileId(profileId);
-        await saveJsonV2(ServiceCode.Data, SpaceId.PickerLog, `${safeProfileId}.json`, data);
+        await saveJsonV2(
+            ServiceCode.Data,
+            SpaceId.PickerLog,
+            `${safeProfileId}.json`,
+            data.map(preparePickerHistoryEntryForSave),
+        );
     }
 
     async migrate_picker_profile(profileId: string, outdatedKeys: string[]): Promise<any> {
@@ -204,7 +210,7 @@ export default class Config extends SingletonBase {
 
         const history: any[] = getLegacy<any[]>("history", []);
         if (history.length > 0) {
-            await saveJsonV2(ServiceCode.Data, SpaceId.PickerLog, "default.json", history);
+            await this.save_picker_log("default", history);
         }
 
         const legacyProfiles: any[] = getLegacy<any[]>("profiles", []);

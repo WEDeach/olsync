@@ -681,7 +681,7 @@ async function relaunch(session: InstallSessionV1): Promise<void> {
             detached: true,
             stdio: "ignore",
             shell: false,
-            windowsHide: true,
+            windowsHide: false,
             env,
         });
     } catch (error) {

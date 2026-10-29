@@ -7,7 +7,8 @@
 ## 功能
 
 * 收藏夾
-  * 合併來自 osu!stable 和 osu!lazer 客戶端的收藏列表並輸出至 osu!stable
+  * 合併 (Merge): 將 osu!stable 與 osu!lazer 的收藏列表單向合併輸出至 osu!stable。
+  * 同步 (Sync): 以收藏夾名稱雙向同步其資料。
 
 * 成績恢復
   * 基於 osu! API v2 取得線上成績記錄
@@ -43,7 +44,7 @@
 
 ## 使用方式
 
-點擊齒輪設定 `osu!` 的路徑後即可使用大部分功能!
+點擊齒輪設定 osu!stable 的資料夾與/或 osu!lazer 的 `client.realm` 路徑。
 
 部分功能需求 `osu! API` 權限, 你必須至 [osu!web 設定](https://osu.ppy.sh/home/account/edit#oauth) 中生成一個 `OAuth 應用程式` 並將 `Client ID` 與 `Client Secert` 填寫至齒輪設定當中!
 
@@ -51,12 +52,17 @@
 > `Client ID` 與 `Client Secert` 為敏感資訊, 他們將會明碼儲存於 `config.json` 當中 (通常位於olsync資料夾中的data資料夾裡面)
 > 請切記不要隨意分享它們!
 
+## 資料與備份
+
+* 應用設定與快取位於 `{APP_PATH}/data/`
+* 收藏同步/合併備份位於 `{APP_PATH}/backup_data/cs/<timestamp>/`
+
 ## 開發
 
 ### 技術堆疊
 
 * **Electron** 35.x | **React** 19.x | **TypeScript** 5.8
-* **MUI** v7 | **MobX** 6.x 狀態管理
+* **MUI** v9 | **MobX** 6.x 狀態管理
 * **Biome** 2.x (Lint / Format) | **Webpack** 5.x
 * **echarts** 6.x (圖表) | **rosu-pp-js** (PP 計算) | **realm** 12.x (Lazer DB)
 
