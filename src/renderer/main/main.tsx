@@ -51,6 +51,7 @@ import { BeatmapPickerView } from "../components/beatmapPicker";
 import { BeatmapRestorerView } from "../components/beatmapRestorer";
 import { CollectionMergeView } from "../components/collectionMerge";
 import { CollectionSyncView } from "../components/collectionSync";
+import { ScrollDownHint } from "../components/common/ScrollDownHint";
 import CompareList from "../components/compareList";
 import { DownloadHistoryView } from "../components/downloadHistory";
 import { DownloadIndicator } from "../components/downloadIndicator";
@@ -101,6 +102,8 @@ export default class Main extends React.Component {
     }
 
     private deepLinkUnsub?: () => void;
+    private mainScrollRef = React.createRef<HTMLDivElement>();
+    private dialogContentRef = React.createRef<HTMLDivElement>();
 
     componentDidMount() {
         this.deepLinkUnsub = window.olsCore.onDeepLink((beatmapsetId: number) => {
@@ -156,6 +159,14 @@ export default class Main extends React.Component {
         const SDialog = this.controller.SDialog;
         const SShowUserDialog = this.controller.SShowUserDialog;
         void g.i18nVersion;
+        const dialogBody = (
+            <>
+                {SDialog.content !== undefined && this.renderDialogContent(SDialog.content)}
+                {SDialog.beatmaps && <BeatmapList {...SDialog.beatmaps} />}
+                {SDialog.compares && <CompareList {...SDialog.compares} />}
+                {SDialog.syncState && this.renderSyncState(SDialog.syncState)}
+            </>
+        );
         return (
             // Setup theme and css baseline for the Material-UI app
             // https://mui.com/customization/theming/and
@@ -182,29 +193,34 @@ export default class Main extends React.Component {
                                     <ToggleButton value={SubViewType.D_STABLE}>Osu_Debug</ToggleButton>
                                     <ToggleButton value={SubViewType.D_API}>API_Debug</ToggleButton>
                                     <ToggleButton value={SubViewType.D_DLX}>DL_TEST</ToggleButton>
+                                    <ToggleButton value={SubViewType.D_RELEASE_NOTES}>Release_Notes</ToggleButton>
                                     <ToggleButton value={SubViewType.NONE}>NONE</ToggleButton>
                                 </ToggleButtonGroup>
                             )}
                             <Fade in key={SSubView} timeout={150}>
-                                <Stack
-                                    sx={{
-                                        flex: 1,
-                                        minHeight: 0,
-                                        overflowY: "auto",
-                                        overflowX: "hidden",
-                                        p: 2,
-                                    }}
-                                    spacing={2}
-                                >
-                                    {SubView !== undefined && <SubView />}
-                                    {SSubView === SubViewType.NONE && this.renderDynSection()}
-                                    {SSubView === SubViewType.COLLECTION && this.renderCollection()}
-                                    {SSubView === SubViewType.SONG_RECOVERY_BY_SCORES && this.renderSongRecovery()}
-                                    {SSubView === SubViewType.MAP_PACKS && this.renderMapPacks()}
-                                    {SSubView === SubViewType.MAP_PICKER && this.renderMapPicker()}
-                                    {SSubView === SubViewType.TRACKER && this.renderTracker()}
-                                    {SSubView === SubViewType.DOWNLOAD_HISTORY && this.renderDownloadHistory()}
-                                </Stack>
+                                <Box sx={{ flex: 1, minHeight: 0, display: "flex", position: "relative" }}>
+                                    <Stack
+                                        ref={this.mainScrollRef}
+                                        sx={{
+                                            flex: 1,
+                                            minHeight: 0,
+                                            overflowY: "auto",
+                                            overflowX: "hidden",
+                                            p: 2,
+                                        }}
+                                        spacing={2}
+                                    >
+                                        {SubView !== undefined && <SubView />}
+                                        {SSubView === SubViewType.NONE && this.renderDynSection()}
+                                        {SSubView === SubViewType.COLLECTION && this.renderCollection()}
+                                        {SSubView === SubViewType.SONG_RECOVERY_BY_SCORES && this.renderSongRecovery()}
+                                        {SSubView === SubViewType.MAP_PACKS && this.renderMapPacks()}
+                                        {SSubView === SubViewType.MAP_PICKER && this.renderMapPicker()}
+                                        {SSubView === SubViewType.TRACKER && this.renderTracker()}
+                                        {SSubView === SubViewType.DOWNLOAD_HISTORY && this.renderDownloadHistory()}
+                                    </Stack>
+                                    <ScrollDownHint anchorRef={this.mainScrollRef} />
+                                </Box>
                             </Fade>
                         </Stack>
                     </Box>
@@ -217,19 +233,43 @@ export default class Main extends React.Component {
                     )}
                     {SDialog.show && (
                         <Dialog
-                            sx={(theme) => ({ zIndex: theme.zIndex.drawer + 1 })}
+                            sx={(theme) => ({
+                                zIndex: theme.zIndex.drawer + 1,
+                                ...(SDialog.scrollBody
+                                    ? {
+                                          "& .MuiDialog-paper": {
+                                              display: "flex",
+                                              flexDirection: "column",
+                                              maxHeight: "calc(100% - 64px)",
+                                              overflow: "hidden",
+                                          },
+                                          "& .MuiDialogContent-root": { overflowX: "hidden" },
+                                      }
+                                    : {}),
+                            })}
                             open={SDialog.show}
                             onClose={() => this.controller.SetDialogState(false)}
                             maxWidth="lg"
                             fullWidth
                         >
                             <DialogTitle>{SDialog.title}</DialogTitle>
-                            <DialogContent>
-                                {SDialog.content !== undefined && this.renderDialogContent(SDialog.content)}
-                                {SDialog.beatmaps && <BeatmapList {...SDialog.beatmaps} />}
-                                {SDialog.compares && <CompareList {...SDialog.compares} />}
-                                {SDialog.syncState && this.renderSyncState(SDialog.syncState)}
-                            </DialogContent>
+                            {SDialog.headerContent !== undefined && <Box sx={{ px: 3 }}>{SDialog.headerContent}</Box>}
+                            {SDialog.scrollBody ? (
+                                <Box
+                                    sx={{
+                                        position: "relative",
+                                        display: "flex",
+                                        flexDirection: "column",
+                                        flex: "1 1 auto",
+                                        minHeight: 0,
+                                    }}
+                                >
+                                    <DialogContent ref={this.dialogContentRef}>{dialogBody}</DialogContent>
+                                    <ScrollDownHint anchorRef={this.dialogContentRef} offset={0} />
+                                </Box>
+                            ) : (
+                                <DialogContent>{dialogBody}</DialogContent>
+                            )}
                             <DialogActions>
                                 {SDialog.actions?.map((a) => (
                                     <Button onClick={a.callback} key={a.label} variant="contained">

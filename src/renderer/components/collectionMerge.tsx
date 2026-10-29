@@ -20,6 +20,7 @@ import {
     Typography,
 } from "@mui/material";
 import { memo, useCallback, useEffect, useMemo, useState } from "react";
+import { AutoSizer, List } from "react-virtualized";
 import type {
     CollectionMergeExecuteResponse,
     CollectionMergeExecuteResult,
@@ -518,27 +519,45 @@ export function CollectionMergeView({ onBack }: { onBack: () => void }) {
                                                     </Stack>
                                                     <Box
                                                         sx={{
-                                                            maxHeight: 220,
-                                                            overflow: "auto",
+                                                            height: 220,
+                                                            overflow: "hidden",
                                                             border: "1px solid",
                                                             borderColor: "divider",
                                                             borderRadius: 1,
                                                             p: 0.5,
                                                         }}
                                                     >
-                                                        {union.map((hash) => (
-                                                            <MergeHashRow
-                                                                key={hash}
-                                                                name={name}
-                                                                hash={hash}
-                                                                info={details?.[hash]}
-                                                                checked={selected.has(hash)}
-                                                                onStable={stableSet.has(hash)}
-                                                                onLazer={lazerSet.has(hash)}
-                                                                disabled={busy}
-                                                                onToggle={toggleHash}
-                                                            />
-                                                        ))}
+                                                        <AutoSizer disableHeight>
+                                                            {({ width }) => (
+                                                                <List
+                                                                    width={width}
+                                                                    height={210}
+                                                                    rowCount={union.length}
+                                                                    rowHeight={36}
+                                                                    overscanRowCount={8}
+                                                                    rowKey={({ index }: { index: number }) =>
+                                                                        union[index]
+                                                                    }
+                                                                    rowRenderer={({ index, key, style }) => {
+                                                                        const hash = union[index];
+                                                                        return (
+                                                                            <div key={key} style={style}>
+                                                                                <MergeHashRow
+                                                                                    name={name}
+                                                                                    hash={hash}
+                                                                                    info={details?.[hash]}
+                                                                                    checked={selected.has(hash)}
+                                                                                    onStable={stableSet.has(hash)}
+                                                                                    onLazer={lazerSet.has(hash)}
+                                                                                    disabled={busy}
+                                                                                    onToggle={toggleHash}
+                                                                                />
+                                                                            </div>
+                                                                        );
+                                                                    }}
+                                                                />
+                                                            )}
+                                                        </AutoSizer>
                                                     </Box>
                                                 </Stack>
                                             </Collapse>
