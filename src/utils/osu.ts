@@ -496,6 +496,10 @@ export function flattenScoreMap(
 export type DataUpdateType = "beatmaps" | "scores" | "collections";
 type DataUpdateCallback = () => void;
 
+export interface ScoreLookupOptions {
+    watchLazer?: boolean;
+}
+
 class OsuDataManager {
     private _stablePath: string | null = null;
     private _lazerPath: string | null = null;
@@ -562,14 +566,17 @@ class OsuDataManager {
         this._lazerBeatmapsPromise = null;
         this._lazerScoresByHash = null;
         this._lazerScoresPromise = null;
+        this._beatmaps = null;
+        this._beatmapsPromise = null;
     }
 
-    private async _ensureStable() {
-        const path = g.config?.[ConfigKey.PATH_STABLE_DIR] ?? "";
+    private async _ensureStable(): Promise<boolean> {
+        const path = (g.config?.[ConfigKey.PATH_STABLE_DIR] ?? "").trim();
         if (this._stablePath !== path) {
             this._stablePath = path;
             this._resetStable();
         }
+        if (path.length === 0) return false;
         if (!this._stableReady) {
             if (!this._stableInitPromise) {
                 this._stableInitPromise = (async () => {
@@ -580,14 +587,25 @@ class OsuDataManager {
             }
             await this._stableInitPromise;
         }
+        return true;
     }
 
-    async ensureLazer() {
-        const path = g.config?.[ConfigKey.PATH_LAZER_REALM] ?? "";
+    private get _lazerEnabled(): boolean {
+        return (g.config?.[ConfigKey.PATH_LAZER_REALM] ?? "").trim().length > 0 && getUseLazerModeExperiment();
+    }
+
+    private _syncLazerPath(): string {
+        const path = (g.config?.[ConfigKey.PATH_LAZER_REALM] ?? "").trim();
         if (this._lazerPath !== path) {
             this._lazerPath = path;
             this._resetLazer();
         }
+        return path;
+    }
+
+    async ensureLazer(): Promise<boolean> {
+        const path = this._syncLazerPath();
+        if (path.length === 0) return false;
         if (!this._lazerReady) {
             if (!this._lazerInitPromise) {
                 this._lazerInitPromise = (async () => {
@@ -598,6 +616,7 @@ class OsuDataManager {
             }
             await this._lazerInitPromise;
         }
+        return true;
     }
 
     get hasData(): boolean {
@@ -608,22 +627,24 @@ class OsuDataManager {
         return this._stableReady;
     }
 
-    private async _ensureWatching() {
-        if (this._watching) return;
-        await this._ensureStable();
+    private async _ensureWatching(): Promise<boolean> {
+        if (!(await this._ensureStable())) return false;
+        if (this._watching) return true;
         await window.olsCore.startStableWatch();
         this._stableBeatmapsUnsub = window.olsCore.onStableBeatmapsChanged(this._onBeatmapsChanged);
         this._stableScoresUnsub = window.olsCore.onStableScoresChanged(this._onScoresChanged);
         this._stableCollectionsUnsub = window.olsCore.onStableCollectionsChanged(this._onCollectionsChanged);
         this._watching = true;
+        return true;
     }
 
-    private async _ensureLazerWatch() {
-        if (this._lazerWatching) return;
-        await this.ensureLazer();
+    private async _ensureLazerWatch(): Promise<boolean> {
+        if (!(await this.ensureLazer())) return false;
+        if (this._lazerWatching) return true;
         await window.olsCore.startLazerWatch();
         this._lazerScoresUnsub = window.olsCore.onLazerScoresChanged(this._onLazerScoresChanged);
         this._lazerWatching = true;
+        return true;
     }
 
     private _onLazerScoresChanged = () => {
@@ -681,6 +702,13 @@ class OsuDataManager {
         this._dirtyCollections = true;
         this._runRefreshLoop();
     };
+
+    private _flushBeatmapDirty() {
+        if (!this._dirtyBeatmaps || this._beatmapsPromise) return;
+        this._dirtyBeatmaps = false;
+        this._beatmaps = null;
+        this._beatmapIndex = null;
+    }
 
     private async _runRefreshLoop() {
         if (this._backgroundRefreshing) return;
@@ -764,26 +792,27 @@ class OsuDataManager {
      * interfaces keep their merged behavior while the picker stays separate.
      */
     async getStableBeatmapsOnly(): Promise<OsuBeatmap[]> {
-        await this._ensureWatching();
-        const first = await window.olsCore.queryStableBeatmaps({}, 0, PAGE_SIZE);
+        if (!(await this._ensureWatching())) return [];
+        return await this._readStableBeatmaps();
+    }
+
+    private async _readStableBeatmaps(filter?: StableBeatmapFilter): Promise<OsuBeatmap[]> {
+        const spec = filter ?? {};
+        const first = await window.olsCore.queryStableBeatmaps(spec, 0, PAGE_SIZE);
         const all = await readAllWithOffset(
-            (offset, limit) => window.olsCore.queryStableBeatmaps({}, offset, limit),
+            (offset, limit) => window.olsCore.queryStableBeatmaps(spec, offset, limit),
             first,
         );
         return all.data as OsuBeatmap[];
     }
 
     async getBeatmaps(filter?: StableBeatmapFilter): Promise<OsuBeatmap[]> {
-        await this._ensureWatching();
+        const stableReady = await this._ensureWatching();
+        this._syncLazerPath();
+        this._flushBeatmapDirty();
         if (hasBeatmapFilter(filter) && !this._beatmaps) {
-            const stableFirst = await window.olsCore.queryStableBeatmaps(filter, 0, PAGE_SIZE);
-            const stableAll = await readAllWithOffset(
-                (offset, limit) => window.olsCore.queryStableBeatmaps(filter, offset, limit),
-                stableFirst,
-            );
-            const beatmaps = stableAll.data as OsuBeatmap[];
-            const lazerPath = g.config?.[ConfigKey.PATH_LAZER_REALM] ?? "";
-            if (lazerPath && getUseLazerModeExperiment()) {
+            const beatmaps = stableReady ? await this._readStableBeatmaps(filter) : [];
+            if (this._lazerEnabled) {
                 const existingHashes = new Set(beatmaps.map((b) => b.md5Hash));
                 const lazerBeatmaps = await this.queryLazerBeatmaps(filter).catch(() => [] as OsuBeatmap[]);
                 for (const lb of lazerBeatmaps) {
@@ -800,18 +829,9 @@ class OsuDataManager {
                 this._beatmapsPromise = (async () => {
                     log.info("IPC queryStableBeatmaps start");
                     const _t0 = Date.now();
-                    const lazerPath = g.config?.[ConfigKey.PATH_LAZER_REALM] ?? "";
-                    const stablePromise = (async () => {
-                        const first = await window.olsCore.queryStableBeatmaps({}, 0, PAGE_SIZE);
-                        const all = await readAllWithOffset(
-                            (offset, limit) => window.olsCore.queryStableBeatmaps({}, offset, limit),
-                            first,
-                        );
-                        return all.data as OsuBeatmap[];
-                    })();
-                    const beatmaps = await stablePromise;
+                    const beatmaps = stableReady ? await this._readStableBeatmaps() : [];
                     log.info(`IPC queryStableBeatmaps done in ${Date.now() - _t0}ms, count: ${beatmaps.length}`);
-                    if (lazerPath && getUseLazerModeExperiment()) {
+                    if (this._lazerEnabled) {
                         const existingHashes = new Set(beatmaps.map((b) => b.md5Hash));
                         const lazerBeatmaps = await this.queryLazerBeatmaps().catch(() => [] as OsuBeatmap[]);
                         for (const lb of lazerBeatmaps) {
@@ -840,7 +860,7 @@ class OsuDataManager {
     }
 
     async getScores(): Promise<Map<string, OsuScore[]>> {
-        await this._ensureWatching();
+        if (!(await this._ensureWatching())) return new Map();
         if (!this._scores) {
             if (!this._scoresPromise) {
                 this._scoresPromise = (async () => {
@@ -869,29 +889,30 @@ class OsuDataManager {
     }
 
     async getScoresByUser(userName: string, dateRange?: [Date, Date]): Promise<Map<string, OsuScore[]>> {
-        await this._ensureWatching();
+        const stableReady = await this._ensureWatching();
         const map = new Map<string, OsuScore[]>();
         const from = dateRange?.[0]?.valueOf();
         const to = dateRange?.[1]?.valueOf();
 
-        const stableFirst = await window.olsCore.queryStableScoresByUser(userName, from, to, 0, PAGE_SIZE);
-        if (!("error" in stableFirst)) {
-            const stableAll = await readAllWithOffset(
-                async (offset, limit) => window.olsCore.queryStableScoresByUser(userName, from, to, offset, limit),
-                stableFirst,
-            );
-            let count = 0;
-            for (const d of stableAll.data as StableScoreBeatmapData[]) {
-                if (!d.md5Hash || !d.scores || d.scores.length === 0) continue;
-                const arr = map.get(d.md5Hash);
-                if (arr) arr.push(...d.scores);
-                else map.set(d.md5Hash, [...d.scores]);
-                if (++count % 500 === 0) await yieldToMain();
+        if (stableReady) {
+            const stableFirst = await window.olsCore.queryStableScoresByUser(userName, from, to, 0, PAGE_SIZE);
+            if (!("error" in stableFirst)) {
+                const stableAll = await readAllWithOffset(
+                    async (offset, limit) => window.olsCore.queryStableScoresByUser(userName, from, to, offset, limit),
+                    stableFirst,
+                );
+                let count = 0;
+                for (const d of stableAll.data as StableScoreBeatmapData[]) {
+                    if (!d.md5Hash || !d.scores || d.scores.length === 0) continue;
+                    const arr = map.get(d.md5Hash);
+                    if (arr) arr.push(...d.scores);
+                    else map.set(d.md5Hash, [...d.scores]);
+                    if (++count % 500 === 0) await yieldToMain();
+                }
             }
         }
 
-        const lazerPath = g.config?.[ConfigKey.PATH_LAZER_REALM] ?? "";
-        if (lazerPath && getUseLazerModeExperiment()) {
+        if (this._lazerEnabled) {
             await this.ensureLazer();
             await this._ensureLazerWatch();
             const stableDedupKeys = stableDedupKeysFromScores(map);
@@ -934,6 +955,7 @@ class OsuDataManager {
     async queryStableScoresByHashes(userName: string | undefined, hashes: string[]): Promise<Map<string, OsuScore[]>> {
         const queryHashes = uniqueHashes(hashes);
         if (queryHashes.length === 0) return new Map();
+        if (!(await this._ensureStable())) return new Map();
         const map = new Map<string, OsuScore[]>();
         const first = await window.olsCore.queryStableScoresByHashes(queryHashes, userName, 0, PAGE_SIZE);
         if ("error" in first) return map;
@@ -950,10 +972,14 @@ class OsuDataManager {
         return map;
     }
 
-    async getScoresForMap(userName: string | undefined, hashes: string[]): Promise<Map<string, OsuScore[]>> {
+    async getScoresForMap(
+        userName: string | undefined,
+        hashes: string[],
+        options: ScoreLookupOptions = {},
+    ): Promise<Map<string, OsuScore[]>> {
         await this._ensureWatching();
         const stableByHash = await this.queryStableScoresByHashes(userName, hashes);
-        const lazerByHash = await this.queryLazerScoresByHashes(stableByHash, hashes);
+        const lazerByHash = await this.queryLazerScoresByHashes(stableByHash, hashes, options);
         const merged = new Map<string, OsuScore[]>(stableByHash);
         const userLower = userName?.toLowerCase();
         lazerByHash.forEach((scores, hash) => {
@@ -969,21 +995,22 @@ class OsuDataManager {
     async getBeatmapsByHashes(hashes: string[]): Promise<OsuBeatmap[]> {
         if (hashes.length === 0) return [];
         const hashSet = [...new Set(hashes.filter(Boolean))];
-        const stableFirst = await window.olsCore.queryStableBeatmaps(
-            { includedHashes: hashSet },
-            0,
-            Math.max(hashSet.length, PAGE_SIZE),
-        );
         let beatmaps: OsuBeatmap[] = [];
-        if (!("error" in stableFirst)) {
-            const stableAll = await readAllWithOffset(
-                (offset, limit) => window.olsCore.queryStableBeatmaps({ includedHashes: hashSet }, offset, limit),
-                stableFirst,
+        if (await this._ensureStable()) {
+            const stableFirst = await window.olsCore.queryStableBeatmaps(
+                { includedHashes: hashSet },
+                0,
+                Math.max(hashSet.length, PAGE_SIZE),
             );
-            beatmaps = stableAll.data as OsuBeatmap[];
+            if (!("error" in stableFirst)) {
+                const stableAll = await readAllWithOffset(
+                    (offset, limit) => window.olsCore.queryStableBeatmaps({ includedHashes: hashSet }, offset, limit),
+                    stableFirst,
+                );
+                beatmaps = stableAll.data as OsuBeatmap[];
+            }
         }
-        const lazerPath = g.config?.[ConfigKey.PATH_LAZER_REALM] ?? "";
-        if (lazerPath && getUseLazerModeExperiment()) {
+        if (this._lazerEnabled) {
             const existing = new Set(beatmaps.map((b) => b.md5Hash));
             const lazerBeatmaps = await this.queryLazerBeatmaps({
                 includedHashes: hashSet,
@@ -999,17 +1026,16 @@ class OsuDataManager {
     }
 
     async getStableUsers(): Promise<string[]> {
-        await this._ensureWatching();
+        if (!(await this._ensureWatching())) return [];
         return window.olsCore.queryStableUsers();
     }
 
     async getAllScoresMerged(): Promise<Map<string, OsuScore[]>> {
         await this._ensureWatching();
         const map = await this.getScores();
-        const lazerPath = g.config?.[ConfigKey.PATH_LAZER_REALM] ?? "";
-        if (!lazerPath || !getUseLazerModeExperiment()) return new Map(map);
+        if (!this._lazerEnabled) return new Map(map);
 
-        await this.ensureLazer();
+        if (!(await this.ensureLazer())) return new Map(map);
         await this._ensureLazerWatch();
         const lazerUsersResult = await window.olsCore.queryLazerUsers();
         const lazerUsers = lazerUsersResult.data as string[];
@@ -1060,7 +1086,7 @@ class OsuDataManager {
     }
 
     async getCollections(): Promise<IOsuCollection[]> {
-        await this._ensureWatching();
+        if (!(await this._ensureWatching())) return [];
         if (!this._stableCollections) {
             if (!this._collectionsPromise) {
                 this._collectionsPromise = (async () => {
@@ -1080,8 +1106,8 @@ class OsuDataManager {
     }
 
     async getLazerCollections(): Promise<IOsuCollection[]> {
-        if (!getUseLazerModeExperiment()) return [];
-        await this.ensureLazer();
+        if (!this._lazerEnabled) return [];
+        if (!(await this.ensureLazer())) return [];
         if (!this._lazerCollections) {
             let cols = await window.olsCore.getCollections(OsuClients.Lazer, 0, PAGE_SIZE);
             cols = await readAllWithOffset(
@@ -1097,7 +1123,8 @@ class OsuDataManager {
     }
 
     async queryLazerBeatmaps(filter?: StableBeatmapFilter): Promise<OsuBeatmap[]> {
-        await this.ensureLazer();
+        if (!this._lazerEnabled) return [];
+        if (!(await this.ensureLazer())) return [];
         if (hasBeatmapFilter(filter)) {
             const spec = lazerSpecFromBeatmapFilter(filter);
             const first = await window.olsCore.queryLazerBeatmaps(spec, 0, PAGE_SIZE);
@@ -1133,12 +1160,11 @@ class OsuDataManager {
     }
 
     async queryLazerBeatmapSetIds(beatmapSetIds: number[]): Promise<Set<number>> {
-        const lazerPath = g.config?.[ConfigKey.PATH_LAZER_REALM] ?? "";
-        if (!lazerPath || !getUseLazerModeExperiment() || beatmapSetIds.length === 0) {
+        if (!this._lazerEnabled || beatmapSetIds.length === 0) {
             return new Set();
         }
         try {
-            await this.ensureLazer();
+            if (!(await this.ensureLazer())) return new Set();
             await this._ensureLazerWatch();
             const result = await window.olsCore.queryLazerBeatmaps({
                 beatmapSetIds,
@@ -1153,13 +1179,13 @@ class OsuDataManager {
     async queryLazerScoresByHashes(
         stableScoresMap: Map<string, OsuScore[]>,
         hashes: string[],
+        options: ScoreLookupOptions = {},
     ): Promise<Map<string, OsuScore[]>> {
-        const lazerPath = g.config?.[ConfigKey.PATH_LAZER_REALM] ?? "";
         const queryHashes = uniqueHashes(hashes);
-        if (!lazerPath || !getUseLazerModeExperiment() || queryHashes.length === 0) return new Map();
+        if (!this._lazerEnabled || queryHashes.length === 0) return new Map();
         try {
-            await this.ensureLazer();
-            await this._ensureLazerWatch();
+            if (!(await this.ensureLazer())) return new Map();
+            if (options.watchLazer !== false) await this._ensureLazerWatch();
             const stableDedupKeys = stableDedupKeysFromScores(stableScoresMap);
             const byHash = new Map<string, OsuScore[]>();
             const HASH_BATCH = 500;
@@ -1182,7 +1208,8 @@ class OsuDataManager {
     }
 
     async getBeatmapIndex(): Promise<StableBeatmapIndex[]> {
-        await this._ensureStable();
+        if (!(await this._ensureStable())) return [];
+        this._flushBeatmapDirty();
         if (!this._beatmapIndex) {
             let idx = await window.olsCore.getStableBeatmapIndex();
             idx = await readAllWithOffset((offset, limit) => window.olsCore.getStableBeatmapIndex(offset, limit), idx);
@@ -1192,13 +1219,13 @@ class OsuDataManager {
     }
 
     async queryLazerScoresByUser(stableScoresMap: Map<string, OsuScore[]>): Promise<Map<string, OsuScore[]>> {
+        this._syncLazerPath();
         if (this._lazerScoresByHash) return this._lazerScoresByHash;
         if (this._lazerScoresPromise) return this._lazerScoresPromise;
-        const lazerPath = g.config?.[ConfigKey.PATH_LAZER_REALM] ?? "";
-        if (!lazerPath || !getUseLazerModeExperiment()) return new Map();
+        if (!this._lazerEnabled) return new Map();
         this._lazerScoresPromise = (async () => {
             try {
-                await this.ensureLazer();
+                if (!(await this.ensureLazer())) return new Map();
                 await this._ensureLazerWatch();
                 const lazerUsersResult = await window.olsCore.queryLazerUsers();
                 const lazerUsers = lazerUsersResult.data as string[];

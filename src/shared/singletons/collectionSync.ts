@@ -104,6 +104,11 @@ interface ClientReadResult {
     error?: string;
 }
 
+interface ClientAvailability {
+    stable: boolean;
+    lazer: boolean;
+}
+
 interface HashResolution {
     installedStable: Set<string>;
     installedLazer: Set<string>;
@@ -252,7 +257,10 @@ export default class CollectionSync extends SingletonBase {
         for (const entry of [...snapshot.stable, ...snapshot.lazer]) {
             for (const hash of entry.maps) allHashes.push(hash);
         }
-        const resolution = await this.resolve_hashes(allHashes);
+        const resolution = await this.resolve_hashes(allHashes, {
+            stable: snapshot.stableAvailable,
+            lazer: snapshot.lazerAvailable,
+        });
 
         const plan = buildCollectionMergePlan({
             stable: snapshot.stable,
@@ -346,7 +354,6 @@ export default class CollectionSync extends SingletonBase {
     }
 
     async read_collections(): Promise<CollectionSnapshot> {
-        await this.ensure_readers();
         const [stableResult, lazerResult] = await Promise.all([
             this.read_stable_collections(),
             this.read_lazer_collections(),
@@ -362,21 +369,6 @@ export default class CollectionSync extends SingletonBase {
         return snapshot;
     }
 
-    private async ensure_readers(): Promise<void> {
-        const config = Config.getInstance as Config;
-        const stableReader = StableReader.getInstance as StableReader;
-        const lazerReader = LazerReader.getInstance as LazerReader;
-
-        const stablePath = this.config_path(config, ConfigKey.PATH_STABLE_DIR);
-        if (stablePath !== undefined && !stableReader.is_ready()) {
-            await stableReader.init(stablePath);
-        }
-        const lazerPath = this.config_path(config, ConfigKey.PATH_LAZER_REALM);
-        if (lazerPath !== undefined && !lazerReader.is_ready()) {
-            await lazerReader.init(lazerPath);
-        }
-    }
-
     private config_path(config: Config, key: ConfigKey): string | undefined {
         let value: unknown;
         try {
@@ -385,7 +377,11 @@ export default class CollectionSync extends SingletonBase {
             log.warn(`Could not read ${key}: ${String(error)}`);
             return undefined;
         }
-        return typeof value === "string" && value.trim().length > 0 ? value : undefined;
+        return typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined;
+    }
+
+    private has_client_path(key: ConfigKey): boolean {
+        return this.config_path(Config.getInstance as Config, key) !== undefined;
     }
 
     private async backup_run(
@@ -434,6 +430,7 @@ export default class CollectionSync extends SingletonBase {
 
     private async stable_is_running(): Promise<boolean> {
         if (process.platform !== "win32") return false;
+        if (this.config_path(Config.getInstance as Config, ConfigKey.PATH_STABLE_DIR) === undefined) return false;
         try {
             const data = await (StableIpcClient.getInstance as StableIpcClient).get_client_data();
             return data.Connected === true;
@@ -444,8 +441,11 @@ export default class CollectionSync extends SingletonBase {
     }
 
     private async read_stable_collections(): Promise<ClientReadResult> {
+        const stablePath = this.config_path(Config.getInstance as Config, ConfigKey.PATH_STABLE_DIR);
+        if (stablePath === undefined) return { collections: [], available: false };
         const reader = StableReader.getInstance as StableReader;
         try {
+            if (!reader.is_ready() || reader.get_base_path() !== stablePath) await reader.init(stablePath);
             const first = await reader.collections(0, PAGE_SIZE);
             const all = await readAllWithOffset((offset, limit) => reader.collections(offset, limit), first);
             return {
@@ -467,8 +467,11 @@ export default class CollectionSync extends SingletonBase {
     }
 
     private async read_lazer_collections(): Promise<ClientReadResult> {
+        const lazerPath = this.config_path(Config.getInstance as Config, ConfigKey.PATH_LAZER_REALM);
+        if (lazerPath === undefined) return { collections: [], available: false };
         const reader = LazerReader.getInstance as LazerReader;
         try {
+            if (!reader.is_ready() || reader.get_init_path() !== lazerPath) await reader.init(lazerPath);
             const first = await reader.get_collections(0, PAGE_SIZE);
             const all = await readAllWithOffset((offset, limit) => reader.get_collections(offset, limit), first);
             return {
@@ -485,7 +488,7 @@ export default class CollectionSync extends SingletonBase {
         }
     }
 
-    private async resolve_hashes(hashes: string[]): Promise<HashResolution> {
+    private async resolve_hashes(hashes: string[], availability: ClientAvailability): Promise<HashResolution> {
         const unique = sortHashes(hashes);
         const resolution: HashResolution = {
             installedStable: new Set<string>(),
@@ -498,52 +501,60 @@ export default class CollectionSync extends SingletonBase {
 
         for (let index = 0; index < unique.length; index += RESOLVE_BATCH) {
             const batch = unique.slice(index, index + RESOLVE_BATCH);
-            await this.resolve_hash_batch(batch, resolution);
+            await this.resolve_hash_batch(batch, resolution, availability);
         }
         return resolution;
     }
 
-    private async resolve_hash_batch(batch: string[], resolution: HashResolution): Promise<void> {
-        try {
-            const stable = await (StableReader.getInstance as StableReader).query_beatmaps(
-                { includedHashes: batch },
-                0,
-                0,
-            );
-            for (const entry of stable?.data ?? []) {
-                const hash = typeof entry?.md5Hash === "string" ? entry.md5Hash.toLowerCase() : "";
-                if (hash.length === 0) continue;
-                resolution.installedStable.add(hash);
-                this.remember_map_id(entry?.beatmapId, hash, resolution);
-                this.remember_set_id(entry?.beatmapSetId, hash, resolution);
-                this.remember_hash_info(hash, entry?.artist, entry?.songTitle, entry?.difficultyName, resolution);
+    private async resolve_hash_batch(
+        batch: string[],
+        resolution: HashResolution,
+        availability: ClientAvailability,
+    ): Promise<void> {
+        if (availability.stable) {
+            try {
+                const stable = await (StableReader.getInstance as StableReader).query_beatmaps(
+                    { includedHashes: batch },
+                    0,
+                    0,
+                );
+                for (const entry of stable?.data ?? []) {
+                    const hash = typeof entry?.md5Hash === "string" ? entry.md5Hash.toLowerCase() : "";
+                    if (hash.length === 0) continue;
+                    resolution.installedStable.add(hash);
+                    this.remember_map_id(entry?.beatmapId, hash, resolution);
+                    this.remember_set_id(entry?.beatmapSetId, hash, resolution);
+                    this.remember_hash_info(hash, entry?.artist, entry?.songTitle, entry?.difficultyName, resolution);
+                }
+            } catch (error) {
+                log.warn(`Stable hash resolution failed: ${String(error)}`);
             }
-        } catch (error) {
-            log.warn(`Stable hash resolution failed: ${String(error)}`);
         }
 
-        try {
-            const lazer = await (LazerReader.getInstance as LazerReader).query_beatmaps(
-                { includedHashes: batch },
-                0,
-                batch.length,
-            );
-            for (const entry of lazer?.data ?? []) {
-                const hash = typeof entry?.MD5Hash === "string" ? entry.MD5Hash.toLowerCase() : "";
-                if (hash.length === 0) continue;
-                resolution.installedLazer.add(hash);
-                this.remember_map_id(entry?.OnlineID, hash, resolution);
-                this.remember_set_id(entry?.BeatmapSet?.OnlineID, hash, resolution);
-                this.remember_hash_info(
-                    hash,
-                    entry?.Metadata?.Artist,
-                    entry?.Metadata?.Title,
-                    entry?.DifficultyName,
-                    resolution,
+        if (availability.lazer) {
+            try {
+                const lazer = await (LazerReader.getInstance as LazerReader).query_beatmaps(
+                    { includedHashes: batch },
+                    0,
+                    batch.length,
                 );
+                for (const entry of lazer?.data ?? []) {
+                    const hash = typeof entry?.MD5Hash === "string" ? entry.MD5Hash.toLowerCase() : "";
+                    if (hash.length === 0) continue;
+                    resolution.installedLazer.add(hash);
+                    this.remember_map_id(entry?.OnlineID, hash, resolution);
+                    this.remember_set_id(entry?.BeatmapSet?.OnlineID, hash, resolution);
+                    this.remember_hash_info(
+                        hash,
+                        entry?.Metadata?.Artist,
+                        entry?.Metadata?.Title,
+                        entry?.DifficultyName,
+                        resolution,
+                    );
+                }
+            } catch (error) {
+                log.warn(`Lazer hash resolution failed: ${String(error)}`);
             }
-        } catch (error) {
-            log.warn(`Lazer hash resolution failed: ${String(error)}`);
         }
     }
 
@@ -581,38 +592,42 @@ export default class CollectionSync extends SingletonBase {
 
         for (let index = 0; index < unique.length; index += RESOLVE_BATCH) {
             const batch = unique.slice(index, index + RESOLVE_BATCH);
-            try {
-                const stable = await (StableReader.getInstance as StableReader).query_beatmaps(
-                    { includedIds: batch },
-                    0,
-                    0,
-                );
-                for (const entry of stable?.data ?? []) {
-                    const hash = typeof entry?.md5Hash === "string" ? entry.md5Hash.toLowerCase() : "";
-                    const id = Number(entry?.beatmapId);
-                    if (hash.length > 0 && Number.isInteger(id) && id > 0 && !hashByMapId.has(id)) {
-                        hashByMapId.set(id, hash);
+            if (this.has_client_path(ConfigKey.PATH_STABLE_DIR)) {
+                try {
+                    const stable = await (StableReader.getInstance as StableReader).query_beatmaps(
+                        { includedIds: batch },
+                        0,
+                        0,
+                    );
+                    for (const entry of stable?.data ?? []) {
+                        const hash = typeof entry?.md5Hash === "string" ? entry.md5Hash.toLowerCase() : "";
+                        const id = Number(entry?.beatmapId);
+                        if (hash.length > 0 && Number.isInteger(id) && id > 0 && !hashByMapId.has(id)) {
+                            hashByMapId.set(id, hash);
+                        }
                     }
+                } catch (error) {
+                    log.warn(`Stable id resolution failed: ${String(error)}`);
                 }
-            } catch (error) {
-                log.warn(`Stable id resolution failed: ${String(error)}`);
             }
 
-            try {
-                const lazer = await (LazerReader.getInstance as LazerReader).query_beatmaps(
-                    { beatmapIds: batch },
-                    0,
-                    batch.length,
-                );
-                for (const entry of lazer?.data ?? []) {
-                    const hash = typeof entry?.MD5Hash === "string" ? entry.MD5Hash.toLowerCase() : "";
-                    const id = Number(entry?.OnlineID);
-                    if (hash.length > 0 && Number.isInteger(id) && id > 0 && !hashByMapId.has(id)) {
-                        hashByMapId.set(id, hash);
+            if (this.has_client_path(ConfigKey.PATH_LAZER_REALM)) {
+                try {
+                    const lazer = await (LazerReader.getInstance as LazerReader).query_beatmaps(
+                        { beatmapIds: batch },
+                        0,
+                        batch.length,
+                    );
+                    for (const entry of lazer?.data ?? []) {
+                        const hash = typeof entry?.MD5Hash === "string" ? entry.MD5Hash.toLowerCase() : "";
+                        const id = Number(entry?.OnlineID);
+                        if (hash.length > 0 && Number.isInteger(id) && id > 0 && !hashByMapId.has(id)) {
+                            hashByMapId.set(id, hash);
+                        }
                     }
+                } catch (error) {
+                    log.warn(`Lazer id resolution failed: ${String(error)}`);
                 }
-            } catch (error) {
-                log.warn(`Lazer id resolution failed: ${String(error)}`);
             }
         }
         return hashByMapId;
@@ -643,7 +658,10 @@ export default class CollectionSync extends SingletonBase {
         const snapshot = await this.read_collections();
         this.assert_both_clients(snapshot);
         const deletionHashes = collectDeletionListHashes(snapshot.stable, snapshot.lazer, this._settings);
-        const resolution = await this.resolve_hashes(deletionHashes);
+        const resolution = await this.resolve_hashes(deletionHashes, {
+            stable: snapshot.stableAvailable,
+            lazer: snapshot.lazerAvailable,
+        });
 
         const plan = buildCollectionSyncPlan({
             stable: snapshot.stable,
@@ -815,7 +833,10 @@ export default class CollectionSync extends SingletonBase {
         for (const entry of [...snapshot.stable, ...snapshot.lazer]) {
             for (const hash of entry.maps) allHashes.push(hash);
         }
-        const resolution = await this.resolve_hashes(allHashes);
+        const resolution = await this.resolve_hashes(allHashes, {
+            stable: snapshot.stableAvailable,
+            lazer: snapshot.lazerAvailable,
+        });
 
         const missing = collectMissingBeatmaps({
             stable: snapshot.stable,
@@ -1014,7 +1035,10 @@ export default class CollectionSync extends SingletonBase {
         for (const entry of plan.collections) {
             for (const hash of entry.target ?? []) hashes.push(hash);
         }
-        const resolution = await this.resolve_hashes(hashes);
+        const resolution = await this.resolve_hashes(hashes, {
+            stable: this.has_client_path(ConfigKey.PATH_STABLE_DIR),
+            lazer: this.has_client_path(ConfigKey.PATH_LAZER_REALM),
+        });
         const content = buildContentFromPlan(plan, resolution.mapIdByHash, Date.now());
         await saveJson(filePath, content);
         return content;
