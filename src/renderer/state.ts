@@ -96,6 +96,8 @@ export interface IDialogState {
     actions?: DialogActionProps[];
     syncState?: NewSyncState;
     renderFor?: string;
+    scrollBody?: boolean;
+    headerContent?: React.ReactNode;
 }
 
 interface DuplicateConfirmState {

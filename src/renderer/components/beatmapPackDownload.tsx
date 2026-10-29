@@ -1,3 +1,4 @@
+import { Info as InfoIcon } from "@mui/icons-material";
 import {
     Box,
     Button,
@@ -13,8 +14,8 @@ import {
     Typography,
 } from "@mui/material";
 import { Observer } from "mobx-react";
-import React, { useState } from "react";
-import { BeatmapPack, RespBeatmapPack } from "../../api/v2/types/api_resp";
+import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { BeatmapPack, RankedStatus, RespBeatmapPack } from "../../api/v2/types/api_resp";
 import { OsuModes } from "../../defines/types";
 import { getApiDownloadLink, getApiPreDelayMs } from "../../utils/api";
 import {
@@ -55,6 +56,24 @@ const getTypeOptions = () => [
     { key: "artist", label: __(I18nStrings.MAIN_BPKS_DL_TYPE_ARTIST) },
 ];
 
+type BeatmapPackStatus = `${RankedStatus}`;
+
+const getStatusOptions = (): { key: "all" | BeatmapPackStatus; label: string }[] => [
+    { key: "all", label: __(I18nStrings.MAIN_BPKS_DL_STATUS_ALL) },
+    { key: RankedStatus.Ranked, label: __(I18nStrings.MAIN_BPKS_DL_STATUS_RANKED) },
+    { key: RankedStatus.Approved, label: __(I18nStrings.MAIN_BPKS_DL_STATUS_APPROVED) },
+    { key: RankedStatus.Qualified, label: __(I18nStrings.MAIN_BPKS_DL_STATUS_QUALIFIED) },
+    { key: RankedStatus.Loved, label: __(I18nStrings.MAIN_BPKS_DL_STATUS_LOVED) },
+    { key: RankedStatus.Pending, label: __(I18nStrings.MAIN_BPKS_DL_STATUS_PENDING) },
+    { key: RankedStatus.WIP, label: __(I18nStrings.MAIN_BPKS_DL_STATUS_WIP) },
+    { key: RankedStatus.Graveyard, label: __(I18nStrings.MAIN_BPKS_DL_STATUS_GRAVEYARD) },
+];
+
+const statusFilterOf = (raw: unknown): string[] => {
+    if (!Array.isArray(raw) || raw.length === 0) return ["all"];
+    return raw.map(String);
+};
+
 const getDateRangeOptions = () => [
     { key: "7d" as DateRangeType, label: __(I18nStrings.MAIN_BPKS_DL_DATE_RANGE_7D), days: 7 },
     { key: "30d" as DateRangeType, label: __(I18nStrings.MAIN_BPKS_DL_DATE_RANGE_30D), days: 30 },
@@ -64,30 +83,89 @@ const getDateRangeOptions = () => [
 
 export type DetectionScope = "all" | "stable" | "lazer";
 
+const PACK_MODE_OPTIONS: Array<{ value: "full" | "diff"; label: I18nStrings; tooltip: I18nStrings }> = [
+    {
+        value: "full",
+        label: I18nStrings.MAIN_BPKS_DL_MODE_FULL,
+        tooltip: I18nStrings.MAIN_BPKS_DL_FULL_TOOLTIP,
+    },
+    {
+        value: "diff",
+        label: I18nStrings.MAIN_BPKS_DL_MODE_DIFF,
+        tooltip: I18nStrings.MAIN_BPKS_DL_DIFF_TOOLTIP,
+    },
+];
+
+const PackDownloadModeSelector: React.FC<{
+    onModeChange: (mode: "full" | "diff") => void;
+    groupRef?: React.RefObject<HTMLDivElement | null>;
+}> = ({ onModeChange, groupRef }) => (
+    <Observer>
+        {() => {
+            const downloadMode = (g.config?.[ConfigKey.BPKS_DL_MODE] ?? "full") as "full" | "diff";
+            return (
+                <Box>
+                    <Typography variant="h6" gutterBottom>
+                        {__(I18nStrings.MAIN_BPKS_DL_MODE_TITLE)}
+                    </Typography>
+                    <RadioGroup
+                        ref={groupRef}
+                        value={downloadMode}
+                        onChange={(e) => onModeChange(e.target.value as "full" | "diff")}
+                    >
+                        <Stack direction="row" spacing={3}>
+                            {PACK_MODE_OPTIONS.map((option) => (
+                                <FormControlLabel
+                                    key={option.value}
+                                    value={option.value}
+                                    control={<Radio />}
+                                    label={
+                                        <Stack direction="row" spacing={0.5} sx={{ alignItems: "center" }}>
+                                            <span>{__(option.label)}</span>
+                                            <Tooltip arrow title={__(option.tooltip)}>
+                                                <InfoIcon sx={{ fontSize: 16, color: "text.secondary" }} />
+                                            </Tooltip>
+                                        </Stack>
+                                    }
+                                />
+                            ))}
+                        </Stack>
+                    </RadioGroup>
+                </Box>
+            );
+        }}
+    </Observer>
+);
+
 const BeatmapPackDownloadOptions: React.FC<{
     selectedTypes: string[];
     gameModes: string[];
+    selectedStatuses: string[];
     selectedDateRange: DateRangeType;
     downloadMode: "full" | "diff";
     detectionScope: DetectionScope;
     onTypeChange: (types: string | string[]) => void;
     onGameModeChange: (types: string | string[]) => void;
+    onStatusChange: (statuses: string | string[]) => void;
     onDateRangeChange: (range: DateRangeType) => void;
-    onModeChange: (mode: "full" | "diff") => void;
     onScopeChange: (scope: DetectionScope) => void;
+    modeSelectorRef?: React.RefObject<HTMLDivElement | null>;
 }> = ({
     selectedTypes,
     gameModes,
+    selectedStatuses,
     selectedDateRange,
     downloadMode,
     detectionScope,
     onTypeChange,
     onGameModeChange,
+    onStatusChange,
     onDateRangeChange,
-    onModeChange: onDLModeChange,
     onScopeChange,
+    modeSelectorRef,
 }) => {
     const typeOptions = getTypeOptions();
+    const statusOptions = getStatusOptions();
     const dateRangeOptions = getDateRangeOptions();
     const modesOptions = [
         {
@@ -99,109 +177,262 @@ const BeatmapPackDownloadOptions: React.FC<{
             .toArray(),
     ];
 
+    const fullPaneRef = useRef<HTMLDivElement | null>(null);
+    const diffPaneRef = useRef<HTMLDivElement | null>(null);
+    const [paneHeights, setPaneHeights] = useState<Partial<Record<"full" | "diff", number>>>({});
+    const [openSelectId, setOpenSelectId] = useState<string | null>(null);
+    const previousModeRef = useRef(downloadMode);
+    useLayoutEffect(() => {
+        const previous = previousModeRef.current;
+        previousModeRef.current = downloadMode;
+        if (previous === downloadMode) return;
+        const hadOpenPopup = openSelectId !== null;
+        if (hadOpenPopup) setOpenSelectId(null);
+        const outgoingPane = previous === "full" ? fullPaneRef.current : diffPaneRef.current;
+        const focusInOutgoingPane = !!outgoingPane?.contains(document.activeElement);
+        if (focusInOutgoingPane || hadOpenPopup) {
+            const radio = modeSelectorRef?.current?.querySelector(`input[value="${downloadMode}"]`);
+            (radio as HTMLElement | null)?.focus();
+        }
+    }, [downloadMode, openSelectId, modeSelectorRef]);
+    const selectOpenProps = (id: string, pane: "full" | "diff") => ({
+        open: downloadMode === pane && openSelectId === id,
+        onOpen: () => setOpenSelectId(id),
+        onClose: () => setOpenSelectId((current) => (current === id ? null : current)),
+    });
+    useEffect(() => {
+        const panes: Array<["full" | "diff", HTMLDivElement | null]> = [
+            ["full", fullPaneRef.current],
+            ["diff", diffPaneRef.current],
+        ];
+        const measure = () => {
+            setPaneHeights((prev) => {
+                const next = { ...prev };
+                for (const [key, el] of panes) if (el) next[key] = el.offsetHeight;
+                return next;
+            });
+        };
+        const observer = new ResizeObserver(measure);
+        for (const [, el] of panes) if (el) observer.observe(el);
+        const raf = requestAnimationFrame(measure);
+        return () => {
+            cancelAnimationFrame(raf);
+            observer.disconnect();
+        };
+    }, []);
+    const activePaneHeight = downloadMode === "full" ? paneHeights.full : paneHeights.diff;
+
     return (
         <Stack spacing={2}>
-            <Typography variant="body1">{__(I18nStrings.MAIN_BPKS_DL_OPTIONS_DESC)}</Typography>
-
-            <FormControl fullWidth>
-                <InputLabel id="bpks-types">{__(I18nStrings.MAIN_BPKS_DL_TYPE_LABEL)}</InputLabel>
-                <Select
-                    labelId="bpks-types"
-                    label={__(I18nStrings.MAIN_BPKS_DL_TYPE_LABEL)}
-                    value={selectedTypes}
-                    onChange={(e) => onTypeChange(e.target.value)}
-                    multiple
+            <Box
+                sx={{
+                    overflow: "hidden",
+                    mt: -1.5,
+                    height: activePaneHeight !== undefined ? `${activePaneHeight}px` : undefined,
+                }}
+            >
+                <Box
+                    sx={{
+                        display: "flex",
+                        alignItems: "flex-start",
+                        width: "200%",
+                        transform: downloadMode === "full" ? "translateX(0%)" : "translateX(-50%)",
+                        transition: "transform 250ms cubic-bezier(0.23, 1, 0.32, 1)",
+                        "@media (prefers-reduced-motion: reduce)": { transition: "none" },
+                    }}
                 >
-                    {typeOptions.map((option) => (
-                        <MenuItem key={option.key} value={option.key}>
-                            {option.label}
-                        </MenuItem>
-                    ))}
-                </Select>
-            </FormControl>
-
-            <FormControl fullWidth>
-                <InputLabel id="bpks-gamemodes">{__(I18nStrings.MAIN_BPKS_DL_GMODE_LABEL)}</InputLabel>
-                <Select
-                    labelId="bpks-gamemodes"
-                    label={__(I18nStrings.MAIN_BPKS_DL_GMODE_LABEL)}
-                    value={gameModes}
-                    onChange={(e) => onGameModeChange(e.target.value)}
-                    multiple
-                >
-                    {modesOptions.map((option) => (
-                        <MenuItem key={option.key} value={option.key}>
-                            {option.label}
-                        </MenuItem>
-                    ))}
-                </Select>
-            </FormControl>
-
-            <FormControl fullWidth>
-                <InputLabel id="bpks-date-range">{__(I18nStrings.MAIN_BPKS_DL_DATE_RANGE_LABEL)}</InputLabel>
-                <Select
-                    labelId="bpks-date-range"
-                    label={__(I18nStrings.MAIN_BPKS_DL_DATE_RANGE_LABEL)}
-                    value={selectedDateRange}
-                    onChange={(e) => onDateRangeChange(e.target.value as DateRangeType)}
-                >
-                    {dateRangeOptions.map((option) => (
-                        <MenuItem key={option.key} value={option.key}>
-                            {option.label}
-                        </MenuItem>
-                    ))}
-                </Select>
-            </FormControl>
-
-            <Box>
-                <Typography variant="h6" gutterBottom>
-                    {__(I18nStrings.MAIN_BPKS_DL_MODE_TITLE)}
-                </Typography>
-                <RadioGroup value={downloadMode} onChange={(e) => onDLModeChange(e.target.value as "full" | "diff")}>
-                    <FormControlLabel value="full" control={<Radio />} label={__(I18nStrings.MAIN_BPKS_DL_MODE_FULL)} />
-                    <FormControlLabel value="diff" control={<Radio />} label={__(I18nStrings.MAIN_BPKS_DL_MODE_DIFF)} />
-                </RadioGroup>
-            </Box>
-
-            {downloadMode === "diff" && (
-                <Box>
-                    <Typography variant="h6" gutterBottom>
-                        {__(I18nStrings.MAIN_BPKS_DL_SCOPE_LABEL)}
-                    </Typography>
-                    <RadioGroup
-                        value={detectionScope}
-                        onChange={(e) => onScopeChange(e.target.value as DetectionScope)}
+                    <Box
+                        ref={fullPaneRef}
+                        inert={downloadMode !== "full"}
+                        aria-hidden={downloadMode !== "full"}
+                        sx={{ width: "50%", flexShrink: 0, pt: 1.5, pr: 2 }}
                     >
-                        <FormControlLabel
-                            value="all"
-                            control={<Radio />}
-                            label={__(I18nStrings.MAIN_BPKS_DL_SCOPE_ALL)}
-                        />
-                        <FormControlLabel
-                            value="stable"
-                            control={<Radio />}
-                            label={__(I18nStrings.MAIN_BPKS_DL_SCOPE_STABLE)}
-                        />
-                        <FormControlLabel
-                            value="lazer"
-                            control={<Radio />}
-                            label={__(I18nStrings.MAIN_BPKS_DL_SCOPE_LAZER)}
-                        />
-                    </RadioGroup>
-                </Box>
-            )}
+                        <Stack spacing={2}>
+                            <FormControl fullWidth>
+                                <InputLabel id="bpks-full-types">{__(I18nStrings.MAIN_BPKS_DL_TYPE_LABEL)}</InputLabel>
+                                <Select
+                                    labelId="bpks-full-types"
+                                    {...selectOpenProps("bpks-full-types", "full")}
+                                    label={__(I18nStrings.MAIN_BPKS_DL_TYPE_LABEL)}
+                                    value={selectedTypes}
+                                    onChange={(e) => onTypeChange(e.target.value)}
+                                    multiple
+                                >
+                                    {typeOptions.map((option) => (
+                                        <MenuItem key={option.key} value={option.key}>
+                                            {option.label}
+                                        </MenuItem>
+                                    ))}
+                                </Select>
+                            </FormControl>
 
-            <Box>
-                <Typography variant="h6" gutterBottom>
-                    {__(I18nStrings.MAIN_SETTINGS_OTHERS)}
-                </Typography>
-                <PackRulesetByBnToggle />
+                            <FormControl fullWidth>
+                                <InputLabel id="bpks-full-gamemodes">
+                                    {__(I18nStrings.MAIN_BPKS_DL_GMODE_LABEL)}
+                                </InputLabel>
+                                <Select
+                                    labelId="bpks-full-gamemodes"
+                                    {...selectOpenProps("bpks-full-gamemodes", "full")}
+                                    label={__(I18nStrings.MAIN_BPKS_DL_GMODE_LABEL)}
+                                    value={gameModes}
+                                    onChange={(e) => onGameModeChange(e.target.value)}
+                                    multiple
+                                >
+                                    {modesOptions.map((option) => (
+                                        <MenuItem key={option.key} value={option.key}>
+                                            {option.label}
+                                        </MenuItem>
+                                    ))}
+                                </Select>
+                            </FormControl>
+
+                            <FormControl fullWidth>
+                                <InputLabel id="bpks-full-date-range">
+                                    {__(I18nStrings.MAIN_BPKS_DL_DATE_RANGE_LABEL)}
+                                </InputLabel>
+                                <Select
+                                    labelId="bpks-full-date-range"
+                                    {...selectOpenProps("bpks-full-date-range", "full")}
+                                    label={__(I18nStrings.MAIN_BPKS_DL_DATE_RANGE_LABEL)}
+                                    value={selectedDateRange}
+                                    onChange={(e) => onDateRangeChange(e.target.value as DateRangeType)}
+                                >
+                                    {dateRangeOptions.map((option) => (
+                                        <MenuItem key={option.key} value={option.key}>
+                                            {option.label}
+                                        </MenuItem>
+                                    ))}
+                                </Select>
+                            </FormControl>
+                        </Stack>
+                    </Box>
+
+                    <Box
+                        ref={diffPaneRef}
+                        inert={downloadMode !== "diff"}
+                        aria-hidden={downloadMode !== "diff"}
+                        sx={{ width: "50%", flexShrink: 0, pt: 1.5, pl: 2 }}
+                    >
+                        <Stack spacing={2}>
+                            <FormControl fullWidth>
+                                <InputLabel id="bpks-diff-types">{__(I18nStrings.MAIN_BPKS_DL_TYPE_LABEL)}</InputLabel>
+                                <Select
+                                    labelId="bpks-diff-types"
+                                    {...selectOpenProps("bpks-diff-types", "diff")}
+                                    label={__(I18nStrings.MAIN_BPKS_DL_TYPE_LABEL)}
+                                    value={selectedTypes}
+                                    onChange={(e) => onTypeChange(e.target.value)}
+                                    multiple
+                                >
+                                    {typeOptions.map((option) => (
+                                        <MenuItem key={option.key} value={option.key}>
+                                            {option.label}
+                                        </MenuItem>
+                                    ))}
+                                </Select>
+                            </FormControl>
+
+                            <FormControl fullWidth>
+                                <InputLabel id="bpks-diff-gamemodes">
+                                    {__(I18nStrings.MAIN_BPKS_DL_GMODE_LABEL)}
+                                </InputLabel>
+                                <Select
+                                    labelId="bpks-diff-gamemodes"
+                                    {...selectOpenProps("bpks-diff-gamemodes", "diff")}
+                                    label={__(I18nStrings.MAIN_BPKS_DL_GMODE_LABEL)}
+                                    value={gameModes}
+                                    onChange={(e) => onGameModeChange(e.target.value)}
+                                    multiple
+                                >
+                                    {modesOptions.map((option) => (
+                                        <MenuItem key={option.key} value={option.key}>
+                                            {option.label}
+                                        </MenuItem>
+                                    ))}
+                                </Select>
+                            </FormControl>
+
+                            <FormControl fullWidth>
+                                <InputLabel id="bpks-diff-statuses">
+                                    {__(I18nStrings.MAIN_BPKS_DL_STATUS_LABEL)}
+                                </InputLabel>
+                                <Select
+                                    labelId="bpks-diff-statuses"
+                                    {...selectOpenProps("bpks-diff-statuses", "diff")}
+                                    label={__(I18nStrings.MAIN_BPKS_DL_STATUS_LABEL)}
+                                    value={selectedStatuses}
+                                    onChange={(e) => onStatusChange(e.target.value)}
+                                    multiple
+                                >
+                                    {statusOptions.map((option) => (
+                                        <MenuItem key={option.key} value={option.key}>
+                                            {option.label}
+                                        </MenuItem>
+                                    ))}
+                                </Select>
+                            </FormControl>
+
+                            <FormControl fullWidth>
+                                <InputLabel id="bpks-diff-date-range">
+                                    {__(I18nStrings.MAIN_BPKS_DL_DATE_RANGE_LABEL)}
+                                </InputLabel>
+                                <Select
+                                    labelId="bpks-diff-date-range"
+                                    {...selectOpenProps("bpks-diff-date-range", "diff")}
+                                    label={__(I18nStrings.MAIN_BPKS_DL_DATE_RANGE_LABEL)}
+                                    value={selectedDateRange}
+                                    onChange={(e) => onDateRangeChange(e.target.value as DateRangeType)}
+                                >
+                                    {dateRangeOptions.map((option) => (
+                                        <MenuItem key={option.key} value={option.key}>
+                                            {option.label}
+                                        </MenuItem>
+                                    ))}
+                                </Select>
+                            </FormControl>
+
+                            <Box>
+                                <Typography variant="h6" gutterBottom>
+                                    {__(I18nStrings.MAIN_BPKS_DL_SCOPE_LABEL)}
+                                </Typography>
+                                <RadioGroup
+                                    value={detectionScope}
+                                    onChange={(e) => onScopeChange(e.target.value as DetectionScope)}
+                                >
+                                    <FormControlLabel
+                                        value="all"
+                                        control={<Radio />}
+                                        label={__(I18nStrings.MAIN_BPKS_DL_SCOPE_ALL)}
+                                    />
+                                    <FormControlLabel
+                                        value="stable"
+                                        control={<Radio />}
+                                        label={__(I18nStrings.MAIN_BPKS_DL_SCOPE_STABLE)}
+                                    />
+                                    <FormControlLabel
+                                        value="lazer"
+                                        control={<Radio />}
+                                        label={__(I18nStrings.MAIN_BPKS_DL_SCOPE_LAZER)}
+                                    />
+                                </RadioGroup>
+                            </Box>
+
+                            <Box>
+                                <Typography variant="h6" gutterBottom>
+                                    {__(I18nStrings.MAIN_SETTINGS_OTHERS)}
+                                </Typography>
+                                <PackRulesetByBnToggle />
+                            </Box>
+                        </Stack>
+                    </Box>
+                </Box>
             </Box>
         </Stack>
     );
 };
 
 export const BeatmapPackDownloadView: React.FC<IBeatmapPackDownloadViewProps> = () => {
+    const modeSelectorRef = useRef<HTMLDivElement | null>(null);
     const [fetchedPacks, setFetchedPacks] = useState<BeatmapPack[]>([]);
     const [fetchedPackInfos, setFetchedPackInfos] = useState<RespBeatmapPack[]>([]);
     const [excludedPackTags, setExcludedPackTags] = useState<Set<string>>(new Set());
@@ -247,6 +478,24 @@ export const BeatmapPackDownloadView: React.FC<IBeatmapPackDownloadViewProps> = 
         await g.saveConfig(ConfigKey.BPKS_DL_GMODE, modes);
     };
 
+    const handleStatusChange = async (status: string | string[]) => {
+        let statuses = typeof status === "string" ? [status] : status;
+        const old = statusFilterOf(g.config?.[ConfigKey.BPKS_DL_STATUS]);
+
+        if (statuses.includes("all")) {
+            if (old.includes("all")) {
+                statuses = statuses.filter((v) => v !== "all");
+            } else {
+                statuses = [];
+            }
+        }
+        if (statuses.length === 0) {
+            statuses = ["all"];
+        }
+
+        await g.saveConfig(ConfigKey.BPKS_DL_STATUS, statuses);
+    };
+
     const handleDateRangeChange = async (range: DateRangeType) => {
         await g.saveConfig(ConfigKey.BPKS_DL_DATE_RANGE, range);
     };
@@ -263,6 +512,7 @@ export const BeatmapPackDownloadView: React.FC<IBeatmapPackDownloadViewProps> = 
         const render = () => {
             const savedTypes = (g.config?.[ConfigKey.BPKS_DL_TYPE] ?? ["standard"]) as string[];
             const gameModes = g.config?.[ConfigKey.BPKS_DL_GMODE] ?? (["all"] as string[]);
+            const selectedStatuses = statusFilterOf(g.config?.[ConfigKey.BPKS_DL_STATUS]);
             const savedDateRange = (g.config?.[ConfigKey.BPKS_DL_DATE_RANGE] ?? "7d") as DateRangeType;
             const savedMode = (g.config?.[ConfigKey.BPKS_DL_MODE] ?? "full") as "full" | "diff";
             const savedScope = (g.config?.[ConfigKey.BPKS_DL_DETECTION_SCOPE] ?? "all") as DetectionScope;
@@ -270,20 +520,24 @@ export const BeatmapPackDownloadView: React.FC<IBeatmapPackDownloadViewProps> = 
                 <BeatmapPackDownloadOptions
                     selectedTypes={savedTypes}
                     gameModes={gameModes}
+                    selectedStatuses={selectedStatuses}
                     selectedDateRange={savedDateRange}
                     downloadMode={savedMode}
                     detectionScope={savedScope}
                     onTypeChange={handleTypeChange}
                     onGameModeChange={handleGameModeChange}
+                    onStatusChange={handleStatusChange}
                     onDateRangeChange={handleDateRangeChange}
-                    onModeChange={handleModeChange}
                     onScopeChange={handleScopeChange}
+                    modeSelectorRef={modeSelectorRef}
                 />
             );
         };
         g.setDialog(true, {
             title: __(I18nStrings.MAIN_BPKS_DL_OPTIONS_TITLE),
+            headerContent: <PackDownloadModeSelector onModeChange={handleModeChange} groupRef={modeSelectorRef} />,
             content: render,
+            scrollBody: true,
             actions: [
                 {
                     label: __(I18nStrings.BTN_CANCEL),
@@ -323,6 +577,8 @@ export const BeatmapPackDownloadView: React.FC<IBeatmapPackDownloadViewProps> = 
         const downloadMode = (g.config?.[ConfigKey.BPKS_DL_MODE] ?? "full") as "full" | "diff";
         const detectionScope = (g.config?.[ConfigKey.BPKS_DL_DETECTION_SCOPE] ?? "all") as DetectionScope;
         const gameModes = g.config?.[ConfigKey.BPKS_DL_GMODE] ?? (["all"] as string[]);
+        const statusFilter = statusFilterOf(g.config?.[ConfigKey.BPKS_DL_STATUS]);
+        const statusFilterActive = !statusFilter.includes("all");
         const osuPath = g.config?.[ConfigKey.PATH_STABLE_DIR] ?? "";
         const lazerPath = g.config?.[ConfigKey.PATH_LAZER_REALM] ?? "";
 
@@ -448,17 +704,25 @@ export const BeatmapPackDownloadView: React.FC<IBeatmapPackDownloadViewProps> = 
             if (!aborter.signal.aborted) {
                 setFetchedPacks(allPacks);
 
+                // Beatmap status only exists in the pack detail, so the filter applies to the fetched set list (diff mode).
+                const filterStatus = downloadMode === "diff" && statusFilterActive;
+                const filterByMode = gameModes && !gameModes.includes("all") && getPackRulesetByNmExperiment();
                 let processedPackInfos = allPackInfos;
-                if (gameModes && !gameModes.includes("all") && getPackRulesetByNmExperiment()) {
-                    const selectedModeNames = new Set(
-                        gameModes.map((m: any) => MODE_NAME_MAP[String(m)]).filter(Boolean),
-                    );
-                    const nullRulesetTags = new Set(allPacks.filter((p) => p.ruleset_id === null).map((p) => p.tag));
+                if (filterStatus || filterByMode) {
+                    const selectedModeNames = filterByMode
+                        ? new Set(gameModes.map((m: any) => MODE_NAME_MAP[String(m)]).filter(Boolean))
+                        : null;
+                    const nullRulesetTags = filterByMode
+                        ? new Set(allPacks.filter((p) => p.ruleset_id === null).map((p) => p.tag))
+                        : null;
                     processedPackInfos = allPackInfos.map((info) => {
-                        if (!nullRulesetTags.has(info.tag)) return info;
+                        const applyMode = nullRulesetTags?.has(info.tag) ?? false;
+                        if (!filterStatus && !applyMode) return info;
                         return {
                             ...info,
-                            beatmapsets: info.beatmapsets.filter((bs: any) => {
+                            beatmapsets: info.beatmapsets.filter((bs) => {
+                                if (filterStatus && !statusFilter.includes(bs.status)) return false;
+                                if (!applyMode || !selectedModeNames) return true;
                                 const rulesets = bs.nominations_summary?.eligible_main_rulesets ?? [];
                                 return rulesets.length === 0 || rulesets.some((r: string) => selectedModeNames.has(r));
                             }),
