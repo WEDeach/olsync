@@ -35,6 +35,7 @@ export enum SubViewType {
     D_LAZER,
     D_API,
     D_DLX,
+    D_RELEASE_NOTES,
 }
 
 export enum MainViewState {
@@ -584,6 +585,12 @@ export default class Controller {
                 break;
             case SubViewType.D_DLX:
                 view = await import("../debug_views/dl_test/main");
+                runInAction(() => {
+                    this.state.v_sub = () => React.createElement(view.default);
+                });
+                break;
+            case SubViewType.D_RELEASE_NOTES:
+                view = await import("../debug_views/release_notes/main");
                 runInAction(() => {
                     this.state.v_sub = () => React.createElement(view.default);
                 });

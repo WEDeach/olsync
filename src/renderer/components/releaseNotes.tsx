@@ -1,12 +1,17 @@
 import { Box, Link, Typography } from "@mui/material";
 import React, { memo } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
+import rehypeRaw from "rehype-raw";
+import rehypeSanitize from "rehype-sanitize";
 import remarkGfm from "remark-gfm";
 import { isExternalHttpUrl, isSafeImageUrl } from "../../utils/markdownUrl";
+import { remarkGithubCommitLinks } from "../../utils/remarkGithubCommitLinks";
+import { remarkHardBreaks } from "../../utils/remarkHardBreaks";
 
 const markdownComponents: Components = {
     a: ({ href, children }) => {
         if (typeof href === "string" && isExternalHttpUrl(href)) {
+            const isCommitLink = /\/commit\/[0-9a-f]{7,40}$/i.test(href);
             return (
                 <Link
                     href={href}
@@ -17,7 +22,13 @@ const markdownComponents: Components = {
                         window.olsCore.openExternal(href);
                     }}
                 >
-                    {children}
+                    {isCommitLink ? (
+                        <Box component="span" sx={{ fontFamily: "monospace" }}>
+                            {children}
+                        </Box>
+                    ) : (
+                        children
+                    )}
                 </Link>
             );
         }
@@ -48,13 +59,14 @@ const markdownComponents: Components = {
 
 export interface ReleaseNotesProps {
     notes: string;
+    maxHeight?: number | string;
 }
 
-export const ReleaseNotes: React.FC<ReleaseNotesProps> = memo(({ notes }) => {
+export const ReleaseNotes: React.FC<ReleaseNotesProps> = memo(({ notes, maxHeight = 320 }) => {
     return (
         <Box
             sx={{
-                maxHeight: 320,
+                maxHeight,
                 overflowY: "auto",
                 border: "1px solid",
                 borderColor: "divider",
@@ -71,7 +83,11 @@ export const ReleaseNotes: React.FC<ReleaseNotesProps> = memo(({ notes }) => {
                 "& h1, & h2, & h3, & h4, & h5, & h6": { my: 1 },
             }}
         >
-            <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+            <ReactMarkdown
+                remarkPlugins={[remarkGfm, remarkGithubCommitLinks, remarkHardBreaks]}
+                rehypePlugins={[rehypeRaw, rehypeSanitize]}
+                components={markdownComponents}
+            >
                 {notes}
             </ReactMarkdown>
         </Box>
