@@ -1,6 +1,6 @@
 {
   "name": "olsync",
-  "version": "1.1.1",
+  "version": "1.1.2",
   "main": "./dist/main.js",
   "scripts": {
     "build": "concurrently \"npm run dev:electron\" \"npm run dev:react\"",
@@ -118,6 +118,8 @@
     "react-dom": "^19.1.0",
     "react-markdown": "^10.1.0",
     "react-virtualized": "^9.22.6",
+    "rehype-raw": "^7.0.0",
+    "rehype-sanitize": "^6.0.0",
     "remark-gfm": "^4.0.1",
     "ts-loader": "^9.5.2",
     "ts-node": "^10.9.2",
@@ -128,11 +130,15 @@
     "wait-on": "^8.0.3",
     "webpack": "^5.99.6",
     "webpack-cli": "^6.0.1",
-    "webpack-dev-server": "^5.2.1",
+    "webpack-dev-server": "^5.2.6",
     "webpack-node-externals": "^3.0.0"
   },
   "overrides": {
     "minimatch": "^10.2.1",
-    "glob": "^11.0.0"
+    "glob": "^11.0.0",
+    "webpack-dev-server": {
+      "compression": "1.8.2",
+      "ws": "8.21.0"
+    }
   }
 }
