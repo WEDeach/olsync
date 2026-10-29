@@ -200,6 +200,19 @@
                     "lazer": "Lazer に不足",
                     "common": "両方に不足"
                 },
+                "status": {
+                    "label": "ビートマップ状態",
+                    "all": "すべての状態",
+                    "ranked": "Ranked",
+                    "approved": "Approved",
+                    "qualified": "Qualified",
+                    "loved": "Loved",
+                    "pending": "Pending",
+                    "wip": "WIP",
+                    "graveyard": "Graveyard"
+                },
+                "full_tooltip": "完全なパックの圧縮ファイルをダウンロードするため、ゲームモードやビートマップ状態で正確に絞り込めません。正確な絞り込みには差分ダウンロードを使用してください。",
+                "diff_tooltip": "各パックの内容を確認し、不足しているビートマップのみをゲームモードとビートマップ状態のフィルターを適用してダウンロードします。",
                 "no_type_selected": "パックのタイプを少なくとも1つ選択してください！",
                 "start": "ビートマップパックの処理を開始...",
                 "fetching": "パックデータを取得中 (タイプ: :type)...",
@@ -261,6 +274,7 @@
             "pack_ruleset_by_bn_desc_post": "でBNの仕組みを確認できます。",
             "use_api_map_attr": "APIから譜面属性を取得してPPを計算する (実験的)",
             "use_lazer_mode": "Lazerモードを使用する (実験的)",
+            "use_lazer_mode_desc": "Lazer スコアの統合、Lazer ピッカー、ダウンローダーとビートマップパックでの Lazer データ利用を有効にします。Classic スコア表示もこのモードが必要です。実験的な機能で、一部のフィルターとコレクション同期には制限があります。",
             "include_online_db": "オンラインデータベースを含める (実験的)",
             "classic_score": "Classicスコア表示 (実験的)",
             "language": "言語",
@@ -294,7 +308,8 @@
                 "confirm_body": "DBは30日以内に更新されています。再ダウンロードしますか？"
             },
             "api_help": "API 認証情報の取得方法",
-            "path_lazer_help": "Lazer パスの設定方法"
+            "path_lazer_help": "Lazer パスの設定方法",
+            "path_stable_help": "osu!stable パスの設定方法"
         },
         "name": "名前",
         "author": "作者",
@@ -325,6 +340,35 @@
                 "player_tags": "プレイヤータグ",
                 "player_tags_placeholder": "タグを検索または入力",
                 "player_tags_no_db": "先に設定でオンラインDBをダウンロードしてください",
+                "artist_label": "アーティスト名",
+                "creator_label": "マッパー名",
+                "difficulty_label": "難易度名",
+                "ranked_date_from": "ランク入り開始",
+                "ranked_date_to": "ランク入り終了",
+                "ranked_date_invalid": "開始日は終了日より後にできません",
+                "ranked_date_no_db": "先に設定でオンラインDBをダウンロードしてください",
+                "group": {
+                    "search": "名前で検索",
+                    "beatmap": "譜面情報",
+                    "rank": "ランク状態",
+                    "play": "プレイ状況"
+                },
+                "ar_label": "AR",
+                "cs_label": "CS",
+                "hp_label": "HP",
+                "od_label": "OD",
+                "drain_label": "Drain（時間）",
+                "source_label": "ソース",
+                "played_state": "プレイ有無",
+                "played_any": "指定しない",
+                "played_unplayed": "未プレイ",
+                "played_played": "プレイ済み",
+                "last_played_from": "最終プレイ開始",
+                "last_played_to": "最終プレイ終了",
+                "last_played_invalid": "開始日は終了日より後にできません",
+                "lazer_unsupported": "lazer モードでは無効表示の条件は適用されません",
+                "lazer_unsupported_field": "lazer モードでは使用できません",
+                "number_invalid": "有効な数値を入力してください",
                 "star_rating": "難易度（スター）",
                 "sr_between": "範囲内",
                 "play_count": "プレイ回数",
@@ -361,6 +405,7 @@
                 "cond_value": "値",
                 "date": {
                     "to": "～",
+                    "from": "開始日",
                     "years": "年",
                     "months": "月",
                     "days": "日"
@@ -370,7 +415,9 @@
                     "not_appeared": "出現歴なし",
                     "within_last": "直近 N 件以内に出現",
                     "not_within_last": "直近 N 件以内に出現なし",
-                    "last_n": "N"
+                    "last_n": "N",
+                    "time": "抽選日時の範囲",
+                    "filter": "現在の候補譜面の条件"
                 },
                 "bm": {
                     "id": "譜面 ID",
@@ -378,6 +425,7 @@
                     "artist": "アーティスト",
                     "title": "タイトル",
                     "creator": "マッパー",
+                    "difficulty": "難易度名",
                     "ranked": "Ranked 状態",
                     "drain": "ドレインタイム(秒)",
                     "tags": "タグ",
@@ -412,6 +460,7 @@
                         "not_contains_any": "いずれも含まない",
                         "player_tags_eq": "完全一致"
                     },
+                    "same_as_candidate": "候補の譜面と同一",
                     "num": {
                         "eq": "一致する",
                         "gt": "より大きい",
@@ -578,6 +627,12 @@
                 "lazer": "Lazer",
                 "stable_mode": "Stable モード",
                 "lazer_mode": "Lazer モード"
+            },
+            "ranked_date_query": {
+                "loading": "検索中",
+                "failed": "FAILED",
+                "error_title": "ランク入り日付の検索に失敗しました",
+                "error_desc": "エラーが発生した条件：ランク入り日付\n開始日：:from\n終了日：:to\nこの条件を変更してから、もう一度お試しください。"
             }
         },
         "restorer": {
@@ -785,7 +840,8 @@
             "wishlist": "ウィッシュリスト",
             "history": "抽選履歴",
             "clear_history": "履歴をクリア",
-            "profiles": "プロファイル"
+            "profiles": "プロファイル",
+            "review_condition": "条件を確認"
         },
         "update": {
             "check": "アップデートを確認",
@@ -836,31 +892,56 @@
             "step1": {
                 "title": "アカウント設定を開く",
                 "short": "設定を開く",
-                "desc": "osu! 公式サイトにログインし、右上のアバターをクリックして「設定」を開きます。左側のメニューから「アカウント」タブを選び、下へスクロールして「OAuth アプリケーション」欄を見つけ、「OAuth アプリケーション」ボタンをクリックします。",
+                "desc": "osu! 公式サイトにログインし、右上のアバターをクリックして「設定」を開きます。\n左側のメニューから「アカウント」タブを選び、下へスクロールして「OAuth アプリケーション」欄を見つけ、「OAuth アプリケーション」ボタンをクリックします。",
                 "link": "osu! アカウント設定を開く"
             },
             "step2": {
                 "title": "OAuth アプリケーションを登録",
                 "short": "アプリを登録",
-                "desc": "登録ダイアログでは「アプリケーション名」欄のみ入力が必要です。任意の名前（例：OLSync）を入力し、「アプリケーションを登録」ボタンをクリックします。"
+                "desc": "登録ダイアログでは「アプリケーション名」欄のみ入力が必要です。\n任意の名前（例：OLSync）を入力し、「アプリケーションを登録」ボタンをクリックします。"
             },
             "step3": {
                 "title": "認証情報をコピー",
                 "short": "コピー",
-                "desc": "登録後、クライアント ID とクライアントシークレットが表示されます。シークレットをコピーする前に「クライアントシークレットを表示」をクリックする必要があります。次のステップで使うため、両方をコピーしてください。"
+                "desc": "登録後、クライアント ID とクライアントシークレットが表示されます。\nシークレットをコピーする前に「クライアントシークレットを表示」をクリックする必要があります。\n次のステップで使うため、両方をコピーしてください。"
             },
             "step4": {
                 "title": "OLSync に貼り付け",
                 "short": "OLSync に貼り付け",
-                "desc": "OLSync に戻り、設定の「API 設定」欄を開きます。クライアント ID を Client Id 欄に、クライアントシークレットを Client Secret 欄に貼り付けます。"
+                "desc": "OLSync に戻り、設定の「API 設定」欄を開きます。\nクライアント ID を Client Id 欄に、クライアントシークレットを Client Secret 欄に貼り付けます。"
             }
         },
         "beatmap_picker": {
             "title": "選曲器の使い方",
             "step1": {
-                "title": "選曲器",
-                "short": "概要",
-                "desc": "選曲器はローカルとオンラインの譜面データ、フィルタ、重み付けを使って、条件に合った譜面をランダムに選びます。"
+                "title": "選曲器の流れ",
+                "short": "流れ",
+                "desc": "選曲器はローカルの譜面だけを使います。\nFilter で除外 → ウィッシュリストで優先プールを決定 → 重みで確率を調整 → Roll で抽選、の順です。"
+            },
+            "step2": {
+                "title": "ソースを選択",
+                "short": "ソース",
+                "desc": "Stable は osu!stable の譜面、Lazer は osu!lazer の譜面を使います。\nLazer は設定で Lazer Mode をオンにする必要があります。"
+            },
+            "step3": {
+                "title": "Filter で絞り込む",
+                "short": "フィルター",
+                "desc": "Filter は必須条件です。\n一致しない譜面は抽選されません。\nコレクションとプレイヤータグもここで適用されます。"
+            },
+            "step4": {
+                "title": "ウィッシュリストで優先順位",
+                "short": "ウィッシュリスト",
+                "desc": "ウィッシュリストは重みではなく優先プールです。\n最上位に一致があればそのプールだけを使い、なければ次の順位を試します。"
+            },
+            "step5": {
+                "title": "重みで確率を調整",
+                "short": "重み",
+                "desc": "重みは選ばれたプール内の確率倍率です。\n重み 2 は重み 1 の 2 倍抽選されやすく、重み 0 は除外されます。"
+            },
+            "step6": {
+                "title": "Roll・履歴・プロファイル",
+                "short": "抽選",
+                "desc": "Roll で抽選します。\n数字は「抽選可能 / 絞り込み後」の数です。\n抽選結果は履歴に入り、最近の譜面を避けたり優先したりできます。\nプロファイルは設定一式を保存します。\nヒント：Roll を右クリックすると候補と確率を確認できます。"
             }
         },
         "path_lazer": {
@@ -873,7 +954,7 @@
             "step2": {
                 "title": "フォルダパスをコピー",
                 "short": "パスをコピー",
-                "desc": "osu!lazer のデータフォルダが開きます。フォルダパスをコピーし、その中に `client.realm` ファイルが含まれていることを確認します。"
+                "desc": "osu!lazer のデータフォルダが開きます。\nフォルダパスをコピーし、その中に `client.realm` ファイルが含まれていることを確認します。"
             },
             "step3": {
                 "title": "OLSync で Lazer パスを選択",
@@ -888,7 +969,25 @@
             "step5": {
                 "title": "client.realm を選択",
                 "short": "ファイルを選択",
-                "desc": "Enter を押すと、フォルダ内に `client.realm` ファイルが表示されます。それを選択して「開く」をクリックすると、Lazer パスの設定が完了します。"
+                "desc": "Enter を押すと、フォルダ内に `client.realm` ファイルが表示されます。\nそれを選択して「開く」をクリックすると、Lazer パスの設定が完了します。"
+            }
+        },
+        "path_stable": {
+            "title": "osu!stable パスの設定方法",
+            "step1": {
+                "title": "osu!stable のフォルダを開く",
+                "short": "フォルダを開く",
+                "desc": "方法1：osu! の Options →「osu! フォルダを開く」。\n方法2：osu!stable のショートカットを右クリック →「ファイルの場所を開く」。"
+            },
+            "step2": {
+                "title": "データファイルを確認",
+                "short": "ファイル確認",
+                "desc": "フォルダに `osu!.db`、`scores.db`、`collection.db` があることを確認します。"
+            },
+            "step3": {
+                "title": "OLSync でフォルダを選択",
+                "short": "フォルダ選択",
+                "desc": "OLSync の設定 →「パス設定」で、`OsuPath` にこのフォルダを選択します。"
             }
         }
     }

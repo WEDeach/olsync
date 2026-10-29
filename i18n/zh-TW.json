@@ -197,6 +197,19 @@
                     "lazer": "缺失於 Lazer",
                     "common": "兩者皆缺失"
                 },
+                "status": {
+                    "label": "圖譜狀態",
+                    "all": "全部狀態",
+                    "ranked": "Ranked",
+                    "approved": "Approved",
+                    "qualified": "Qualified",
+                    "loved": "Loved",
+                    "pending": "Pending",
+                    "wip": "WIP",
+                    "graveyard": "Graveyard"
+                },
+                "full_tooltip": "下載完整的圖包壓縮檔，無法依遊戲模式或圖譜狀態準確篩選；需要精確篩選時請改用差異下載。",
+                "diff_tooltip": "逐包檢查內容，只下載缺少的圖譜，並套用遊戲模式與圖譜狀態篩選。",
                 "no_type_selected": "請至少選擇一個圖譜包類型!",
                 "start": "開始處理圖譜包...",
                 "fetching": "正在獲取圖譜包資料 (類型: :type)...",
@@ -258,6 +271,7 @@
             "use_api_map_attr": "使用 API 取得圖譜屬性計算 PP (實驗性)",
             "include_online_db": "篩選時包含線上資料庫 (實驗性)",
             "use_lazer_mode": "使用 Lazer 模式 (實驗性)",
+            "use_lazer_mode_desc": "開啟後會合併 Lazer 成績、啟用 Lazer 選圖器來源，並讓下載器與圖譜包使用 Lazer 資料。Classic 計分顯示也需開啟此模式。此功能為實驗性，部分篩選與收藏同步仍有限制。",
             "classic_score": "Classic 計分顯示 (實驗性)",
             "language": "語系",
             "no_i18n": "No any i18n files",
@@ -290,7 +304,8 @@
                 "confirm_body": "資料庫已在 30 天內更新，是否重新下載？"
             },
             "api_help": "如何取得 API 憑證",
-            "path_lazer_help": "如何設定 Lazer 路徑"
+            "path_lazer_help": "如何設定 Lazer 路徑",
+            "path_stable_help": "如何設定 osu!stable 路徑"
         },
         "name": "名稱",
         "author": "作者",
@@ -320,6 +335,35 @@
                 "player_tags": "玩家標籤",
                 "player_tags_placeholder": "搜尋或輸入標籤",
                 "player_tags_no_db": "需先在設定中下載線上資料庫",
+                "artist_label": "藝術家名稱",
+                "creator_label": "作者名稱",
+                "difficulty_label": "難度名稱",
+                "ranked_date_from": "進榜起始",
+                "ranked_date_to": "進榜結束",
+                "ranked_date_invalid": "起始日期不能晚於結束日期",
+                "ranked_date_no_db": "需先在設定中下載線上資料庫",
+                "group": {
+                    "search": "名稱搜尋",
+                    "beatmap": "圖譜資訊",
+                    "rank": "排名狀態",
+                    "play": "遊玩狀態"
+                },
+                "ar_label": "AR",
+                "cs_label": "CS",
+                "hp_label": "HP",
+                "od_label": "OD",
+                "drain_label": "Drain（時長）",
+                "source_label": "來源",
+                "played_state": "是否遊玩",
+                "played_any": "不指定",
+                "played_unplayed": "未遊玩",
+                "played_played": "已遊玩",
+                "last_played_from": "最後遊玩起始",
+                "last_played_to": "最後遊玩結束",
+                "last_played_invalid": "開始日期不能晚於結束日期",
+                "lazer_unsupported": "lazer 模式不會套用標示為停用的條件",
+                "lazer_unsupported_field": "lazer 模式不支援此條件",
+                "number_invalid": "請輸入有效數值",
                 "play_count": "遊玩次數",
                 "lang": "語言",
                 "mode": "模式",
@@ -356,6 +400,7 @@
                 "cond_value": "值",
                 "date": {
                     "to": "至",
+                    "from": "起始日期",
                     "years": "年",
                     "months": "月",
                     "days": "天"
@@ -365,7 +410,9 @@
                     "not_appeared": "從未出現",
                     "within_last": "最近 N 則內出現",
                     "not_within_last": "最近 N 則內未出現",
-                    "last_n": "N"
+                    "last_n": "N",
+                    "time": "挑選時間範圍",
+                    "filter": "目前候選圖譜條件"
                 },
                 "bm": {
                     "id": "圖譜 ID",
@@ -373,6 +420,7 @@
                     "artist": "藝術家",
                     "title": "標題",
                     "creator": "作者",
+                    "difficulty": "難度名稱",
                     "ranked": "Ranked 狀態",
                     "drain": "排水時間(秒)",
                     "tags": "Tag",
@@ -407,6 +455,7 @@
                         "not_contains_any": "不包含任一",
                         "player_tags_eq": "完全一致"
                     },
+                    "same_as_candidate": "與候選圖相同",
                     "num": {
                         "eq": "等於",
                         "gt": "大於",
@@ -550,6 +599,12 @@
                 "lazer": "Lazer",
                 "stable_mode": "Stable 模式",
                 "lazer_mode": "Lazer 模式"
+            },
+            "ranked_date_query": {
+                "loading": "查詢中",
+                "failed": "FAILED",
+                "error_title": "進榜日期查詢失敗",
+                "error_desc": "出錯條件：進榜日期\n起日：:from\n迄日：:to\n請更新此條件後再試一次。"
             }
         },
         "restorer": {
@@ -760,7 +815,8 @@
             "wishlist": "願望清單",
             "history": "抽選紀錄",
             "clear_history": "清除紀錄",
-            "profiles": "設定檔"
+            "profiles": "設定檔",
+            "review_condition": "檢查條件"
         },
         "update": {
             "check": "檢查更新",
@@ -811,31 +867,56 @@
             "step1": {
                 "title": "前往帳號設定頁面",
                 "short": "進入設定",
-                "desc": "開啟 osu! 官方網站並登入後，點擊右上角頭像進入「設定」。在左側選單找到「帳號」分頁，向下滾動至「OAuth 應用程式」區域，然後點擊「OAuth 應用程式」按鈕。",
+                "desc": "開啟 osu! 官方網站並登入後，點擊右上角頭像進入「設定」。\n在左側選單找到「帳號」分頁，向下滾動至「OAuth 應用程式」區域，然後點擊「OAuth 應用程式」按鈕。",
                 "link": "前往 osu! 帳號設定"
             },
             "step2": {
                 "title": "註冊 OAuth 應用程式",
                 "short": "註冊應用程式",
-                "desc": "在彈出的註冊視窗中，只需要填寫「應用程式名稱」欄位即可，名稱可以隨意輸入（例如 OLSync）。輸入完畢後，點擊「註冊應用程式」按鈕。"
+                "desc": "在彈出的註冊視窗中，只需要填寫「應用程式名稱」欄位即可，名稱可以隨意輸入（例如 OLSync）。\n輸入完畢後，點擊「註冊應用程式」按鈕。"
             },
             "step3": {
                 "title": "複製憑證",
                 "short": "複製憑證",
-                "desc": "註冊完成後會顯示「客戶端 ID」與「客戶端密鑰」。請先點擊「顯示客戶端密鑰」才能複製密鑰。請把這兩組值複製下來，稍後會用到。"
+                "desc": "註冊完成後會顯示「客戶端 ID」與「客戶端密鑰」。\n請先點擊「顯示客戶端密鑰」才能複製密鑰。\n請把這兩組值複製下來，稍後會用到。"
             },
             "step4": {
                 "title": "貼上至 OLSync",
                 "short": "貼上憑證",
-                "desc": "回到 OLSync，開啟設定並找到「API 設定」。將剛才複製的「客戶端 ID」貼入「Client Id」欄位，「客戶端密鑰」貼入「Client Secret」欄位，即完成設定。"
+                "desc": "回到 OLSync，開啟設定並找到「API 設定」。\n將剛才複製的「客戶端 ID」貼入「Client Id」欄位，「客戶端密鑰」貼入「Client Secret」欄位，即完成設定。"
             }
         },
         "beatmap_picker": {
             "title": "選圖器使用說明",
             "step1": {
-                "title": "選圖器",
-                "short": "簡介",
-                "desc": "選圖器可以依據本地與線上圖譜資料，套用篩選條件與權重，隨機抽選出一張符合需求的圖譜。"
+                "title": "選圖器怎麼運作",
+                "short": "流程",
+                "desc": "選圖器只從本地圖庫挑圖。\n順序是：Filter 先排除不符合的圖 → 願望清單決定優先區 → 權重調整機率 → Roll 隨機抽出。"
+            },
+            "step2": {
+                "title": "選擇來源",
+                "short": "來源",
+                "desc": "Stable 使用 osu!stable 的圖庫；Lazer 使用 osu!lazer 的圖庫。\nLazer 需要先在設定開啟 Lazer Mode。"
+            },
+            "step3": {
+                "title": "用 Filter 縮小範圍",
+                "short": "篩選",
+                "desc": "Filter 是硬條件，不符合的圖不會被抽到。\n也可以搭配收藏夾與玩家標籤。"
+            },
+            "step4": {
+                "title": "願望清單決定優先區",
+                "short": "願望清單",
+                "desc": "願望清單不是權重，而是優先區。\n最高順位有符合的圖時，只從那一區抽；沒有符合才往下一個順位。"
+            },
+            "step5": {
+                "title": "權重調整機率",
+                "short": "權重",
+                "desc": "權重是同一區內的機率倍率。\nweight 2 的圖被抽到的機率是 weight 1 的兩倍；weight 0 等於排除。"
+            },
+            "step6": {
+                "title": "Roll、歷史與 Profile",
+                "short": "抽選",
+                "desc": "按 Roll 抽圖；按鈕上的數字是「可抽 / 篩選後」。\n抽過的圖會進入歷史，可用來避開或加權最近抽過的圖。\nProfile 會保存整組設定。\n小技巧：在 Roll 上按右鍵可以看候選清單與機率。"
             }
         },
         "path_lazer": {
@@ -848,7 +929,7 @@
             "step2": {
                 "title": "複製資料夾路徑",
                 "short": "複製路徑",
-                "desc": "點擊後會開啟 osu!lazer 的資料夾。請複製此資料夾的路徑，並確認資料夾內包含 `client.realm` 檔案。"
+                "desc": "點擊後會開啟 osu!lazer 的資料夾。\n請複製此資料夾的路徑，並確認資料夾內包含 `client.realm` 檔案。"
             },
             "step3": {
                 "title": "在 OLSync 中選擇 Lazer 路徑",
@@ -863,7 +944,25 @@
             "step5": {
                 "title": "選取 client.realm",
                 "short": "選取檔案",
-                "desc": "按下前往後，資料夾內容會列出 `client.realm` 檔案。選取該檔案並點擊「開啟」，即可完成 Lazer 路徑設定。"
+                "desc": "按下前往後，資料夾內容會列出 `client.realm` 檔案。\n選取該檔案並點擊「開啟」，即可完成 Lazer 路徑設定。"
+            }
+        },
+        "path_stable": {
+            "title": "如何設定 osu!stable 路徑",
+            "step1": {
+                "title": "開啟 osu!stable 資料夾",
+                "short": "開啟資料夾",
+                "desc": "方法一：在 osu! 按 Options →「打開 osu! 資料夾」。\n方法二：右鍵 osu!stable 捷徑 →「開啟檔案位置」。"
+            },
+            "step2": {
+                "title": "確認資料檔案",
+                "short": "確認檔案",
+                "desc": "資料夾裡應該有 `osu!.db`、`scores.db`、`collection.db`。"
+            },
+            "step3": {
+                "title": "在 OLSync 選擇資料夾",
+                "short": "選擇資料夾",
+                "desc": "回到 OLSync，設定 →「路徑設定」，在 `OsuPath` 選這個資料夾。"
             }
         }
     }

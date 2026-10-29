@@ -197,6 +197,19 @@
                     "lazer": "Missing in Lazer",
                     "common": "Missing in Both"
                 },
+                "status": {
+                    "label": "Beatmap Status",
+                    "all": "All Statuses",
+                    "ranked": "Ranked",
+                    "approved": "Approved",
+                    "qualified": "Qualified",
+                    "loved": "Loved",
+                    "pending": "Pending",
+                    "wip": "WIP",
+                    "graveyard": "Graveyard"
+                },
+                "full_tooltip": "Downloads complete pack archives; game mode and beatmap status cannot be filtered accurately. Use diff download for precise filtering.",
+                "diff_tooltip": "Checks each pack's contents and downloads only the missing beatmaps, applying the game mode and beatmap status filters.",
                 "no_type_selected": "Please select at least one pack type!",
                 "start": "Starting to process beatmap packs...",
                 "fetching": "Fetching pack data (Type: :type)...",
@@ -258,6 +271,7 @@
             "use_api_map_attr": "Use API beatmap attributes for PP calculation (Experimental)",
             "include_online_db": "Include online database in filters (Experimental)",
             "use_lazer_mode": "Use Lazer Mode (Experimental)",
+            "use_lazer_mode_desc": "Enables Lazer score merging, the Lazer picker source, and Lazer data in the downloader and beatmap packs. Classic Score Display also requires this mode. This is experimental; some filters and collection sync still have limitations.",
             "classic_score": "Classic Score Display (Experimental)",
             "language": "Language",
             "no_i18n": "No i18n files found",
@@ -290,7 +304,8 @@
                 "confirm_body": "The database was updated within 30 days. Download again?"
             },
             "api_help": "How to get API credentials",
-            "path_lazer_help": "How to set the Lazer path"
+            "path_lazer_help": "How to set the Lazer path",
+            "path_stable_help": "How to set the Stable path"
         },
         "name": "Name",
         "author": "Author",
@@ -320,6 +335,35 @@
                 "player_tags": "Player Tags",
                 "player_tags_placeholder": "Search or enter tag",
                 "player_tags_no_db": "Download the online database in Settings first",
+                "artist_label": "Artist",
+                "creator_label": "Creator",
+                "difficulty_label": "Difficulty name",
+                "ranked_date_from": "Ranked from",
+                "ranked_date_to": "Ranked to",
+                "ranked_date_invalid": "Start date cannot be later than end date",
+                "ranked_date_no_db": "Download the online database in Settings first",
+                "group": {
+                    "search": "Name search",
+                    "beatmap": "Beatmap info",
+                    "rank": "Rank status",
+                    "play": "Play status"
+                },
+                "ar_label": "AR",
+                "cs_label": "CS",
+                "hp_label": "HP",
+                "od_label": "OD",
+                "drain_label": "Drain",
+                "source_label": "Source",
+                "played_state": "Played",
+                "played_any": "Any",
+                "played_unplayed": "Unplayed",
+                "played_played": "Played",
+                "last_played_from": "Last played from",
+                "last_played_to": "Last played to",
+                "last_played_invalid": "Start date cannot be later than end date",
+                "lazer_unsupported": "Conditions marked as disabled do not apply in lazer mode",
+                "lazer_unsupported_field": "Not available in lazer mode",
+                "number_invalid": "Enter a valid number",
                 "play_count": "Play Count",
                 "lang": "Language",
                 "mode": "Mode",
@@ -356,6 +400,7 @@
                 "cond_value": "Value",
                 "date": {
                     "to": "To",
+                    "from": "Start date",
                     "years": "Years",
                     "months": "Months",
                     "days": "Days"
@@ -365,7 +410,9 @@
                     "not_appeared": "Never Appeared",
                     "within_last": "Appeared within last N rolls",
                     "not_within_last": "Did not appear within last N rolls",
-                    "last_n": "N"
+                    "last_n": "N",
+                    "time": "Pick time range",
+                    "filter": "Current candidate beatmap condition"
                 },
                 "bm": {
                     "id": "Beatmap ID",
@@ -373,6 +420,7 @@
                     "artist": "Artist",
                     "title": "Title",
                     "creator": "Creator",
+                    "difficulty": "Difficulty name",
                     "ranked": "Ranked Status",
                     "drain": "Drain Time (sec)",
                     "tags": "Tags",
@@ -407,6 +455,7 @@
                         "not_contains_any": "Does Not Contain Any",
                         "player_tags_eq": "Exact Match"
                     },
+                    "same_as_candidate": "Same as candidate",
                     "num": {
                         "eq": "Equals",
                         "gt": "Greater Than",
@@ -550,6 +599,12 @@
                 "lazer": "Lazer",
                 "stable_mode": "Stable Mode",
                 "lazer_mode": "Lazer Mode"
+            },
+            "ranked_date_query": {
+                "loading": "Querying",
+                "failed": "FAILED",
+                "error_title": "Ranked Date Query Failed",
+                "error_desc": "Failed condition: Ranked date\nFrom: :from\nTo: :to\nUpdate this condition to try again."
             }
         },
         "restorer": {
@@ -760,7 +815,8 @@
             "wishlist": "Wishlist",
             "history": "Roll History",
             "clear_history": "Clear History",
-            "profiles": "Profiles"
+            "profiles": "Profiles",
+            "review_condition": "Review Condition"
         },
         "update": {
             "check": "Check for Updates",
@@ -811,31 +867,56 @@
             "step1": {
                 "title": "Go to account settings",
                 "short": "Open settings",
-                "desc": "Open the osu! website and log in. Click your avatar to open Settings, then select the Account tab. Scroll down to the OAuth section and click the OAuth button.",
+                "desc": "Open the osu! website and log in.\nClick your avatar to open Settings, then select the Account tab.\nScroll down to the OAuth section and click the OAuth button.",
                 "link": "Go to osu! account settings"
             },
             "step2": {
                 "title": "Register an OAuth application",
                 "short": "Register",
-                "desc": "In the registration dialog, only the Application Name field is required. You can enter anything (e.g. OLSync). Then click the Register button."
+                "desc": "In the registration dialog, only the Application Name field is required.\nYou can enter anything (e.g.\nOLSync).\nThen click the Register button."
             },
             "step3": {
                 "title": "Copy the credentials",
                 "short": "Copy credentials",
-                "desc": "After registering, the Client ID and Client Secret are shown. Click Show Client Secret before copying the secret. Copy both values for the next step."
+                "desc": "After registering, the Client ID and Client Secret are shown.\nClick Show Client Secret before copying the secret.\nCopy both values for the next step."
             },
             "step4": {
                 "title": "Paste into OLSync",
                 "short": "Paste into OLSync",
-                "desc": "Return to OLSync, open Settings, and find the API section. Paste the Client ID into the Client Id field and the Client Secret into the Client Secret field."
+                "desc": "Return to OLSync, open Settings, and find the API section.\nPaste the Client ID into the Client Id field and the Client Secret into the Client Secret field."
             }
         },
         "beatmap_picker": {
             "title": "How to use the Beatmap Picker",
             "step1": {
-                "title": "Beatmap Picker",
-                "short": "Intro",
-                "desc": "The picker uses local and online beatmap data, filters, and weights to randomly select a beatmap that matches your criteria."
+                "title": "How the picker works",
+                "short": "Flow",
+                "desc": "The picker only uses local beatmaps.\nOrder: Filter removes maps → Wishlist chooses the priority pool → Weights adjust the odds → Roll picks one."
+            },
+            "step2": {
+                "title": "Choose a source",
+                "short": "Source",
+                "desc": "Stable uses the osu!stable library; Lazer uses the osu!lazer library.\nLazer requires Lazer Mode in Settings."
+            },
+            "step3": {
+                "title": "Narrow with Filter",
+                "short": "Filter",
+                "desc": "Filter is a hard condition: maps that do not match cannot be picked.\nCollections and player tags also apply here."
+            },
+            "step4": {
+                "title": "Wishlist sets priority",
+                "short": "Wishlist",
+                "desc": "Wishlist is a priority pool, not a weight.\nIf the highest priority has matches, only that pool is used; otherwise the next priority is tried."
+            },
+            "step5": {
+                "title": "Weights adjust the odds",
+                "short": "Weights",
+                "desc": "Weight is a probability multiplier inside the chosen pool.\nWeight 2 is twice as likely as weight 1; weight 0 excludes the map."
+            },
+            "step6": {
+                "title": "Roll, history and profiles",
+                "short": "Roll",
+                "desc": "Press Roll to pick.\nThe number shows pickable / filtered maps.\nPicks go to history, which can avoid or boost recent maps.\nProfiles save the whole setup.\nTip: right-click Roll to preview the candidate list and odds."
             }
         },
         "path_lazer": {
@@ -848,7 +929,7 @@
             "step2": {
                 "title": "Copy the folder path",
                 "short": "Copy path",
-                "desc": "The osu!lazer data folder will open. Copy the folder path and make sure the folder contains the `client.realm` file."
+                "desc": "The osu!lazer data folder will open.\nCopy the folder path and make sure the folder contains the `client.realm` file."
             },
             "step3": {
                 "title": "Select the Lazer path in OLSync",
@@ -863,7 +944,25 @@
             "step5": {
                 "title": "Select client.realm",
                 "short": "Select file",
-                "desc": "After pressing Enter, the folder contents will show the `client.realm` file. Select it and click Open to finish setting the Lazer path."
+                "desc": "After pressing Enter, the folder contents will show the `client.realm` file.\nSelect it and click Open to finish setting the Lazer path."
+            }
+        },
+        "path_stable": {
+            "title": "How to set the osu!stable path",
+            "step1": {
+                "title": "Open the osu!stable folder",
+                "short": "Open folder",
+                "desc": "Option 1: In osu!, open Options → Open osu! folder.\nOption 2: Right-click the osu!stable shortcut → Open file location."
+            },
+            "step2": {
+                "title": "Check the data files",
+                "short": "Check files",
+                "desc": "The folder should contain `osu!.db`, `scores.db`, and `collection.db`."
+            },
+            "step3": {
+                "title": "Select the folder in OLSync",
+                "short": "Select folder",
+                "desc": "In OLSync, open Settings → Path Settings and choose this folder in `OsuPath`."
             }
         }
     }
